@@ -1,0 +1,161 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>사용량 HUD</title>
+<style>
+  :root { --bg: #f2efe4; --ink: #262b44; --dim: #5a6988; --line: #c9c3b0; }
+  :root[data-theme="dark"] { --bg: #0e0b17; --ink: #c0cbdc; --dim: #8b9bb4; --line: #3a4466; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; }
+  main { max-width: 800px; margin: 0 auto; padding: 16px; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  h1 { font-size: 18px; margin: 0; }
+  button { min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 6px;
+           background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
+  @media (hover: hover) { button:hover { border-color: var(--dim); } }
+  canvas { display: block; width: 100%; height: auto; margin: 16px 0;
+           image-rendering: pixelated; border-radius: 4px; }
+  p, ul { color: var(--dim); margin: 8px 0; }
+  ul { padding-left: 20px; }
+  b { color: var(--ink); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>사용량 HUD</h1>
+    <button id="theme" type="button">어둡게</button>
+  </header>
+  <canvas id="screen" aria-label="구독 한도와 정가를 그린 게임 화면"></canvas>
+  <ul>
+    <li><b>HP</b> 7일 한도의 남은 양, <b>ST</b> 5시간 한도의 남은 양. 오른쪽은 남은 퍼센트와 재설정까지 남은 시간이고, 10% 아래로 내려가면 깜빡임</li>
+    <li><b>동전</b> 오늘 쓴 정가(달러). 구독이면 실제로 나가는 돈은 아니고, 어느 날이 비쌌는지 재는 자</li>
+    <li><b>LOGIN</b> 이 뜨면 CLI 로그인 토큰이 만료된 것 — 터미널에서 <code>claude</code> 를 한 번 열면 풀림</li>
+  </ul>
+  <p id="status">불러오는 중…</p>
+</main>
+<script>
+const FONT = /*FONT*/null;
+const W = 128, H = 112, S = 6;   // 화면 크기(픽셀 단위)와 그릴 때 배율
+const SEG = 20;                   // 막대 칸 수 — 한 칸 5%
+const LIGHT = { bg: "#f2efe4", edge: "#262b44", slot: "#d9d3c1", text: "#262b44", dim: "#8a8571",
+                good: "#3e8948", mid: "#f77622", low: "#e43b44", y: "#f77622" };
+const canvas = document.getElementById("screen");
+canvas.width = W * S; canvas.height = H * S;
+const g = canvas.getContext("2d");
+let data = null, pal = FONT.colors;
+
+function setTheme(dark) {
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  pal = dark ? FONT.colors : { ...FONT.colors, ...LIGHT };
+  document.getElementById("theme").textContent = dark ? "밝게" : "어둡게";
+  try { localStorage.setItem("theme", dark ? "dark" : "light"); } catch (e) {}
+  draw();
+}
+document.getElementById("theme").onclick = () =>
+  setTheme(document.documentElement.dataset.theme !== "dark");
+
+function px(x, y, color, w = 1, h = 1) { g.fillStyle = color; g.fillRect(x * S, y * S, w * S, h * S); }
+function textWidth(s) { return Math.max(0, s.length * 4 - 1); }
+function text(x, y, s, color) {
+  [...s.toUpperCase()].forEach((ch, i) => {
+    (FONT.glyphs[ch] || FONT.glyphs["?"]).forEach((row, dy) =>
+      [...row].forEach((c, dx) => { if (c === "#") px(x + i * 4 + dx, y + dy, color); }));
+  });
+}
+function icon(x, y, name) {
+  FONT.icons[name].forEach((row, dy) =>
+    [...row].forEach((c, dx) => { if (c !== ".") px(x + dx, y + dy, FONT.colors[c]); }));
+}
+function left(sec) {  // usage.left 와 같은 꼴: 2D6H · 3H20M · 12M
+  let m = Math.max(0, Math.floor(sec / 60));
+  const d = Math.floor(m / 1440); m -= d * 1440;
+  const h = Math.floor(m / 60); m -= h * 60;
+  return d ? `${d}D${h}H` : h ? `${h}H${m}M` : `${m}M`;
+}
+function levelColor(v) { return v > 0.5 ? pal.good : v > 0.2 ? pal.mid : pal.low; }
+
+function barRow(y, ic, label, bar, blink) {
+  icon(2, y, ic);
+  text(11, y + 1, label, pal.text);
+  const x0 = 20;
+  if (!bar) {
+    for (let i = 0; i < SEG; i++) px(x0 + i * 3, y + 1, pal.slot, 2, 5);
+    text(x0 + SEG * 3 + 2, y + 1, "?", pal.dim);
+    return;
+  }
+  let color = levelColor(bar.left);
+  if (bar.left < 0.1 && blink) color = pal.slot;
+  const filled = Math.round(bar.left * SEG);
+  for (let i = 0; i < SEG; i++) px(x0 + i * 3, y + 1, i < filled ? color : pal.slot, 2, 5);
+  text(x0 + SEG * 3 + 2, y + 1, Math.round(bar.left * 100) + "%", color);
+  const until = left(bar.reset - Date.now() / 1000);
+  text(W - 2 - textWidth(until), y + 1, until, pal.dim);
+}
+
+function draw() {
+  px(0, 0, pal.bg, W, H);
+  px(0, 0, pal.edge, W, 1); px(0, H - 1, pal.edge, W, 1);
+  px(0, 0, pal.edge, 1, H); px(W - 1, 0, pal.edge, 1, H);
+  const blink = Math.floor(Date.now() / 1000) % 2 === 0;
+  const title = "PLAYER STATUS";
+  text((W - textWidth(title)) >> 1, 4, title, pal.text);
+  const bars = data ? data.bars : { "7d": null, "5h": null };
+  barRow(14, "heart", "HP", bars["7d"], blink);
+  barRow(24, "bolt", "ST", bars["5h"], blink);
+  icon(2, 34, "coin");
+  text(11, 35, data ? data.today.toFixed(2) : "?", pal.y);
+  text(W - 2 - textWidth("TODAY"), 35, "TODAY", pal.dim);
+  if (data && data.expired && blink) {
+    const msg = "LOGIN EXPIRED";
+    text((W - textWidth(msg)) >> 1, 45, msg, pal.low);
+  }
+
+  // 7일 막대: 칸마다 폭 14, 날짜(일)는 아래, 가장 큰 값은 위에
+  const label = "LAST 7 DAYS";
+  text((W - textWidth(label)) >> 1, 54, label, pal.text);
+  const days = data ? data.days : [];
+  const max = Math.max(1, ...days.map(d => d[1]));
+  const base = 100, top = 68, colW = 14, x0 = (W - colW * 7) >> 1;
+  px(x0 - 2, base + 1, pal.edge, colW * 7 + 2, 1);
+  days.forEach(([day, v], i) => {
+    const x = x0 + i * colW;
+    const h = v > 0 ? Math.max(1, Math.round((base - top) * v / max)) : 0;
+    const today = i === days.length - 1;
+    // 한 줄 걸러 칠해 주사선처럼 보이게
+    for (let yy = 0; yy < h; yy += 2) px(x + 2, base - yy - 1, today ? pal.y : pal.dim, 9, 1);
+    const dd = String(Number(day.slice(8)));
+    text(x + 2 + ((9 - textWidth(dd)) >> 1), base + 4, dd, today ? pal.y : pal.text);
+    if (v === max && v > 0) {
+      const s = String(Math.round(v));
+      text(x + 2 + ((9 - textWidth(s)) >> 1), base - h - 7, s, pal.text);
+    }
+  });
+}
+
+async function load() {
+  try {
+    const r = await fetch("/data.json", { cache: "no-store" });
+    data = await r.json();
+    const note = data.unknown.length ? ` · 단가를 모르는 모델: ${data.unknown.join(", ")}` : "";
+    document.getElementById("status").textContent =
+      `${new Date().toLocaleTimeString("ko-KR")} 에 받음 · 30초마다 다시 받음${note}`;
+  } catch (e) {
+    document.getElementById("status").textContent = "page.py 가 꺼져 있음 — python page.py 로 다시 띄울 것";
+  }
+  draw();
+}
+
+let saved = null;
+try { saved = localStorage.getItem("theme"); } catch (e) {}
+setTheme(saved === "dark");
+load();
+setInterval(load, 30000);
+setInterval(draw, 1000);
+</script>
+</body>
+</html>
