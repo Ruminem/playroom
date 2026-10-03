@@ -17,6 +17,7 @@
 """
 import json
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -226,11 +227,16 @@ def left(sec):
     return "%dM" % m
 
 
+_lock = threading.Lock()
+
+
 def snapshot(days=7):
-    """HUD 와 페이지가 같이 쓰는 한 덩어리."""
-    lim = limits()
+    """HUD 와 페이지가 같이 쓰는 한 덩어리. 캐시가 프로세스 전역이라 스레드끼리 겹치지 않게 잠근다
+    (HUD 가 페이지 서버를 제 프로세스 안에 띄우면 두 쪽이 같은 캐시를 만진다)."""
+    with _lock:
+        lim = limits()
+        by_day, unknown = spend(days)
     now = time.time()
-    by_day, unknown = spend(days)
     bars = {}
     for name, _, _ in WINDOWS:
         w = lim[name]

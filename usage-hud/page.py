@@ -9,7 +9,6 @@
 """
 import argparse
 import json
-import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -19,7 +18,6 @@ from font import COLORS, GLYPHS, ICONS
 
 PAGE = Path(__file__).resolve().parent / "page.html"
 FONT = json.dumps({"glyphs": GLYPHS, "icons": ICONS, "colors": COLORS})
-lock = threading.Lock()  # usage 의 캐시는 프로세스 전역이라 요청 스레드끼리 겹치지 않게
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -29,8 +27,7 @@ class Handler(BaseHTTPRequestHandler):
             body = PAGE.read_text(encoding="utf-8").replace("/*FONT*/null", FONT)
             self.send(body, "text/html; charset=utf-8")
         elif self.path == "/data.json":
-            with lock:
-                body = json.dumps(usage.snapshot(days=7))
+            body = json.dumps(usage.snapshot(days=7))
             self.send(body, "application/json")
         else:
             self.send_error(404)
