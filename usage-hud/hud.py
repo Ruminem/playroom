@@ -24,6 +24,7 @@ import threading
 import time
 import tkinter as tk
 import webbrowser
+import winreg
 from pathlib import Path
 
 import usage
@@ -41,7 +42,13 @@ W, H = 90, 29      # 패널 크기 (픽셀 단위)
 PAGE_PORT = 8765
 
 # 메뉴 id
-SHOW, PAGE, HELP, EXIT = 1, 30, 40, 99
+SHOW, PAGE, HELP, AUTOSTART, EXIT = 1, 30, 40, 50, 99
+
+# 윈도우 시작 시 실행: 현재 사용자의 Run 키. 설정 앱 '시작 앱' 에서 끄면 Run 값은 남고
+# StartupApproved 에 첫 바이트가 홀수인 값이 생긴다 (이 PC 실측 2026-10-04: 켬 2 · 끔 3)
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+APPROVED_KEY = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
+RUN_NAME = "PlayroomUsageHud"
 CORNERS = {10: ("bl", "왼쪽 아래"), 11: ("br", "오른쪽 아래"), 12: ("tl", "왼쪽 위"), 13: ("tr", "오른쪽 위")}
 SCALES = {20 + s: s for s in (2, 3, 4, 5)}
 
@@ -88,6 +95,49 @@ def stop():
     os.kill(pid, 9)  # 3초 안에 안 끝나면 강제로
     PID_FILE.unlink(missing_ok=True)
     return True
+
+
+def autostart_command():
+    """시작할 때 부를 명령. 콘솔 창이 안 뜨게 pythonw, 위치·크기는 저장된 설정을 따름."""
+    exe = Path(sys.executable)
+    w = exe.with_name("pythonw.exe")
+    return '"%s" "%s"' % (w if w.exists() else exe, Path(__file__).resolve())
+
+
+def autostart_on():
+    """Run 값이 지금 이 파일을 가리키고, 설정 앱에서 꺼 두지도 않았으면 True.
+    저장소 폴더를 옮겨 경로가 달라졌으면 False — 다시 켜면 새 경로로 고쳐 씀."""
+    hkcu = winreg.HKEY_CURRENT_USER
+    try:
+        with winreg.OpenKey(hkcu, RUN_KEY) as k:
+            if winreg.QueryValueEx(k, RUN_NAME)[0] != autostart_command():
+                return False
+    except OSError:
+        return False
+    try:
+        with winreg.OpenKey(hkcu, APPROVED_KEY) as k:
+            data = winreg.QueryValueEx(k, RUN_NAME)[0]
+    except OSError:
+        return True  # 설정 앱에서 손댄 적 없음
+    return not (data and data[0] & 1)
+
+
+def set_autostart(on):
+    hkcu = winreg.HKEY_CURRENT_USER
+    with winreg.CreateKey(hkcu, RUN_KEY) as k:
+        if on:
+            winreg.SetValueEx(k, RUN_NAME, 0, winreg.REG_SZ, autostart_command())
+        else:
+            try:
+                winreg.DeleteValue(k, RUN_NAME)
+            except FileNotFoundError:
+                pass
+    # 설정 앱에서 꺼 둔 표식이 남아 있으면 켜도 안 뜨므로 같이 지운다. 끌 때도 지워 흔적을 안 남김
+    try:
+        with winreg.OpenKey(hkcu, APPROVED_KEY, 0, winreg.KEY_SET_VALUE) as k:
+            winreg.DeleteValue(k, RUN_NAME)
+    except OSError:
+        pass
 
 
 def load_settings():
@@ -149,6 +199,7 @@ class Hud:
         return [("HUD 보이기", SHOW, self.visible),
                 ("위치", [(name, cid, c == self.corner) for cid, (c, name) in CORNERS.items()]),
                 ("크기", [("%d배" % s, cid, s == self.s) for cid, s in SCALES.items()]),
+                ("Windows 시작 시 실행", AUTOSTART, autostart_on()),
                 None,
                 ("페이지 열기 (7일치)", PAGE, False),
                 ("도움말", HELP, False),
@@ -179,6 +230,11 @@ class Hud:
             self.s = SCALES.get(cid, self.s)
             self.place()
             self.save()
+        elif cid == AUTOSTART:
+            try:
+                set_autostart(not autostart_on())
+            except OSError:
+                pass  # 레지스트리를 못 쓰면 체크가 그대로 남아 실패가 보임
         elif cid == PAGE:
             self.open_page()
         elif cid == HELP:

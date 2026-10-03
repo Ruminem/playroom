@@ -14,7 +14,9 @@ Each bar shows the time left until it resets, and blinks below 10%.
 
 Double-click [hud.bat](hud.bat) to show or hide it. It sits in the bottom-left corner above the taskbar, on top of every window (not yet checked against a picture-in-picture video, which is topmost too), but clicks pass straight through it and it never takes focus.
 
-Because the HUD itself cannot be clicked, a heart icon sits in the notification area. Its menu shows or hides the HUD, moves it to another corner, changes its size (2–5×), opens the page, shows a short help and exits. The corner and size you pick are remembered in `%LOCALAPPDATA%\playroom\usage-hud.json`. Hovering the icon shows the numbers as text. `hud.bat` again or `python hud.py --stop` also closes it.
+Because the HUD itself cannot be clicked, a heart icon sits in the notification area. Its menu shows or hides the HUD, moves it to another corner, changes its size (2–5×), starts it with Windows, opens the page, shows a short help and exits. The corner and size you pick are remembered in `%LOCALAPPDATA%\playroom\usage-hud.json`. Hovering the icon shows the numbers as text.
+
+**Start with Windows** adds `pythonw hud.py` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, the same per-user place as other startup apps, so it also shows up in Settings → Apps → Startup. The tick reflects that switch too, and clears if the folder was moved (tick it again to point at the new path). `hud.bat` again or `python hud.py --stop` also closes it.
 
 ```bash
 python hud.py --toggle --corner tr --scale 4
@@ -61,7 +63,9 @@ Claude Code 구독 한도를 레트로 게임 HUD 로 그림. 윈도우 전용�
 
 [hud.bat](hud.bat) 을 더블클릭하면 켜지고 다시 누르면 꺼짐. 작업 표시줄 위 왼쪽 아래 구석에 모든 창보다 위에 뜨지만(같이 맨 위에 뜨는 PIP 영상과는 아직 안 견줘 봄), 클릭은 그대로 아래로 통과하고 포커스도 안 뺏음.
 
-HUD 자체는 클릭이 안 되므로 알림 영역에 하트 아이콘이 뜸. 그 메뉴에서 HUD 보이기·숨기기, 다른 구석으로 옮기기, 크기(2–5배) 바꾸기, 페이지 열기, 짧은 도움말, 끝내기를 함. 고른 위치와 크기는 `%LOCALAPPDATA%\playroom\usage-hud.json` 에 남음. 아이콘에 마우스를 올리면 숫자가 글로 보임. `hud.bat` 을 다시 누르거나 `python hud.py --stop` 으로도 끔.
+HUD 자체는 클릭이 안 되므로 알림 영역에 하트 아이콘이 뜸. 그 메뉴에서 HUD 보이기·숨기기, 다른 구석으로 옮기기, 크기(2–5배) 바꾸기, 윈도우 시작 시 실행, 페이지 열기, 짧은 도움말, 끝내기를 함. 고른 위치와 크기는 `%LOCALAPPDATA%\playroom\usage-hud.json` 에 남음. 아이콘에 마우스를 올리면 숫자가 글로 보임.
+
+**Windows 시작 시 실행** 은 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 에 `pythonw hud.py` 를 넣음. 다른 시작 프로그램과 같은 사용자별 자리라 설정 → 앱 → 시작 프로그램에도 뜸. 체크 표시는 그쪽 스위치도 따르고, 폴더를 옮겨 경로가 달라지면 풀림(다시 체크하면 새 경로로 고쳐 씀). `hud.bat` 을 다시 누르거나 `python hud.py --stop` 으로도 끔.
 
 ```bash
 python hud.py --toggle --corner tr --scale 4
