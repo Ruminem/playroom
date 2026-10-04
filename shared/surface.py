@@ -46,6 +46,15 @@ user32.CreateWindowExW.restype = wintypes.HWND
 user32.ShowWindow.argtypes = (wintypes.HWND, ctypes.c_int)
 user32.SetWindowPos.argtypes = (wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int,
                                 ctypes.c_int, wintypes.UINT)
+class ULWINFO(ctypes.Structure):  # UPDATELAYEREDWINDOWINFO — 바뀐 사각형만 넘길 때
+    _fields_ = [("cbSize", wintypes.DWORD), ("hdcDst", wintypes.HDC), ("pptDst", ctypes.POINTER(wintypes.POINT)),
+                ("psize", ctypes.POINTER(wintypes.SIZE)), ("hdcSrc", wintypes.HDC),
+                ("pptSrc", ctypes.POINTER(wintypes.POINT)), ("crKey", wintypes.DWORD),
+                ("pblend", ctypes.POINTER(BLENDFUNCTION)), ("dwFlags", wintypes.DWORD),
+                ("prcDirty", ctypes.POINTER(wintypes.RECT))]
+
+
+user32.UpdateLayeredWindowIndirect.argtypes = (wintypes.HWND, ctypes.POINTER(ULWINFO))
 user32.UpdateLayeredWindow.argtypes = (wintypes.HWND, wintypes.HDC, ctypes.POINTER(wintypes.POINT),
                                        ctypes.POINTER(wintypes.SIZE), wintypes.HDC,
                                        ctypes.POINTER(wintypes.POINT), wintypes.DWORD,
@@ -83,12 +92,21 @@ class Surface:
         self._src, self._blend = wintypes.POINT(0, 0), BLENDFUNCTION(0, 0, 255, 1)  # AC_SRC_OVER, AC_SRC_ALPHA
         self._msg = wintypes.MSG()
 
-    def clear(self):
-        ctypes.memset(self._bits, 0, self.nbytes)
+    def clear(self, top=0):
+        """top 행부터 아래를 지움."""
+        ctypes.memset(self._bits + top * self.w * 4, 0, self.nbytes - top * self.w * 4)
 
-    def present(self):
-        user32.UpdateLayeredWindow(self.hwnd, None, ctypes.byref(self._pos), ctypes.byref(self._size), self.hdc,
-                                   ctypes.byref(self._src), 0, ctypes.byref(self._blend), 2)  # ULW_ALPHA
+    def present(self, top=0):
+        """top 을 주면 그 행부터 아래만 바뀌었다고 알림 — 위쪽은 화면에 남은 그대로 두고, 넘기는 양이 그만큼 줆
+        (2560×1392 통째 한 번 1.2ms CPU, 작은 사각형은 거의 0)."""
+        if not top:
+            user32.UpdateLayeredWindow(self.hwnd, None, ctypes.byref(self._pos), ctypes.byref(self._size), self.hdc,
+                                       ctypes.byref(self._src), 0, ctypes.byref(self._blend), 2)  # ULW_ALPHA
+            return
+        dirty = wintypes.RECT(0, top, self.w, self.h)
+        info = ULWINFO(ctypes.sizeof(ULWINFO), None, ctypes.pointer(self._pos), ctypes.pointer(self._size), self.hdc,
+                       ctypes.pointer(self._src), 0, ctypes.pointer(self._blend), 2, ctypes.pointer(dirty))
+        user32.UpdateLayeredWindowIndirect(self.hwnd, ctypes.byref(info))
 
     def move(self, left, top):
         """다음 present() 부터 이 자리에 그림."""

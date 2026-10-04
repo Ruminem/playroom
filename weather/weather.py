@@ -63,6 +63,8 @@ RAIN_MULT = 2      # 비는 빨리 지나가 같은 개수면 듬성듬성해 �
 
 PILE_CAP = 16      # 쌓인 눈의 최대 높이 px. 군데군데 솟는 둔덕이 화면을 덜 가리게
 PILE_STRIP = PILE_CAP + 2
+# 날씨 없이 고양이만일 때 다시 그리는 맨 아래 띠 높이 px: 고양이 키 + 깜짝 뛰기 최고 높이(v²/2g). Zz 는 이보다 낮게 뜸
+CAT_BAND = pet.H + int(pet.HOP_V ** 2 / (2 * pet.GRAVITY)) + 8
 PILE_PER_FLAKE = 10.0  # 눈송이 하나가 보태는 부피 = 이 값 × 반지름. 실제보다 부풀려 몇 분 안에 쌓이게.
                        # 멈추는 높이가 이 값에 비례함 (21 이면 보통 11px·많이 21px, 10 이면 그 절반쯤)
                        # 반지름²에 비례시키면 큰 눈송이 하나에 둔덕이 툭 솟음
@@ -182,12 +184,18 @@ def streak(length, alpha, width):
     return sw, rows
 
 
+def place(sprite, stride):
+    """(크기, [(건너뜀, 데이터) 행…]) → (크기, [(시작, 끝, 데이터)…]). 화면 폭이 정해진 뒤 한 번 셈해 두면 stamp 가
+    행마다 자리를 다시 셈하지 않음(비 100% 한 프레임 2.4 → 1.7ms). 다 투명한 행은 뺌."""
+    n, rows = sprite
+    return n, [(j * stride + skip, j * stride + skip + len(d), d) for j, (skip, d) in enumerate(rows) if d]
+
+
 def stamp(px, stride, x, y, rows):
+    """place 로 셈해 둔 행들을 (x, y) 에 찍음."""
     off = y * stride + x * 4
-    for skip, data in rows:
-        if data:
-            px[off + skip:off + skip + len(data)] = data
-        off += stride
+    for a, e, data in rows:
+        px[off + a:off + e] = data
 
 
 def leaf_shape(length, ratio, angle, flip, notch):
@@ -426,12 +434,14 @@ class Weather:
         self.w, self.h = r - l, b - t
         self.surface = Surface(l, t, self.w, self.h, SURFACE_CLASS)
         self.stride = self.w * 4
-        self.snow_sprites = [[[disc(rad, layer[4], layer[3], SNOW_COLOR, SNOW_RIM, fx / 4, fy / 4)
+        s = self.stride
+        self.snow_sprites = [[[place(disc(rad, layer[4], layer[3], SNOW_COLOR, SNOW_RIM, fx / 4, fy / 4), s)
                                for fy in range(4) for fx in range(4)] for rad in layer[1]]
                              for layer in SNOW_LAYERS]
-        self.rain_sprites = [{n: streak(n, layer[3], layer[4]) for n in range(layer[1][0], layer[1][1] + 1)}
+        self.rain_sprites = [{n: place(streak(n, layer[3], layer[4]), s) for n in range(layer[1][0], layer[1][1] + 1)}
                              for layer in RAIN_LAYERS]
-        self.droplet = disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR)
+        self.droplet = place(disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR), s)
+        self.full_clear, self.blank = True, False  # 다음 프레임은 화면 전체를 지움 · 빈 화면이라 쉬는 중
         self.snow_pile = pile_column_parts()
         self.pile_zero = bytes(PILE_STRIP * 4)
         self.sprite_cache = {}  # 꽃잎·낙엽·반딧불 그림은 그 종류를 처음 고를 때 그림
@@ -585,7 +595,8 @@ class Weather:
                 for length in layer[1]:
                     shapes = [leaf_shape(length, spec["ratio"], math.tau * ai / LEAF_ANGLES, flip, spec["notch"])
                               for ai in range(LEAF_ANGLES) for flip in LEAF_FLIPS]
-                    sizes.append([[paint(s, color, layer[3]) for s in shapes] for color in spec["palette"]])
+                    sizes.append([[place(paint(s, color, layer[3]), self.stride) for s in shapes]
+                                  for color in spec["palette"]])
                 out.append(sizes)
             self.sprite_cache[kind] = out
         return self.sprite_cache[kind]
@@ -629,7 +640,8 @@ class Weather:
         """[크기][밝기 단계 1..8][1/4 픽셀 위치 16벌]."""
         if "fireflies" not in self.sprite_cache:
             self.sprite_cache["fireflies"] = [
-                [[glow(core, halo, lv / FLY_LEVELS, fx / 4, fy / 4) for fy in range(4) for fx in range(4)]
+                [[place(glow(core, halo, lv / FLY_LEVELS, fx / 4, fy / 4), self.stride)
+                  for fy in range(4) for fx in range(4)]
                  for lv in range(1, FLY_LEVELS + 1)] for core, halo in FLY_SIZES]
         return self.sprite_cache["fireflies"]
 
@@ -662,7 +674,7 @@ class Weather:
     def lightning(self, now):
         if self.bolt is None and now >= self.next_bolt:
             bx, by, levels = bolt_sprite(bolt_segments(self.w, self.h, random))
-            self.bolt = (now, bx, by, levels)
+            self.bolt = (now, bx, by, [place((0, lv), self.stride)[1] for lv in levels])
             lo, hi = BOLT_EVERY
             k = 50 / max(1, self.amount)  # 50% 일 때 BOLT_EVERY 그대로, 양이 많을수록 잦음
             self.next_bolt = now + random.uniform(lo * k, hi * k)
@@ -719,6 +731,7 @@ class Weather:
     # ── 돌리기 ──
     def reset(self):
         n, kind = count(self.amount), self.kind
+        self.full_clear = True
         self.flakes, self.drops, self.splashes, self.leaves, self.flies = [], [], [], [], []
         self.bolt, self.next_bolt = None, time.perf_counter() + random.uniform(2, 5)
         self.pile = Pile(self.w)
@@ -757,8 +770,12 @@ class Weather:
         cat.draw(self.surface.pixels, self.stride, self.h, self.cat_sprites, max(self.pile.h[a:b]), now, rainy)
 
     def frame(self, dt, now):
-        self.surface.clear()
         kind = self.kind
+        # 날씨 없이 고양이만이면 고양이가 닿는 맨 아래 띠만 지우고 그만큼만 내보냄(180fps 에서 한 코어 43% → 아래 참고).
+        # 종류를 바꾼 첫 프레임은 위에 남은 것까지 통째로. 맥 Surface 는 버퍼 둘을 번갈아 써서 늘 통째로
+        top = 0 if MAC or self.full_clear or kind != "none" else self.h - CAT_BAND
+        self.full_clear = False
+        self.surface.clear(top) if top else self.surface.clear()
         piled = kind == "snow" or kind in LEAF_KINDS
         if piled:
             if now - self.last_settle >= SETTLE_SEC:
@@ -776,7 +793,7 @@ class Weather:
             self.rain(dt)
             if kind == "storm":
                 self.lightning(now)
-        self.surface.present()
+        self.surface.present(top) if top else self.surface.present()
         if now - self.last_topmost > 2:
             self.surface.topmost()
             self.last_topmost = now
@@ -788,6 +805,13 @@ class Weather:
         self.last = now
         if not self.visible:
             return False
+        if self.kind == "none" and not self.cat:  # 그릴 게 없으면 한 번 지우고 숨겼을 때처럼 쉼(180fps 에서 29% 를 쓰던 자리)
+            if not self.blank:
+                self.surface.clear()
+                self.surface.present()
+                self.blank = True
+            return False
+        self.blank = False
         self.frame(dt, now)
         return True
 
@@ -837,6 +861,17 @@ def check():
     edges, body = pile_column_parts()
     for v in (0.0, 0.5, 7.3, PILE_CAP):
         assert len(pile_column(v, edges, body, bytes(PILE_STRIP * 4))) == PILE_STRIP * 4, "열 길이가 띠 높이"
+    stride = 40 * 4
+    for sp in (disc(2.4, 1.8, 235, SNOW_COLOR, SNOW_RIM, 0.25, 0.5), streak(30, 190, 1.6)):
+        want, got = bytearray(stride * 40), bytearray(stride * 40)
+        off = 3 * stride + 5 * 4
+        for skip, d in sp[1]:  # 미리 셈하기 전의 찍기
+            want[off + skip:off + skip + len(d)] = d
+            off += stride
+        stamp(memoryview(got), stride, 5, 3, place(sp, stride)[1])
+        assert want == got and any(got), "미리 셈해 찍어도 같은 바이트"
+    hop = pet.HOP_V ** 2 / (2 * pet.GRAVITY)
+    assert CAT_BAND >= pet.H + hop and CAT_BAND >= pet.H + 40 - 4 * pet.SCALE, "고양이가 뛰거나 Zz 가 떠도 띠 안"
     rng = random.Random(3)
     segs = bolt_segments(400, 300, rng)
     assert all(0 <= v[0] < 400 and 0 <= v[2] < 400 and 0 <= v[1] < 300 and 0 <= v[3] < 300 for v in segs), \

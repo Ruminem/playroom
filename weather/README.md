@@ -35,7 +35,7 @@ python3 weather.py --toggle
 
 ## Cost
 
-60 frames a second by default; **Smoothness** picks 30, 60, 120 or 180 for faster monitors, and the cost grows almost in step with it — at 100% amount snow takes 9 · 16 · 46% of one core at 30 · 60 · 180 fps and rain 13 · 27 · 77%, because every frame clears and pushes the whole screen. The figures below were measured at 30 fps on one PC (2560×1392 work area), share of one CPU core: snow 7–8% (heavy 10%), rain 8–14% depending on the amount, storm 13% (heavy 19%), petals 9% (heavy 10%), leaves 7–8%, fireflies 7%. An empty screen (no weather, no cat) already costs 6.2%, so most of each figure is clearing and pushing the full-screen buffer. The cat on its own is 6.3% — nearly all of that is the same full-screen cost; with heavy snow it adds about 1 point. Hide it from the menu and it stops drawing. The compositor's own share was not measured separately.
+60 frames a second by default; **Smoothness** picks 30, 60, 120 or 180 for faster monitors, and the cost grows almost in step with it — at 100% amount snow takes 9 · 16 · 46% of one core at 30 · 60 · 180 fps and rain 13 · 27 · 77%, because every frame clears and pushes the whole screen. With **No weather** and the cat on, only the strip the cat can reach is cleared and pushed (6% instead of 43% at 180 fps), and with the cat off as well it stops drawing (0% instead of 27%). The figures below were measured at 30 fps on one PC (2560×1392 work area), share of one CPU core: snow 7–8% (heavy 10%), rain 8–14% depending on the amount, storm 13% (heavy 19%), petals 9% (heavy 10%), leaves 7–8%, fireflies 7%. An empty screen (no weather, no cat) already costs 6.2%, so most of each figure is clearing and pushing the full-screen buffer. The cat on its own is 6.3% — nearly all of that is the same full-screen cost; with heavy snow it adds about 1 point. Hide it from the menu and it stops drawing. The compositor's own share was not measured separately.
 
 With normal snow the bank settles at about 5px after ten minutes, light at about 2px and heavy at about 10px (16px at most), so it barely covers the bottom of the screen.
 
@@ -92,7 +92,7 @@ python3 weather.py --toggle
 
 ### 비용
 
-기본은 1초에 60번 그림. **부드러움** 에서 주사율 높은 모니터용으로 30·60·120·180 을 고르고, 비용은 거의 그 비율로 늘어남 — 양 100% 에서 눈은 30·60·180fps 에 한 코어의 9·16·46%, 비는 13·27·77% 임. 프레임마다 화면 전체를 비우고 내보내기 때문임. 아래는 30fps 일 때 PC 한 대(작업 영역 2560×1392)에서 잰 CPU 한 코어 대비 몫으로, 눈 7–8%(많이 10%), 비는 양에 따라 8–14%, 뇌우 13%(많이 19%), 벚꽃 9%(많이 10%), 낙엽 7–8%, 반딧불이 7%. 아무것도 안 그리는 빈 화면(날씨 없음, 고양이 끔)이 이미 6.2% 라, 몫의 대부분은 화면 전체 버퍼를 비우고 내보내는 데 듦. 고양이만 띄우면 6.3% 로 거의 다 같은 화면 전체 몫이고, 눈 많이에 얹으면 1포인트쯤 더함. 메뉴에서 숨기면 그리기를 멈춤. 화면 합성기(DWM) 쪽 몫은 따로 못 잼.
+기본은 1초에 60번 그림. **부드러움** 에서 주사율 높은 모니터용으로 30·60·120·180 을 고르고, 비용은 거의 그 비율로 늘어남 — 양 100% 에서 눈은 30·60·180fps 에 한 코어의 9·16·46%, 비는 13·27·77% 임. 프레임마다 화면 전체를 비우고 내보내기 때문임. **날씨 없음** 에 고양이만 켜면 고양이가 닿는 맨 아래 띠만 비우고 내보내고(180fps 에서 43% → 6%), 고양이도 끄면 그리기를 멈춤(27% → 0%). 아래는 30fps 일 때 PC 한 대(작업 영역 2560×1392)에서 잰 CPU 한 코어 대비 몫으로, 눈 7–8%(많이 10%), 비는 양에 따라 8–14%, 뇌우 13%(많이 19%), 벚꽃 9%(많이 10%), 낙엽 7–8%, 반딧불이 7%. 아무것도 안 그리는 빈 화면(날씨 없음, 고양이 끔)이 이미 6.2% 라, 몫의 대부분은 화면 전체 버퍼를 비우고 내보내는 데 듦. 고양이만 띄우면 6.3% 로 거의 다 같은 화면 전체 몫이고, 눈 많이에 얹으면 1포인트쯤 더함. 메뉴에서 숨기면 그리기를 멈춤. 화면 합성기(DWM) 쪽 몫은 따로 못 잼.
 
 눈 보통이면 눈더미가 10분쯤 지나 5px 안팎에서 멈추고, 적게는 2px, 많이는 10px 안팎(최대 16px)이라 화면 아래를 거의 안 가림.
 
