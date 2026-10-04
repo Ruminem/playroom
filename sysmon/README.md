@@ -15,7 +15,7 @@ Double-click [sysmon.bat](sysmon.bat) to start or stop it. A small bar-chart ico
 
 ## macOS
 
-The same script runs on a Mac with the system Python 3.9, nothing to install. There is no taskbar, so the reading goes into its own menu bar item instead: one line of text, `CPU 17%  MEM 62%`, in the menu bar's own text colour (orange above 70%, red above 90%), or the pixel box at 19 pt tall. Click it for the same menu as on Windows; **Start at login** writes a LaunchAgent to `~/Library/LaunchAgents`, and settings live in `~/Library/Application Support/playroom/sysmon.json`.
+The same script runs on a Mac with the system Python 3.9, nothing to install. There is no taskbar, so the reading goes into its own menu bar item instead: one line of text, `CPU 17%  MEM 62%`, in the menu bar's own text colour (orange above 70%, red above 90%), or the pixel box with CPU and memory side by side in one row, 16.5 pt tall (stacked as on Windows, the pixel font would be only 5 pt). Click it for the same menu as on Windows; **Start at login** writes a LaunchAgent to `~/Library/LaunchAgents`, and settings live in `~/Library/Application Support/playroom/sysmon.json`.
 
 Double-click [sysmon.command](sysmon.command) in Finder to start or stop it; the Terminal window it opens closes itself. From a terminal:
 
@@ -62,7 +62,7 @@ It wakes ten times a second to handle messages and measures once a second. Measu
 
 ### 맥
 
-같은 스크립트가 맥 기본 파이썬 3.9 로 돌고, 깔 것은 없음. 작업 표시줄이 없으므로 메뉴 막대에 제 칸을 하나 두고 거기에 띄움. 글자 테마는 `CPU 17%  MEM 62%` 한 줄이고 메뉴 막대 글자색을 따름(70% 를 넘으면 주황, 90% 를 넘으면 빨강). 픽셀 테마는 19pt 높이의 상자임. 누르면 윈도우와 같은 메뉴가 뜨고, **로그인 시 실행** 은 `~/Library/LaunchAgents` 에 LaunchAgent 를 씀. 설정은 `~/Library/Application Support/playroom/sysmon.json` 에 남음.
+같은 스크립트가 맥 기본 파이썬 3.9 로 돌고, 깔 것은 없음. 작업 표시줄이 없으므로 메뉴 막대에 제 칸을 하나 두고 거기에 띄움. 글자 테마는 `CPU 17%  MEM 62%` 한 줄이고 메뉴 막대 글자색을 따름(70% 를 넘으면 주황, 90% 를 넘으면 빨강). 픽셀 테마는 CPU 와 메모리를 한 줄로 나란히 둔 16.5pt 높이의 상자임(윈도우처럼 위아래로 쌓으면 픽셀 글자가 5pt 밖에 안 됨). 누르면 윈도우와 같은 메뉴가 뜨고, **로그인 시 실행** 은 `~/Library/LaunchAgents` 에 LaunchAgent 를 씀. 설정은 `~/Library/Application Support/playroom/sysmon.json` 에 남음.
 
 Finder 에서 [sysmon.command](sysmon.command) 를 더블클릭하면 켜지고 다시 누르면 꺼짐. 그때 열리는 터미널 창은 저절로 닫힘. 터미널에서는 이렇게 함.
 

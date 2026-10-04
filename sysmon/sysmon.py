@@ -60,6 +60,7 @@ THEMES = {70: ("text", "기본 (글자)")}
 THEMES.update({71 + i: (key, "픽셀 · " + name) for i, (key, (name, _)) in enumerate(PALETTES.items())})
 THEME_KEYS = {key for key, _ in THEMES.values()}
 SEGMENTS = 8       # 픽셀 테마 막대 칸 수
+ROW_GAP = 5        # 맥에서 두 줄을 나란히 둘 때 사이 칸
 PIX = {}           # 픽셀 테마가 버퍼에 찍을 RGB. use_theme 이 채움
 PCT_W = text_width("100%")
 
@@ -201,19 +202,42 @@ def pixel_rows(cpu, mode, mem, used, total):
     return [("cpu", "CPU", cpu, [pct(cpu)]), ("mem", "MEM", mem, tail[mode])]
 
 
-def pixel_size(rows):
-    """상자 (너비, 높이). 테두리 1 + 여백 1, 줄 간격 8 (아이콘 7 + 1)."""
-    tail = lambda texts: sum(PCT_W if is_pct else text_width(t) for t, _, is_pct in texts) + 3 * (len(texts) - 1)
-    return 2 + 7 + 2 + text_width("CPU") + 2 + SEGMENTS * 3 + 1 + max(tail(r[3]) for r in rows) + 2, 19
+def row_width(row):
+    """한 줄의 너비: 아이콘 7 + 2, 이름 + 2, 막대 + 1, 뒤 글들은 3 씩 띄움."""
+    tail = sum(PCT_W if is_pct else text_width(t) for t, _, is_pct in row[3]) + 3 * (len(row[3]) - 1)
+    return 7 + 2 + text_width(row[1]) + 2 + SEGMENTS * 3 + 1 + tail
+
+
+def row_origins(rows, across):
+    """줄마다 상자 안 왼쪽 위 칸. 기본은 위아래로 8 간격, across 면 한 줄로 ROW_GAP 띄워 나란히."""
+    if not across:
+        return [(2, 2 + i * 8) for i in range(len(rows))]
+    xs = [2]
+    for r in rows[:-1]:
+        xs.append(xs[-1] + row_width(r) + ROW_GAP)
+    return [(x, 2) for x in xs]
+
+
+def pixel_size(rows, across=False):
+    """상자 (너비, 높이). 테두리 1 + 여백 1. 위아래로 쌓으면 줄 간격 8 (아이콘 7 + 1), 나란히 두면 높이 11."""
+    if across:
+        return 2 + sum(row_width(r) for r in rows) + ROW_GAP * (len(rows) - 1) + 2, 11
+    return 2 + max(row_width(r) for r in rows) + 2, 19
 
 
 def pixel_scale(bar_h):
     return max(1, (bar_h - 4) // 19)
 
 
-def paint_pixel(surface, rows, s):
+def mac_pixel_scale(backing):
+    """맥 메뉴 막대(22pt)에서 칸 하나의 화면 픽셀 수. 위아래로 쌓은 19칸은 칸당 1pt 라 글자가 5pt 로 너무 작아,
+    나란히 둔 11칸을 칸당 1.5pt(레티나 3px)로 그림. 1배 화면은 1.5px 를 못 찍으니 2px(22pt, 막대에 꽉 참)"""
+    return max(1, int(backing * 1.5 + 0.5))
+
+
+def paint_pixel(surface, rows, s, across=False):
     """오른쪽 끝에 붙여 세로 가운데에 그리고, 보이는 너비 px 를 돌려줌."""
-    w, h = pixel_size(rows)
+    w, h = pixel_size(rows, across)
     x0, y0 = surface.w - w * s, (surface.h - h * s) // 2
     px, stride = surface.pixels, surface.w * 4
     surface.clear()
@@ -228,15 +252,14 @@ def paint_pixel(surface, rows, s):
     rect(0, 0, w, h, "bg", 235)
     for x, y, cw, ch in ((0, 0, w, 1), (0, h - 1, w, 1), (0, 0, 1, h), (w - 1, 0, 1, h)):
         rect(x, y, cw, ch, "edge")
-    for i, (icon, label, p, texts) in enumerate(rows):
-        y = 2 + i * 8
+    for (icon, label, p, texts), (ox, y) in zip(rows, row_origins(rows, across)):
         for dy, line in enumerate(ICONS[icon]):
             for dx, c in enumerate(line):
                 if c != ".":
-                    rect(2 + dx, y + dy, 1, 1, c)
+                    rect(ox + dx, y + dy, 1, 1, c)
         for dx, dy in text_pixels(label):
-            rect(11 + dx, y + 1 + dy, 1, 1, "text")
-        x = 11 + text_width(label) + 2
+            rect(ox + 9 + dx, y + 1 + dy, 1, 1, "text")
+        x = ox + 9 + text_width(label) + 2
         filled = round(p / 100 * SEGMENTS)
         for k in range(SEGMENTS):
             rect(x + k * 3, y + 1, 2, 5, pixel_level(p) if k < filled else "slot")
@@ -365,8 +388,9 @@ class MacMonitor(Monitor):
         self.tray = Tray(TRAY_CLASS, ICON_FILE, "CPU·메모리", self.menu, self.commands.put)
         self.button = cocoa.send(self.tray.item, "button")
         self.surface = types.SimpleNamespace(pump=cocoa.pump, close=lambda: None)  # run() 이 부르는 둘
-        self.scale = max(1, round(cocoa.send(cocoa.send(cocoa.cls("NSScreen"), "mainScreen"), "backingScaleFactor",
-                                             restype=ctypes.c_double)))
+        self.backing = max(1, round(cocoa.send(cocoa.send(cocoa.cls("NSScreen"), "mainScreen"), "backingScaleFactor",
+                                               restype=ctypes.c_double)))
+        self.scale = mac_pixel_scale(self.backing)
         size = cocoa.send(cocoa.send(cocoa.cls("NSFont"), "menuBarFontOfSize:", 0.0, argtypes=(ctypes.c_double,)),
                           "pointSize", restype=ctypes.c_double)
         # 숫자 너비가 같은 글꼴이라 17% 가 18% 로 바뀌어도 폭이 안 변함
@@ -420,9 +444,9 @@ class MacMonitor(Monitor):
 
     def show_pixel(self, rows):
         send, s = cocoa.send, self.scale
-        w, h = pixel_size(rows)
+        w, h = pixel_size(rows, across=True)
         buf = Buffer(w * s, h * s)
-        paint_pixel(buf, rows, s)
+        paint_pixel(buf, rows, s, across=True)
         px = buf.pixels
         px[0::4], px[2::4] = px[2::4], px[0::4]  # BGRA → RGBA (알파를 곱한 그대로)
         rep = send(send(cocoa.cls("NSBitmapImageRep"), "alloc"),
@@ -432,7 +456,7 @@ class MacMonitor(Monitor):
                    argtypes=(ctypes.c_void_p, ctypes.c_long, ctypes.c_long, ctypes.c_long, ctypes.c_long,
                              ctypes.c_bool, ctypes.c_bool, ctypes.c_void_p, ctypes.c_long, ctypes.c_long))
         ctypes.memmove(send(rep, "bitmapData"), bytes(px), len(px))
-        img = send(send(cocoa.cls("NSImage"), "alloc"), "initWithSize:", cocoa.Size(w, h), argtypes=(cocoa.Size,))
+        img = send(send(cocoa.cls("NSImage"), "alloc"), "initWithSize:", cocoa.Size(buf.w / self.backing, buf.h / self.backing), argtypes=(cocoa.Size,))
         send(img, "addRepresentation:", rep, restype=None, argtypes=(ctypes.c_void_p,))
         send(self.button, "setTitle:", cocoa.nsstring(""), restype=None, argtypes=(ctypes.c_void_p,))
         send(self.button, "setImage:", img, restype=None, argtypes=(ctypes.c_void_p,))
@@ -478,7 +502,11 @@ def check():
         assert [len(t) for t, _ in a] == [len(t) for t, _ in b], "5% 와 100% 의 글 길이가 같아 폭이 안 변함"
         assert a[0][0] == "CPU   5%" and b[1] == ("MEM 1.0/16.0G 100%", RED)
         bar = cocoa.send(cocoa.send(cocoa.cls("NSStatusBar"), "systemStatusBar"), "thickness", restype=ctypes.c_double)
-        assert pixel_size(pixel_rows(1, "pct", 1, 1.0, 16.0))[1] <= bar, ("픽셀 상자가 메뉴 막대 높이 안에", bar)
+        for backing in (1, 2, 3):  # 칸 하나가 메뉴 막대에서 차지하는 pt 로 상자 높이를 셈
+            pt = pixel_size(pixel_rows(1, "pct", 1, 1.0, 16.0), across=True)[1] * mac_pixel_scale(backing) / backing
+            assert 16 <= pt <= bar, ("픽셀 상자가 메뉴 막대 높이 안에, 너무 작지 않게", backing, pt, bar)
+        rows = pixel_rows(100, "pct", 100, 16.0, 16.0)
+        assert pixel_size(rows, True)[0] == pixel_size(rows)[0] + row_width(rows[1]) + ROW_GAP, "나란히 둔 폭"
     else:
         font = taskbar.font(48)
         assert taskbar.text_width(font, ["MEM 14.2/63.9G"]) > taskbar.text_width(font, ["MEM 22%"]) > 0, "긴 글이 더 넓음"
@@ -503,6 +531,22 @@ def check():
         lit = sum(1 for k in range(SEGMENTS) for o in [((48 - 38) // 2 + 3 * 2) * f.w * 4 + (f.w - vis + (24 + k * 3) * 2) * 4]
                   if tuple(f.pixels[o:o + 3]) == good)
         assert lit == 4, ("CPU 50% 면 8칸 중 4칸", theme, lit)
+
+    def at(f, rows, s, across, x, y):  # 상자 안 칸 (x, y) 의 BGR
+        w, h = pixel_size(rows, across)
+        o = ((f.h - h * s) // 2 + y * s) * f.w * 4 + (f.w - w * s + x * s) * 4
+        return tuple(f.pixels[o:o + 3])
+    rows = pixel_rows(50, "pct", 25, 4.0, total)
+    # 줄마다 시작 칸을 손으로 적어 둠: 위아래면 8 간격, 나란히면 첫 줄 폭 + ROW_GAP 옆
+    for across, origins in ((False, [(2, 2), (2, 10)]), (True, [(2, 2), (2 + row_width(rows[0]) + ROW_GAP, 2)])):
+        f = Buffer(400, 48)
+        paint_pixel(f, rows, 2, across)
+        for (ox, oy), (_, label, p, _) in zip(origins, rows):
+            bar = ox + 9 + text_width(label) + 2
+            lit = sum(at(f, rows, 2, across, bar + 3 * k, oy + 1) == PIX["good"][::-1] for k in range(SEGMENTS))
+            assert lit == round(p / 100 * SEGMENTS), ("줄마다 막대 자리", across, label, lit)
+            dx, dy = list(text_pixels(label))[0]
+            assert at(f, rows, 2, across, ox + 9 + dx, oy + 1 + dy) == PIX["text"][::-1], ("이름 자리", across, label)
     print("자체 점검 통과")
 
 
