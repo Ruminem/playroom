@@ -12,6 +12,7 @@
 """
 import argparse
 import ctypes
+import json
 import os
 import queue
 import subprocess
@@ -31,12 +32,16 @@ PID_FILE = Path(tempfile.gettempdir()) / "playroom-sysmon.pid"
 ICON_FILE = Path(tempfile.gettempdir()) / "playroom-sysmon.ico"
 TRAY_CLASS = "PlayroomSysmonTray"
 SURFACE_CLASS = "PlayroomSysmonSurface"
+SETTINGS = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "playroom" / "sysmon.json"
 
 GAP = 8            # 알림 영역과 띄울 px
 WARN, HOT = 70, 90  # 이 % 를 넘으면 주황, 빨강
 WHITE, ORANGE, RED = (255, 255, 255), (254, 174, 52), (228, 59, 68)
 AUTOSTART, EXIT = 50, 99
 RUN_NAME = "PlayroomSysmon"
+# 메모리 줄 모양: id → (키, 메뉴 글). 글자 색은 어느 모양이든 사용률로 정함
+MEM_MODES = {60: ("pct", "퍼센트 (MEM 22%)"), 61: ("gb", "용량 (MEM 14.2/63.9G)"), 62: ("both", "둘 다 (MEM 14.2/63.9G 22%)")}
+MEM_KEYS = {key for key, _ in MEM_MODES.values()}
 
 ICON_COLORS = {"g": "#63c74d", "y": "#feae34"}
 ICON = (".......",
@@ -55,6 +60,12 @@ user32.GetWindowRect.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.RECT))
 user32.DrawTextW.argtypes = (wintypes.HDC, wintypes.LPCWSTR, ctypes.c_int, ctypes.POINTER(wintypes.RECT),
                              wintypes.UINT)
 gdi32.CreateFontW.restype = wintypes.HFONT
+user32.GetDC.restype = wintypes.HDC
+user32.GetDC.argtypes = (wintypes.HWND,)
+user32.ReleaseDC.argtypes = (wintypes.HWND, wintypes.HDC)
+gdi32.SelectObject.restype = wintypes.HGDIOBJ
+gdi32.GetTextExtentPoint32W.argtypes = (wintypes.HDC, wintypes.LPCWSTR, ctypes.c_int, ctypes.POINTER(wintypes.SIZE))
+gdi32.DeleteObject.argtypes = (wintypes.HGDIOBJ,)
 gdi32.SetTextColor.argtypes = (wintypes.HDC, wintypes.DWORD)
 gdi32.SetBkMode.argtypes = (wintypes.HDC, ctypes.c_int)
 
@@ -90,6 +101,35 @@ def memory():
     return m.dwMemoryLoad, (m.ullTotalPhys - m.ullAvailPhys) / gb, m.ullTotalPhys / gb
 
 
+def mem_text(mode, mem, used, total):
+    if mode == "gb":
+        return "MEM %.1f/%.1fG" % (used, total)
+    if mode == "both":
+        return "MEM %.1f/%.1fG %d%%" % (used, total, mem)
+    return "MEM %d%%" % mem
+
+
+def load_mode():
+    try:
+        mode = json.loads(SETTINGS.read_text(encoding="utf-8")).get("mem")
+    except (OSError, ValueError, AttributeError):
+        return "pct"
+    return mode if mode in MEM_KEYS else "pct"
+
+
+def text_width(font, texts):
+    """이 글꼴로 그린 가장 긴 줄의 너비 px."""
+    dc = user32.GetDC(None)
+    old = gdi32.SelectObject(dc, font)
+    size, widest = wintypes.SIZE(), 0
+    for t in texts:
+        gdi32.GetTextExtentPoint32W(dc, t, len(t), ctypes.byref(size))
+        widest = max(widest, size.cx)
+    gdi32.SelectObject(dc, old)
+    user32.ReleaseDC(None, dc)
+    return widest
+
+
 def level_color(p):
     return RED if p > HOT else ORANGE if p > WARN else WHITE
 
@@ -120,13 +160,18 @@ class Monitor:
         spot = taskbar_spot()
         x, top, self.bar_h = spot or (overlay.work_area()[2], overlay.work_area()[3], 48)
         h = self.bar_h
-        self.w, self.h = round(h * 2.3), h
+        # ANTIALIASED_QUALITY: 회색조라 R=G=B=덮인 정도. ClearType 이면 색 번짐이 남음
+        font = gdi32.CreateFontW(-round(h * 0.36), 0, 0, 0, 600, 0, 0, 0, 1, 0, 0, 4, 0, "Segoe UI")
+        # 창은 가장 긴 모양에 맞춰 한 번 잡고 글자는 오른쪽에 붙임 — 모양을 바꿔도 창을 다시 안 만듦.
+        # 남는 왼쪽은 투명하고 클릭이 통과함
+        total = memory()[2]
+        widest = text_width(font, ["CPU 100%"] + [mem_text(k, 100, total, total) for k in MEM_KEYS])
+        self.w, self.h = widest + round(h * 0.2), h
         self.line = round(h * 0.44)
+        self.mode = load_mode()
         self.surface = Surface(x - GAP - self.w, top, self.w, self.h, SURFACE_CLASS)
         hdc = self.surface.hdc
-        # ANTIALIASED_QUALITY: 회색조라 R=G=B=덮인 정도. ClearType 이면 색 번짐이 남음
-        gdi32.SelectObject(hdc, gdi32.CreateFontW(-round(h * 0.36), 0, 0, 0, 600, 0, 0, 0, 1, 0, 0, 4, 0,
-                                                  "Segoe UI"))
+        gdi32.SelectObject(hdc, font)
         gdi32.SetTextColor(hdc, 0xFFFFFF)
         gdi32.SetBkMode(hdc, 1)  # TRANSPARENT
         self.commands = queue.Queue()
@@ -136,7 +181,10 @@ class Monitor:
         self.prev = cpu_times()
 
     def menu(self):
-        return [("Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)), None, ("끝내기", EXIT, False)]
+        return [("메모리 표시", [(label, cid, key == self.mode) for cid, (key, label) in MEM_MODES.items()]),
+                ("Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)),
+                None,
+                ("끝내기", EXIT, False)]
 
     def render(self, lines):
         """글자를 흰색으로 그린 뒤, 밝기(초록 칸)를 알파로 삼아 줄마다 색을 입힌다."""
@@ -169,7 +217,7 @@ class Monitor:
         if spot and spot[:2] != self.where:  # 트레이 아이콘이 늘거나 줄면 따라감
             self.where = spot[:2]
             self.surface.move(spot[0] - GAP - self.w, spot[1])
-        lines = [("CPU %d%%" % cpu, level_color(cpu)), ("MEM %d%%" % mem, level_color(mem))]
+        lines = [("CPU %d%%" % cpu, level_color(cpu)), (mem_text(self.mode, mem, used, total), level_color(mem))]
         if lines != self.last_lines:
             self.last_lines = lines
             self.render(lines)
@@ -184,6 +232,14 @@ class Monitor:
                 cid = self.commands.get_nowait()
                 if cid == AUTOSTART:
                     startup.toggle(RUN_NAME, __file__)
+                elif cid in MEM_MODES:
+                    self.mode = MEM_MODES[cid][0]
+                    next_update = 0.0  # 바로 다시 그림
+                    try:
+                        SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+                        SETTINGS.write_text(json.dumps({"mem": self.mode}), encoding="utf-8")
+                    except OSError:
+                        pass  # 못 남기면 다음에 퍼센트로 뜰 뿐
                 elif cid in (None, EXIT):
                     if self.tray.hwnd:
                         self.tray.close()  # 아이콘을 지우고 나면 None 이 다시 옴
@@ -210,6 +266,13 @@ def check():
     assert 0 <= cpu_percent(a, cpu_times()) <= 100
     mem, used, total = memory()
     assert 0 < mem <= 100 and 0 < used < total
+    assert mem_text("pct", 22, 14.24, 63.9) == "MEM 22%"
+    assert mem_text("gb", 22, 14.24, 63.9) == "MEM 14.2/63.9G"
+    assert mem_text("both", 22, 14.24, 63.9) == "MEM 14.2/63.9G 22%"
+    assert set(MEM_KEYS) == {"pct", "gb", "both"} and len(MEM_MODES) == 3, "메뉴 id 가 겹치지 않음"
+    font = gdi32.CreateFontW(-17, 0, 0, 0, 600, 0, 0, 0, 1, 0, 0, 4, 0, "Segoe UI")
+    assert text_width(font, ["MEM 14.2/63.9G"]) > text_width(font, ["MEM 22%"]) > 0, "긴 글이 더 넓음"
+    gdi32.DeleteObject(font)
     print("자체 점검 통과")
 
 
