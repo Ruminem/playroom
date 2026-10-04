@@ -8,10 +8,11 @@ One window to manage the playroom tools — [usage-hud](../usage-hud/), [weather
 
 Double-click [launcher.bat](launcher.bat). Each tool gets one row:
 
-- a green dot while it is running, and a **Run** / **Stop** button
+- a green dot while it is running (amber while the launcher is busy with it), and a **Run** / **Stop** button
+- switches for **Always on top** and **Start with Windows**
 - **Always on top** — off lets other windows cover it. The tool is restarted to apply it, and layers stops raising it. Not offered for layers, which has no window of its own to keep on top
 - **Start with Windows** — the same switch as in each tool's own menu
-- **Install** puts a shortcut in the Start menu under `Playroom`, so the tool can be found from Windows search; clicking it starts or stops the tool like its `.bat`. **Uninstall** asks first, then stops the tool, turns off start with Windows, and deletes the shortcut and the tool's settings file in `%LOCALAPPDATA%\playroom`. Files in the repository are left alone
+- **Install** puts a shortcut in the Start menu under `Playroom`, so the tool can be found from Windows search; clicking it starts or stops the tool like its `.bat`. The row then shows **✓ Installed** with an **Uninstall** link, which asks first, then stops the tool, turns off start with Windows, and deletes the shortcut and the tool's settings file in `%LOCALAPPDATA%\playroom`. Files in the repository are left alone
 
 The window refreshes once a second, so a tool started or stopped from its own tray icon shows up here too.
 
@@ -31,10 +32,11 @@ The window refreshes once a second, so a tool started or stopped from its own tr
 
 [launcher.bat](launcher.bat) 을 더블클릭함. 도구마다 한 줄씩 있음:
 
-- 떠 있으면 초록 점, **실행** / **중단** 단추
+- 떠 있으면 초록 점(런처가 그 도구를 만지는 동안은 주황), **실행** / **중단** 단추
+- **항상 위** 와 **Windows 시작 시 실행** 스위치
 - **항상 위** — 끄면 다른 창이 그 위를 덮을 수 있음. 바꾸면 그 도구를 다시 띄워 적용하고, layers 도 그 도구를 올리지 않음. layers 는 맨 위에 둘 자기 창이 없어서 이 칸이 없음
 - **Windows 시작 시 실행** — 도구 자기 메뉴의 것과 같은 스위치
-- **설치** 는 시작 메뉴 `Playroom` 폴더에 바로가기를 만들어 윈도우 검색으로 찾을 수 있게 함. 누르면 `.bat` 처럼 켜고 끔. **제거** 는 먼저 묻고, 도구를 끄고, 시작 시 실행을 풀고, 바로가기와 `%LOCALAPPDATA%\playroom` 의 그 도구 설정 파일을 지움. 저장소의 파일은 안 건드림
+- **설치** 는 시작 메뉴 `Playroom` 폴더에 바로가기를 만들어 윈도우 검색으로 찾을 수 있게 함. 누르면 `.bat` 처럼 켜고 끔. 그러면 그 줄에 **✓ 설치됨** 과 **제거** 링크가 뜨고, 제거는 먼저 묻고, 도구를 끄고, 시작 시 실행을 풀고, 바로가기와 `%LOCALAPPDATA%\playroom` 의 그 도구 설정 파일을 지움. 저장소의 파일은 안 건드림
 
 창은 1초마다 새로 읽어서, 도구 트레이 아이콘에서 켜고 끈 것도 여기 보임.
 

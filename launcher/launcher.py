@@ -4,6 +4,7 @@
   python launcher.py           창을 띄움
   python launcher.py --check   자체 점검 (바로가기는 임시 폴더에 만들었다 지움)
 """
+import ctypes
 import importlib.util
 import json
 import os
@@ -100,34 +101,89 @@ def uninstall(t):
         pass
 
 
+BG, CARD, LINE, TEXT, MUTED = "#ffffff", "#f5f6f8", "#e4e6eb", "#1f2329", "#6b7080"
+ACCENT, ACCENT_DOWN, GREEN, GREY, AMBER, RED = "#3b6ef5", "#2f5bd6", "#34a853", "#c4c8d0", "#f2a60c", "#d93025"
+
+
+class Switch(tk.Canvas):
+    """둥근 켜고 끄기 스위치. 누르면 command(새 값). 화면은 refresh 가 set 으로 맞춤."""
+
+    def __init__(self, parent, px, command, enabled=True):
+        self.w, self.h = px(36), px(20)
+        super().__init__(parent, width=self.w, height=self.h, bg=CARD, highlightthickness=0,
+                         cursor="hand2" if enabled else "")
+        self.px, self.enabled, self.on = px, enabled, None
+        if enabled:
+            self.bind("<Button-1>", lambda e: command(not self.on))
+        self.set(False)
+
+    def set(self, on):
+        if on == self.on:
+            return
+        self.on = on
+        self.delete("all")
+        w, h, k = self.w, self.h, self.px(3)
+        fill = (ACCENT if on else GREY) if self.enabled else LINE
+        for box in ((0, 0, h, h), (w - h, 0, w, h)):
+            self.create_oval(*box, fill=fill, outline=fill)
+        self.create_rectangle(h / 2, 0, w - h / 2, h, fill=fill, outline=fill)
+        x = w - h if on else 0
+        self.create_oval(x + k, k, x + h - k, h - k, fill=BG, outline=BG)
+
+
 class Launcher:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("playroom")
         self.root.resizable(False, False)
+        self.root.configure(bg=BG)
+        px = self.px = lambda n: round(n * float(self.root.tk.call("tk", "scaling")) * 0.75)  # 96dpi 기준 px → 지금 화면 px
+        body = tk.Frame(self.root, bg=BG, padx=px(18), pady=px(16))
+        body.pack(fill="both")
+        head = tk.Frame(body, bg=BG)
+        head.pack(fill="x", pady=(0, px(10)))
+        tk.Label(head, text="playroom", font=(UI_FONT, 15, "bold"), fg=TEXT, bg=BG).pack(side="left")
+        self.summary = tk.Label(head, font=(UI_FONT, 9), fg=MUTED, bg=BG)
+        self.summary.pack(side="left", padx=px(10), pady=(px(5), 0))
+
+        cols = (px(16), px(170), px(72), px(96), px(96), px(72))  # 점 · 이름 · 항상 위 · 시작 시 실행 · 시작 메뉴 · 실행
+        caps = tk.Frame(body, bg=BG, padx=px(14))
+        caps.pack(fill="x")
+        for c, text in ((2, "항상 위"), (3, "시작 시 실행"), (4, "시작 메뉴")):
+            tk.Label(caps, text=text, font=(UI_FONT, 8), fg=MUTED, bg=BG).grid(row=0, column=c)
+        for c, w in enumerate(cols):
+            caps.columnconfigure(c, minsize=w)
+
         self.rows = []
-        heads = ("", "", "", "", "항상 위", "Windows 시작 시 실행")
-        for c, h in enumerate(heads):
-            tk.Label(self.root, text=h, font=(UI_FONT, 9), fg="#6b7080").grid(row=0, column=c, padx=6, pady=(10, 2))
-        for r, t in enumerate(TOOLS, 1):
-            row = {"dot": tk.Label(self.root, text="●", font=(UI_FONT, 12)),
-                   "run": tk.Button(self.root, width=6, command=lambda t=t: self.work(t, stop if running(t) else start)),
-                   "inst": tk.Button(self.root, width=6, command=lambda t=t: self.install_click(t)),
-                   "top": tk.BooleanVar(), "auto": tk.BooleanVar()}
-            tk.Label(self.root, text=t.label, font=(UI_FONT, 10, "bold"), anchor="w", width=10).grid(row=r, column=0, padx=(12, 0), pady=4, sticky="w")
-            tk.Label(self.root, text=t.name, font=(UI_FONT, 9), fg="#6b7080", anchor="w", width=9).grid(row=r, column=1, sticky="w")
-            row["dot"].grid(row=r, column=2)
-            row["run"].grid(row=r, column=3, padx=6)
-            row["inst"].grid(row=r, column=6, padx=(6, 12))
-            row["topbox"] = tk.Checkbutton(self.root, variable=row["top"], state="normal" if t.pick_top else "disabled",
-                                           command=lambda t=t, v=row["top"]: self.work(t, lambda t: set_on_top(t, v.get())))
-            row["topbox"].grid(row=r, column=4)
-            tk.Checkbutton(self.root, variable=row["auto"],
-                           command=lambda t=t, v=row["auto"]: self.work(t, lambda t: startup.set(t.run, t.script, v.get()))
-                           ).grid(row=r, column=5)
+        for t in TOOLS:
+            card = tk.Frame(body, bg=CARD, padx=px(14), pady=px(10), highlightthickness=1, highlightbackground=LINE)
+            card.pack(fill="x", pady=px(3))
+            for c, w in enumerate(cols):
+                card.columnconfigure(c, minsize=w)
+            row = {"dot": tk.Canvas(card, width=px(10), height=px(10), bg=CARD, highlightthickness=0)}
+            row["dot"].create_oval(0, 0, px(10) - 1, px(10) - 1, outline="", tags="d")
+            row["dot"].grid(row=0, column=0, rowspan=2, sticky="w")
+            tk.Label(card, text=t.label, font=(UI_FONT, 10, "bold"), fg=TEXT, bg=CARD).grid(row=0, column=1, sticky="w")
+            tk.Label(card, text=t.name, font=(UI_FONT, 8), fg=MUTED, bg=CARD).grid(row=1, column=1, sticky="w")
+            row["top"] = Switch(card, px, lambda on, t=t: self.work(t, lambda t: set_on_top(t, on)), t.pick_top)
+            row["auto"] = Switch(card, px, lambda on, t=t: self.work(t, lambda t: startup.set(t.run, t.script, on)))
+            row["top"].grid(row=0, column=2, rowspan=2)
+            row["auto"].grid(row=0, column=3, rowspan=2)
+            row["inst"] = tk.Label(card, font=(UI_FONT, 8), bg=CARD)
+            row["inst"].grid(row=0, column=4)
+            row["uninst"] = self.link(card, "제거", RED, lambda t=t: self.install_click(t))
+            row["uninst"].grid(row=1, column=4)
+            row["run"] = tk.Label(card, font=(UI_FONT, 9, "bold"), width=6, pady=px(4), cursor="hand2", highlightthickness=1)
+            row["run"].grid(row=0, column=5, rowspan=2, sticky="e")
+            row["run"].bind("<Button-1>", lambda e, t=t: self.work(t, stop if running(t) else start))
+            row["inst"].bind("<Button-1>", lambda e, t=t: None if t.link.exists() else self.work(t, install))
             self.rows.append((t, row))
-        tk.Label(self.root, text="").grid(row=len(TOOLS) + 1, column=0, pady=2)
         self.refresh()
+
+    def link(self, parent, text, color, command):
+        lab = tk.Label(parent, text=text, font=(UI_FONT, 8, "underline"), fg=color, bg=CARD, cursor="hand2")
+        lab.bind("<Button-1>", lambda e: command())
+        return lab
 
     def work(self, t, fn):
         """끄기는 3초까지, 바로가기는 1초쯤 걸리므로 따로 돌림. 화면은 refresh 가 따라 고침."""
@@ -145,23 +201,32 @@ class Launcher:
         threading.Thread(target=go, daemon=True).start()
 
     def install_click(self, t):
-        if not t.link.exists():
-            self.work(t, install)
-        elif messagebox.askyesno("playroom", f"{t.label}({t.name}) 를 제거할까요?\n\n끄고, 시작 시 실행을 풀고, "
+        if t.link.exists() and messagebox.askyesno("playroom", f"{t.label}({t.name}) 를 제거할까요?\n\n끄고, 시작 시 실행을 풀고, "
                                  f"시작 메뉴 바로가기와 설정 파일({t.settings.name})을 지웁니다.", parent=self.root):
             self.work(t, uninstall)
 
     def refresh(self):
-        off = overlay.below()
+        off, n = overlay.below(), 0
         for t, row in self.rows:
             on = running(t)
-            row["dot"].config(fg="#3fa34d" if on else "#c4c8d0")
-            state = "disabled" if t.busy else "normal"
-            row["run"].config(text="중단" if on else "실행", state=state)
-            row["inst"].config(text="제거" if t.link.exists() else "설치", state=state)
+            n += on
+            row["dot"].itemconfig("d", fill=AMBER if t.busy else GREEN if on else GREY)
+            # 실행은 채운 파란 단추, 중단은 테두리 단추. 일하는 동안은 흐리게
+            fg, bg, edge = (MUTED, CARD, LINE) if t.busy else (TEXT, BG, LINE) if on else ("white", ACCENT, ACCENT)
+            row["run"].config(text="중단" if on else "실행", fg=fg, bg=bg, highlightbackground=edge,
+                              cursor="" if t.busy else "hand2")
+            linked = t.link.exists()
+            row["inst"].config(text="✓ 설치됨" if linked else "설치", fg=GREEN if linked else ACCENT,
+                               font=(UI_FONT, 8, "" if linked else "underline"), cursor="" if linked else "hand2")
+            row["inst"].grid(rowspan=1 if linked else 2)  # 제거 링크가 없으면 가운데로
+            if linked:
+                row["uninst"].grid()
+            else:
+                row["uninst"].grid_remove()
             if not t.busy:
                 row["top"].set(t.pick_top and t.name not in off)
                 row["auto"].set(startup.is_on(t.run, t.script))
+        self.summary.config(text=f"도구 {len(self.rows)}개 · {n}개 실행 중")
         self.root.after(1000, self.refresh)
 
 
@@ -220,4 +285,5 @@ if __name__ == "__main__":
     if "--check" in sys.argv:
         check()
     else:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # 배율 높은 화면에서 흐려지지 않게
         Launcher().root.mainloop()
