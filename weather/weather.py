@@ -4,14 +4,14 @@
   pythonw weather.py            띄우기 (창 없이 뒤에서 돎)
   python weather.py --toggle    떠 있으면 치우고, 없으면 띄움 (weather.bat 이 이걸 부름)
   python weather.py --stop      치우기
-  python weather.py --kind rain --amount many
+  python weather.py --kind rain --amount 80   양은 0–100% (예전 few·normal·many 도 받음)
   python weather.py --check     자체 점검
 
 작업 영역(작업 표시줄 뺀 주 모니터) 전체를 덮는 픽셀 알파 창(shared/surface.py)에 30fps 로 그린다.
 눈은 원근 세 층으로 바람에 흔들리며 내리고 작업 표시줄 위에 쌓였다 천천히 녹는다. 꽃잎·낙엽도 같은 층과
 더미를 쓰되 빙글빙글 돌며 팔랑인다. 비는 기운 빗줄기로 내리고 바닥에서 튀며, 뇌우는 거기에 번개를 더한다.
 반딧불이는 화면 아래쪽을 떠다니며 깜빡인다. 고양이(pet.py)를 켜면 바닥이나 쌓인 더미 위를 돌아다닌다.
-트레이의 눈송이 메뉴에서 종류·양·고양이·숨기기·끝내기를 하고,
+트레이의 눈송이 메뉴에서 종류·양·고양이·숨기기·끝내기를 하고(양은 따로 뜨는 막대 창에서 0–100%),
 고른 것은 SETTINGS 에 남는다.
 """
 import argparse
@@ -24,6 +24,7 @@ import random
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -97,8 +98,26 @@ KINDS = {1: ("snow", "눈"), 2: ("rain", "비"), 3: ("storm", "뇌우"), 4: ("pe
 KIND_NAMES = tuple(k for k, _ in KINDS.values())
 SHOW, PET, AUTOSTART, EXIT = 20, 21, 50, 99
 RUN_NAME = "PlayroomWeather"  # 시작할 때는 인자 없이 떠서 저장된 종류·양을 따름
-AMOUNTS = {10: ("few", "적게", 60), 11: ("normal", "보통", 150), 12: ("many", "많이", 300)}
-COUNT = {key: n for key, _, n in AMOUNTS.values()}
+SLIDER = 10       # 메뉴 id: 양 조절 창
+FULL = 300        # 양 100% 의 눈송이·빗방울 수 (꽃잎·반딧불이는 이 수에 종류별 비율을 곱함)
+OLD_AMOUNTS = {"few": 20, "normal": 50, "many": 100}  # 예전 세 단계. 설정 파일·--amount 에서 아직 읽음
+
+
+def count(amount):
+    return round(FULL * amount / 100)
+
+
+def parse_amount(a):
+    """0–100 정수, 또는 예전 이름. 아니면 None."""
+    a = OLD_AMOUNTS.get(a) if isinstance(a, str) else a
+    return a if type(a) is int and 0 <= a <= 100 else None
+
+
+def amount_arg(s):
+    a = parse_amount(int(s) if s.isdigit() else s)
+    if a is None:
+        raise argparse.ArgumentTypeError("0–100 이나 few·normal·many")
+    return a
 
 ICON_COLORS = {"b": "#0099db", "w": "#ffffff"}
 ICON = ("...b...",
@@ -388,8 +407,8 @@ def load_settings():
     ok = {}
     if data.get("kind") in KIND_NAMES:
         ok["kind"] = data["kind"]
-    if data.get("amount") in COUNT:
-        ok["amount"] = data["amount"]
+    if parse_amount(data.get("amount")) is not None:
+        ok["amount"] = parse_amount(data["amount"])
     if isinstance(data.get("pet"), bool):
         ok["pet"] = data["pet"]
     return ok
@@ -415,7 +434,8 @@ class Weather:
         self.cat_sprites = pet.sprites()
         self.cat = pet.Cat(self.w) if cat else None  # 종류를 바꿔도 그대로 — 고양이는 날씨와 따로 삶
         self.bolt_seen = None
-        self.commands = queue.Queue()  # 트레이 스레드 → 그리는 스레드
+        self.slider = None  # 양 조절 창 프로세스
+        self.commands = queue.Queue()  # 트레이·양 조절 창 스레드 → 그리는 스레드
         write_ico(ICON_FILE, ICON, ICON_COLORS)
         self.tray = Tray(TRAY_CLASS, ICON_FILE, "날씨", self.menu, self.commands.put)
         self.last = self.last_settle = self.last_topmost = time.perf_counter()
@@ -426,7 +446,7 @@ class Weather:
     def menu(self):
         return [*((label, cid, key == self.kind) for cid, (key, label) in KINDS.items()),
                 None,
-                ("양", [(label, cid, key == self.amount) for cid, (key, label, _) in AMOUNTS.items()]),
+                ("양 조절… (%d%%)" % self.amount, SLIDER, False),
                 None,
                 ("고양이", PET, self.cat is not None),
                 ("보이기", SHOW, self.visible),
@@ -435,10 +455,13 @@ class Weather:
                 ("끝내기", EXIT, False)]
 
     def handle(self, cid):
-        if cid in KINDS:
+        if isinstance(cid, tuple):  # 양 조절 창에서 손을 뗀 값
+            self.amount = cid[1]
+        elif cid in KINDS:
             self.kind = KINDS[cid][0]
-        elif cid in AMOUNTS:
-            self.amount = AMOUNTS[cid][0]
+        elif cid == SLIDER:
+            self.open_slider()
+            return
         elif cid == PET:
             self.cat = None if self.cat else pet.Cat(self.w)
             self.save()
@@ -463,6 +486,20 @@ class Weather:
                                 encoding="utf-8")
         except OSError:
             pass  # 못 남겨도 지금 화면은 바뀌었으니 넘어감
+
+    def open_slider(self):
+        """그리는 루프가 tk 가 아니라서 창은 따로 띄우고, 손을 뗄 때마다 찍는 값을 한 줄씩 받음."""
+        if self.slider and self.slider.poll() is None:
+            return  # 이미 떠 있음
+        self.slider = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--slider", str(self.amount)],
+                                       stdout=subprocess.PIPE, text=True, encoding="utf-8")
+        threading.Thread(target=self.read_slider, args=(self.slider,), daemon=True).start()
+
+    def read_slider(self, proc):
+        for line in proc.stdout:
+            a = parse_amount(int(line)) if line.strip().isdigit() else None
+            if a is not None:
+                self.commands.put(("amount", a))
 
     def poll(self):
         """트레이에서 온 명령을 처리. None 이면 트레이가 닫힌 것. 끝내야 하면 True."""
@@ -609,7 +646,7 @@ class Weather:
             bx, by, levels = bolt_sprite(bolt_segments(self.w, self.h, random))
             self.bolt = (now, bx, by, levels)
             lo, hi = BOLT_EVERY
-            k = COUNT["normal"] / COUNT[self.amount]
+            k = 50 / max(1, self.amount)  # 50% 일 때 BOLT_EVERY 그대로, 양이 많을수록 잦음
             self.next_bolt = now + random.uniform(lo * k, hi * k)
         if self.bolt is None:
             return
@@ -663,7 +700,7 @@ class Weather:
 
     # ── 돌리기 ──
     def reset(self):
-        n, kind = COUNT[self.amount], self.kind
+        n, kind = count(self.amount), self.kind
         self.flakes, self.drops, self.splashes, self.leaves, self.flies = [], [], [], [], []
         self.bolt, self.next_bolt = None, time.perf_counter() + random.uniform(2, 5)
         self.pile = Pile(self.w)
@@ -809,7 +846,62 @@ def check():
     for rows in sprites:  # 어둡게 낮춘 번개 단계는 끝 픽셀 알파가 0 으로 떨어질 수 있어 뺌
         for skip, data in rows:
             assert not data or (data[3] and data[-1]), "앞뒤 투명 픽셀은 잘려 있어야 함"
+    assert count(50) == 150 and count(20) == 60 and count(100) == 300, "예전 보통·적게·많이와 같은 수"
+    assert parse_amount("many") == 100 and parse_amount(0) == 0 and parse_amount(35) == 35
+    assert all(parse_amount(a) is None for a in (101, -1, True, "x", [1], None, 2.5))
+    assert amount_arg("normal") == 50 and amount_arg("7") == 7
     print("자체 점검 통과")
+
+
+def slider(amount):
+    """'양 조절…' 이 띄우는 작은 창. 손을 뗄 때마다 값을 한 줄 찍고, 다른 데를 누르거나 Esc 면 닫힘."""
+    import tkinter as tk
+    from tkinter import ttk
+    if not MAC:
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except (AttributeError, OSError):
+            pass
+    root = tk.Tk()
+    root.title("날씨 양")
+    root.attributes("-topmost", True)
+    root.resizable(False, False)
+    root.configure(bg="white")
+    ttk.Style(root).configure(".", background="white")
+    px = lambda n: round(n * float(root.tk.call("tk", "scaling")) * 0.75)  # 96dpi 기준 px → 지금 화면 px
+    f = ttk.Frame(root, padding=(px(16), px(12)))
+    f.pack()
+    val = tk.DoubleVar(value=amount)
+    pct = ttk.Label(f, width=5, anchor="e", text="%d%%" % amount)
+    show = lambda *_: pct.configure(text="%d%%" % round(val.get()))
+    scale = ttk.Scale(f, from_=0, to=100, length=px(240), variable=val, command=show)
+    scale.pack(side="left")
+    pct.pack(side="left", padx=(px(8), 0))
+
+    def send(_=None):
+        try:
+            print(round(val.get()), flush=True)
+        except OSError:  # weather 가 먼저 꺼짐
+            root.destroy()
+
+    def jump(e):  # 볼륨 막대처럼 누른 자리로 바로 감 (ttk 기본은 한 칸씩)
+        val.set(max(0.0, min(100.0, e.x / max(1, scale.winfo_width()) * 100)))
+        show()
+
+    scale.bind("<Button-1>", jump, add="+")
+    scale.bind("<ButtonRelease-1>", send)
+    scale.bind("<KeyRelease>", send)  # 화살표로 움직여도
+    root.bind("<Escape>", lambda _: root.destroy())
+    # 창 안에서 포커스가 옮겨 가도 FocusOut 이 오므로, 앱 전체가 포커스를 잃었을 때만 닫음
+    root.bind("<FocusOut>", lambda _: root.after(150, lambda: root.focus_get() is None and root.destroy()))
+    root.update_idletasks()
+    x, y = root.winfo_pointerxy()  # 트레이를 누른 자리 옆. 아래쪽이면 위로, 위쪽(맥 메뉴 막대)이면 아래로
+    w, h = root.winfo_reqwidth(), root.winfo_reqheight()
+    y = y + px(16) if y < root.winfo_screenheight() // 2 else y - h - px(56)
+    root.geometry("+%d+%d" % (max(0, min(x - w // 2, root.winfo_screenwidth() - w)), max(0, y)))
+    root.focus_force()
+    scale.focus_set()
+    root.mainloop()
 
 
 def main():
@@ -819,11 +911,15 @@ def main():
     ap.add_argument("--check", action="store_true", help="자체 점검")
     saved = load_settings()  # 안 주면 트레이 메뉴에서 마지막으로 고른 값
     ap.add_argument("--kind", default=saved.get("kind", "snow"), choices=KIND_NAMES)
-    ap.add_argument("--amount", default=saved.get("amount", "normal"), choices=tuple(COUNT))
+    ap.add_argument("--amount", default=saved.get("amount", 50), type=amount_arg, help="0–100 (기본 50)")
+    ap.add_argument("--slider", type=amount_arg, help=argparse.SUPPRESS)  # 메뉴의 양 조절 창
     args = ap.parse_args()
 
     if args.check:
         check()
+        return
+    if args.slider is not None:
+        slider(args.slider)
         return
     if args.stop:
         print("날씨를 치움" if overlay.stop(PID_FILE, TRAY_CLASS) else "떠 있는 날씨가 없음")
@@ -837,11 +933,11 @@ def main():
         pythonw = Path(sys.executable).with_name("pythonw.exe")
         if pythonw.exists():
             subprocess.Popen([str(pythonw), str(Path(__file__).resolve()),
-                              "--kind", args.kind, "--amount", args.amount], close_fds=True)
+                              "--kind", args.kind, "--amount", str(args.amount)], close_fds=True)
             return
     if args.toggle and MAC:
         # 터미널을 닫아도 안 꺼지게 떼어서 다시 띄움
-        subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--kind", args.kind, "--amount", args.amount],
+        subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--kind", args.kind, "--amount", str(args.amount)],
                          start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL)
         return
