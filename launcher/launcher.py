@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "shared"))
 import overlay  # noqa: E402
 import startup  # noqa: E402
+from icon import write_ico  # noqa: E402
 
 DATA = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "playroom"
 MENU = Path(os.environ.get("APPDATA", Path.home())) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Playroom"
@@ -30,6 +31,15 @@ NO_WINDOW = 0x08000000  # CREATE_NO_WINDOW
 LINK_PS = ("$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:LNK); $s.TargetPath = $env:EXE; "
            "$s.Arguments = $env:ARGS; $s.WorkingDirectory = $env:DIR; $s.Save()")
 UI_FONT = "Malgun Gothic"
+ICON_FILE = DATA / "launcher.ico"  # 임시 폴더가 아닌 곳 — 창이 떠 있는 동안 지워지면 안 됨
+ICON_COLORS = {"r": "#e43b44", "b": "#3b6ef5", "g": "#63c74d", "y": "#feae34"}  # 도구 넷: HUD 하트 · 날씨 · sysmon · layers
+ICON = ("rrr.bbb",
+        "rrr.bbb",
+        "rrr.bbb",
+        ".......",
+        "ggg.yyy",
+        "ggg.yyy",
+        "ggg.yyy")
 
 
 class Tool:
@@ -137,6 +147,12 @@ class Launcher:
         self.root.title("playroom")
         self.root.resizable(False, False)
         self.root.configure(bg=BG)
+        try:
+            ICON_FILE.parent.mkdir(parents=True, exist_ok=True)
+            write_ico(ICON_FILE, ICON, ICON_COLORS)
+            self.root.iconbitmap(default=str(ICON_FILE))
+        except (OSError, tk.TclError):
+            pass  # 아이콘이 없어도 창은 뜸
         px = self.px = lambda n: round(n * float(self.root.tk.call("tk", "scaling")) * 0.75)  # 96dpi 기준 px → 지금 화면 px
         body = tk.Frame(self.root, bg=BG, padx=px(18), pady=px(16))
         body.pack(fill="both")
@@ -286,4 +302,6 @@ if __name__ == "__main__":
         check()
     else:
         ctypes.windll.shcore.SetProcessDpiAwareness(2)  # 배율 높은 화면에서 흐려지지 않게
+        # 작업 표시줄이 pythonw 로 묶어 파이썬 아이콘을 띄우지 않고 창 아이콘을 쓰게
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Ruminem.playroom.launcher")
         Launcher().root.mainloop()
