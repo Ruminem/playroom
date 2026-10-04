@@ -1,3 +1,7 @@
+- 여기까지 됨 (2026-10-04 — usage-hud 맥): usage.py 가 맥에서는 Keychain 의 Claude Code-credentials 에서 토큰을 읽는다. 맥북에서 page.py 를 띄워 HP·ST·동전이 다 나오는 것을 찍었다. HUD 는 Win32 그대로라 맥에선 안 돈다. 맥 메뉴 막대 후보를 쟀다 — Swift(AppKit): 의존성 없음, NSStatusItem 최소 예제 swiftc 4.9초·56KB 로 돎, 클릭 통과 떠 있는 창도 같은 API 로 됨. SwiftBar: MIT·활발(9/29 푸시), 플러그인이 usage.py 를 부르면 30줄 남짓이지만 앱을 따로 깔아야 함. PyObjC: MIT 지만 최신판이 Python 3.10 이상이라 맥 기본 3.9.6 에선 brew 파이썬부터 깔아야 함 — 제일 비쌈
+- 다음 할 것: 맥 메뉴 막대를 Swift 로 할지 정할 것. 데이터는 usage.py 의 JSON 출력(첫 줄은 걸린 시간)을 읽어 단가 표를 한 곳에 둔다. 로그인 시 실행은 번들 없는 바이너리면 LaunchAgent plist 가 필요해 보임(안 재 봄)
+- 막힌 것: 없음
+
 - 여기까지 됨 (2026-10-04 — HUD 색 테마 여섯): shared/pixelfont.py 에 PALETTES(클래식·게임보이·네온·앰버·심해·종이)와 use_palette 를 두고, 공용 COLORS 를 그 자리에서 갈아 끼워 그리는 코드는 안 건드렸다. HUD 트레이 메뉴에 '테마', sysmon 테마 메뉴는 '기본(글자)' + '픽셀 · 팔레트' 여섯으로 넓혔다(따로 고름, 예전 "pixel" 은 클래식으로 읽음). 페이지는 CLASSIC 고정, HUD 트레이 아이콘은 다음 켤 때 새 색. 점검은 pixelfont·sysmon 둘이고 새 변이 셋을 다 잡는다. 네온·종이·게임보이로 실제로 띄워 찍었다
 - 다음 할 것: 마음에 드는 테마를 트레이 메뉴에서 골라 볼 것. HUD 의 테마 바꾸기는 메뉴로만 눌러 봐야 함(바탕색 다시 칠하기는 실제로 안 눌러 봤다)
 - 막힌 것: 없음
