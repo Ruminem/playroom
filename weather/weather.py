@@ -7,7 +7,7 @@
   python weather.py --kind rain --amount 80   양은 0–100% (예전 few·normal·many 도 받음)
   python weather.py --check     자체 점검
 
-작업 영역(작업 표시줄 뺀 주 모니터) 전체를 덮는 픽셀 알파 창(shared/surface.py)에 30fps 로 그린다.
+작업 영역(작업 표시줄 뺀 주 모니터) 전체를 덮는 픽셀 알파 창(shared/surface.py)에 기본 60fps 로 그린다(메뉴에서 30–180).
 눈은 원근 세 층으로 바람에 흔들리며 내리고 작업 표시줄 위에 쌓였다 천천히 녹는다. 꽃잎·낙엽도 같은 층과
 더미를 쓰되 빙글빙글 돌며 팔랑인다. 비는 기운 빗줄기로 내리고 바닥에서 튀며, 뇌우는 거기에 번개를 더한다.
 반딧불이는 화면 아래쪽을 떠다니며 깜빡인다. 고양이(pet.py)를 켜면 바닥이나 쌓인 더미 위를 돌아다닌다.
@@ -45,7 +45,9 @@ SETTINGS = (Path.home() / "Library" / "Application Support" if MAC else
 TRAY_CLASS = "PlayroomWeatherTray"
 SURFACE_CLASS = "PlayroomWeatherSurface"
 
-FPS = 30           # 13fps 는 끊겨 보였음. 타이머 해상도를 1ms 로 올려야 실제로 30 이 나옴
+FPS = 60           # 기본. 13fps 는 끊겨 보였음. 타이머 해상도를 1ms 로 올려야 청한 만큼 나옴
+# 메뉴 id → 초당 그리는 횟수. 2560×1392 에서 잰 한 코어 대비 CPU: 눈 100% 9·16·46%(30·60·180), 비 100% 13·27·77%
+FPS_IDS = {40: 30, 41: 60, 42: 120, 43: 180}
 SNOW_COLOR, SNOW_RIM = (248, 250, 255), (165, 176, 198)  # 테두리를 옅은 회청색으로 — 흰 창 위에서도 보이게
 RAIN_COLOR = (200, 214, 236)
 
@@ -411,12 +413,14 @@ def load_settings():
         ok["amount"] = parse_amount(data["amount"])
     if isinstance(data.get("pet"), bool):
         ok["pet"] = data["pet"]
+    if data.get("fps") in FPS_IDS.values():
+        ok["fps"] = data["fps"]
     return ok
 
 
 class Weather:
-    def __init__(self, kind, amount, cat=False):
-        self.kind, self.amount, self.visible = kind, amount, True
+    def __init__(self, kind, amount, cat=False, fps=FPS):
+        self.kind, self.amount, self.visible, self.fps = kind, amount, True, fps
         # ponytail: 시작할 때의 주 모니터 작업 영역에 고정. 해상도·작업 표시줄이 바뀌면 다시 켜야 함
         l, t, r, b = overlay.work_area()
         self.w, self.h = r - l, b - t
@@ -449,6 +453,7 @@ class Weather:
         return [*((label, cid, key == self.kind) for cid, (key, label) in KINDS.items()),
                 None,
                 ("양", [("%d%%" % p, cid, p == self.amount) for cid, p in AMOUNTS.items()]),
+                ("부드러움", [("%dfps" % n, cid, n == self.fps) for cid, n in FPS_IDS.items()]),
                 None,
                 ("고양이", PET, self.cat is not None),
                 ("보이기", SHOW, self.visible),
@@ -466,6 +471,10 @@ class Weather:
             self.kind = KINDS[cid][0]
         elif cid in AMOUNTS:
             self.amount = AMOUNTS[cid]
+        elif cid in FPS_IDS:  # 움직임은 시간으로 셈해 빠르기는 그대로, 다시 깔 필요 없음
+            self.fps = FPS_IDS[cid]
+            self.save()
+            return
         elif cid == PET:
             self.cat = None if self.cat else pet.Cat(self.w)
             self.save()
@@ -486,8 +495,8 @@ class Weather:
     def save(self):
         try:
             SETTINGS.parent.mkdir(parents=True, exist_ok=True)
-            SETTINGS.write_text(json.dumps({"kind": self.kind, "amount": self.amount, "pet": self.cat is not None}),
-                                encoding="utf-8")
+            SETTINGS.write_text(json.dumps({"kind": self.kind, "amount": self.amount, "pet": self.cat is not None,
+                                            "fps": self.fps}), encoding="utf-8")
         except OSError:
             pass  # 못 남겨도 지금 화면은 바뀌었으니 넘어감
 
@@ -496,7 +505,7 @@ class Weather:
         if self.panel and self.panel.poll() is None:
             return  # 이미 떠 있음
         state = {"kind": self.kind, "amount": self.amount, "pet": self.cat is not None, "show": self.visible,
-                 "auto": startup.is_on(RUN_NAME, __file__)}
+                 "auto": startup.is_on(RUN_NAME, __file__), "fps": self.fps}
         ctypes.windll.user32.AllowSetForegroundWindow(-1)  # 방금 트레이를 누른 건 이 프로세스라 앞으로 올릴 권한을 넘김
         self.panel =subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--panel", json.dumps(state)],
                                       stdout=subprocess.PIPE, text=True, encoding="utf-8")
@@ -507,7 +516,7 @@ class Weather:
             word, _, arg = line.partition(" ")
             if word == "amount" and arg.strip().isdigit() and parse_amount(int(arg)) is not None:
                 self.commands.put(("amount", int(arg)))
-            elif word.strip().isdigit() and int(word) in (*KINDS, PET, SHOW, AUTOSTART, EXIT):
+            elif word.strip().isdigit() and int(word) in (*KINDS, *FPS_IDS, PET, SHOW, AUTOSTART, EXIT):
                 self.commands.put(int(word))
 
     def poll(self):
@@ -783,12 +792,12 @@ class Weather:
         return True
 
     def run(self):
-        period = 1 / FPS
         if MAC:  # 메뉴 막대 메뉴를 연 동안엔 아래 루프가 pump 에 묶이므로 런 루프 타이머가 대신 그림
             from cocoa import while_tracking
-            while_tracking(self.step, period)
+            while_tracking(self.step, 1 / self.fps)  # ponytail: 시작할 때 값에 고정. 메뉴를 연 동안만 쓰임
         nxt = time.perf_counter()
         while True:
+            period = 1 / self.fps  # 메뉴에서 바꾸면 다음 프레임부터
             self.surface.pump()
             if self.poll():
                 break
@@ -860,12 +869,14 @@ def check():
     assert all(parse_amount(a) is None for a in (101, -1, True, "x", [1], None, 2.5))
     assert amount_arg("normal") == 50 and amount_arg("7") == 7
     assert {20, 50, 100} <= set(AMOUNTS.values()), "예전 세 단계가 메뉴 칸에 있음"
-    assert not set(AMOUNTS) & {SHOW, PET, PANEL, AUTOSTART, EXIT, *KINDS}, "메뉴 id 가 겹치지 않음"
+    ids = [*AMOUNTS, *FPS_IDS, SHOW, PET, PANEL, AUTOSTART, EXIT, *KINDS]
+    assert len(ids) == len(set(ids)), "메뉴 id 가 겹치지 않음"
+    assert FPS in FPS_IDS.values()
     from types import SimpleNamespace
     q = SimpleNamespace(commands=queue.Queue())
     Weather.read_panel(q, SimpleNamespace(stdout=["amount 30\n", "amount x\n", "amount 150\n", "2\n",
-                                                        "%d\n" % PET, "77\n", "hi\n"]))
-    assert list(q.commands.queue) == [("amount", 30), 2, PET], "설정 창이 보낸 줄 중 아는 것만"
+                                                        "43\n", "%d\n" % PET, "77\n", "hi\n"]))
+    assert list(q.commands.queue) == [("amount", 30), 2, 43, PET], "설정 창이 보낸 줄 중 아는 것만"
     print("자체 점검 통과")
 
 
@@ -921,14 +932,23 @@ def panel(state):
     scale.bind("<ButtonRelease-1>", lambda _: send("amount", round(val.get())))  # 끄는 동안 매번 다시 뿌리지 않게
     scale.bind("<KeyRelease>", lambda _: send("amount", round(val.get())))
 
+    smooth = ttk.Frame(f)
+    smooth.grid(row=4, column=0, columnspan=4, sticky="ew", pady=(0, px(8)))
+    ttk.Label(smooth, text="부드러움").pack(side="left", padx=(0, px(8)))
+    fps = tk.IntVar(value=state["fps"])
+    for cid, n in FPS_IDS.items():
+        ttk.Radiobutton(smooth, text=str(n), value=n, variable=fps, style="Toolbutton",
+                        command=lambda cid=cid: send(cid)).pack(side="left", padx=px(2))
+    ttk.Label(smooth, text="fps").pack(side="left", padx=(px(4), 0))
+
     keep = []  # tk 변수는 파이썬 쪽 참조가 없어지면 체크 표시가 풀림
     for r, (key, cid, label) in enumerate((("pet", PET, "고양이"), ("show", SHOW, "보이기"),
-                                          ("auto", AUTOSTART, "Windows 시작 시 실행")), start=4):
+                                          ("auto", AUTOSTART, "Windows 시작 시 실행")), start=5):
         keep.append(tk.BooleanVar(value=state[key]))
         ttk.Checkbutton(f, text=label, variable=keep[-1], command=lambda cid=cid: send(cid)).grid(
             row=r, column=0, columnspan=4, sticky="w", pady=px(1))
     ttk.Button(f, text="끝내기", command=lambda: (send(EXIT), root.destroy())).grid(
-        row=7, column=3, sticky="e", pady=(px(10), 0))
+        row=8, column=3, sticky="e", pady=(px(10), 0))
 
     f.columnconfigure((0, 1, 2, 3), uniform="kind")
     root.bind("<Escape>", lambda _: root.destroy())
@@ -1010,7 +1030,7 @@ def main():
         ctypes.windll.winmm.timeBeginPeriod(1)  # 기본 타이머 간격(15.6ms)이면 30fps 를 청해도 21fps 에서 멈춤
     PID_FILE.write_text(str(os.getpid()))
     try:
-        Weather(args.kind, args.amount, saved.get("pet", False)).run()
+        Weather(args.kind, args.amount, saved.get("pet", False), saved.get("fps", FPS)).run()
     finally:
         if not MAC:
             ctypes.windll.winmm.timeEndPeriod(1)
