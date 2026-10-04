@@ -6,8 +6,9 @@
   python sysmon.py --stop      치우기
   python sysmon.py --check     자체 점검
 
-작업 표시줄 위에 얹은 맨 위·클릭 통과 알파 창(shared/surface.py)이다. 글자는 GDI 로 흰색 회색조
-안티에일리어싱으로 그린 뒤 밝기를 알파로 바꿔 색을 입힌다. 1초마다 다시 재고, 트레이 아이콘이
+작업 표시줄 위에 얹은 맨 위·클릭 통과 알파 창(shared/surface.py)이다. 테마는 둘이다. 기본은 GDI 로
+흰색 회색조 안티에일리어싱 글자를 그린 뒤 밝기를 알파로 바꿔 색을 입히고, 픽셀은 usage-hud 와 같은
+글꼴(shared/pixelfont.py)로 어두운 상자 안에 아이콘·칸 막대·숫자를 그린다. 1초마다 다시 재고, 트레이 아이콘이
 늘거나 줄면 따라 옮기며, 전체 화면 앱이 돌면 숨는다. 끝내기는 트레이의 막대 아이콘 메뉴에서 한다.
 """
 import argparse
@@ -26,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 import overlay
 import startup
 import taskbar
+from pixelfont import COLORS, ICONS, text_pixels, text_width
 from surface import Surface
 from tray import Tray, write_ico
 
@@ -43,6 +45,11 @@ RUN_NAME = "PlayroomSysmon"
 # 메모리 줄 모양: id → (키, 메뉴 글). 글자 색은 어느 모양이든 사용률로 정함
 MEM_MODES = {60: ("pct", "퍼센트 (MEM 22%)"), 61: ("gb", "용량 (MEM 14.2/63.9G)"), 62: ("both", "둘 다 (MEM 14.2/63.9G 22%)")}
 MEM_KEYS = {key for key, _ in MEM_MODES.values()}
+THEMES = {70: ("text", "기본 (글자)"), 71: ("pixel", "픽셀 (HUD 처럼)")}
+THEME_KEYS = {key for key, _ in THEMES.values()}
+SEGMENTS = 8       # 픽셀 테마 막대 칸 수
+PIX = {k: tuple(int(v[i:i + 2], 16) for i in (1, 3, 5)) for k, v in COLORS.items()}
+PCT_W = text_width("100%")
 
 ICON_COLORS = {"g": "#63c74d", "y": "#feae34"}
 ICON = (".......",
@@ -94,32 +101,99 @@ def mem_text(mode, mem, used, total):
     return "MEM %d%%" % mem
 
 
-def load_mode():
+def load_settings():
+    """(메모리 모양, 테마). 파일이 없거나 이상하면 기본값."""
     try:
-        mode = json.loads(SETTINGS.read_text(encoding="utf-8")).get("mem")
+        data = json.loads(SETTINGS.read_text(encoding="utf-8"))
+        mode, theme = data.get("mem"), data.get("theme")
     except (OSError, ValueError, AttributeError):
-        return "pct"
-    return mode if mode in MEM_KEYS else "pct"
+        mode = theme = None
+    return mode if mode in MEM_KEYS else "pct", theme if theme in THEME_KEYS else "text"
 
 
 def level_color(p):
     return RED if p > HOT else ORANGE if p > WARN else WHITE
 
 
+# ── 픽셀 테마 (단위: 픽셀 칸) ──
+def pixel_level(p):
+    return "low" if p > HOT else "mid" if p > WARN else "good"
+
+
+def pixel_rows(cpu, mode, mem, used, total):
+    """[(아이콘, 이름, %, [(글, 색 키, 퍼센트 칸인가), …]), …]. 퍼센트는 '100%' 너비에 오른쪽 맞춤."""
+    pct = lambda p: ("%d%%" % p, pixel_level(p), True)
+    gb = "%.1f/%.1fG" % (used, total)
+    tail = {"pct": [pct(mem)], "gb": [(gb, pixel_level(mem), False)], "both": [pct(mem), (gb, "dim", False)]}
+    return [("cpu", "CPU", cpu, [pct(cpu)]), ("mem", "MEM", mem, tail[mode])]
+
+
+def pixel_size(rows):
+    """상자 (너비, 높이). 테두리 1 + 여백 1, 줄 간격 8 (아이콘 7 + 1)."""
+    tail = lambda texts: sum(PCT_W if is_pct else text_width(t) for t, _, is_pct in texts) + 3 * (len(texts) - 1)
+    return 2 + 7 + 2 + text_width("CPU") + 2 + SEGMENTS * 3 + 1 + max(tail(r[3]) for r in rows) + 2, 19
+
+
+def pixel_scale(bar_h):
+    return max(1, (bar_h - 4) // 19)
+
+
+def paint_pixel(surface, rows, s):
+    """오른쪽 끝에 붙여 세로 가운데에 그리고, 보이는 너비 px 를 돌려줌."""
+    w, h = pixel_size(rows)
+    x0, y0 = surface.w - w * s, (surface.h - h * s) // 2
+    px, stride = surface.pixels, surface.w * 4
+    surface.clear()
+
+    def rect(x, y, cw, ch, key, a=255):
+        r, g, b = PIX[key]
+        color = bytes((b * a // 255, g * a // 255, r * a // 255, a)) * (cw * s)
+        for yy in range(y0 + y * s, y0 + (y + ch) * s):
+            o = yy * stride + (x0 + x * s) * 4
+            px[o:o + len(color)] = color
+
+    rect(0, 0, w, h, "bg", 235)
+    for x, y, cw, ch in ((0, 0, w, 1), (0, h - 1, w, 1), (0, 0, 1, h), (w - 1, 0, 1, h)):
+        rect(x, y, cw, ch, "edge")
+    for i, (icon, label, p, texts) in enumerate(rows):
+        y = 2 + i * 8
+        for dy, line in enumerate(ICONS[icon]):
+            for dx, c in enumerate(line):
+                if c != ".":
+                    rect(2 + dx, y + dy, 1, 1, c)
+        for dx, dy in text_pixels(label):
+            rect(11 + dx, y + 1 + dy, 1, 1, "text")
+        x = 11 + text_width(label) + 2
+        filled = round(p / 100 * SEGMENTS)
+        for k in range(SEGMENTS):
+            rect(x + k * 3, y + 1, 2, 5, pixel_level(p) if k < filled else "slot")
+        x += SEGMENTS * 3 + 1
+        for t, key, is_pct in texts:
+            tx = x + (PCT_W - text_width(t) if is_pct else 0)
+            for dx, dy in text_pixels(t):
+                rect(tx + dx, y + 1 + dy, 1, 1, key)
+            x += (PCT_W if is_pct else text_width(t)) + 3
+    return w * s
+
+
 class Monitor:
     def __init__(self):
         spot = taskbar.spot()
         x, top, h = spot or (overlay.work_area()[2], overlay.work_area()[3], 48)
-        font = taskbar.font(h)
-        # 창은 가장 긴 모양에 맞춰 한 번 잡고 글자는 오른쪽에 붙임 — 모양을 바꿔도 창을 다시 안 만듦.
-        # 남는 왼쪽은 투명하고 클릭이 통과함
+        self.font = taskbar.font(h)
+        # 버퍼는 가장 넓은 테마·모양에 맞춰 한 번 잡고 그림은 오른쪽에 붙임. 창은 그린 폭만큼만 보여서
+        # (Surface.view) 왼쪽에 붙는 usage-hud 가 빈 칸 없이 바로 옆에 옴
         total = memory()[2]
-        widest = taskbar.text_width(font, ["CPU 100%"] + [mem_text(k, 100, total, total) for k in MEM_KEYS])
-        self.w, self.h = widest + round(h * 0.2), h
+        self.pad = round(h * 0.1)
+        widest = taskbar.text_width(self.font, ["CPU 100%"] + [mem_text(k, 100, total, total) for k in MEM_KEYS])
+        self.s = pixel_scale(h)
+        widest_pixel = max(pixel_size(pixel_rows(100, k, 100, total, total))[0] for k in MEM_KEYS) * self.s
+        self.w, self.h = max(widest + self.pad + 2, widest_pixel), h
         self.line = round(h * 0.44)
-        self.mode = load_mode()
+        self.mode, self.theme = load_settings()
         self.surface = Surface(x - GAP - self.w, top, self.w, self.h, SURFACE_CLASS)
-        taskbar.prepare(self.surface, font)
+        taskbar.prepare(self.surface, self.font)
+        self.vis_w = self.w
         self.commands = queue.Queue()
         write_ico(ICON_FILE, ICON, ICON_COLORS)
         self.tray = Tray(TRAY_CLASS, ICON_FILE, "CPU·메모리", self.menu, self.commands.put)
@@ -128,6 +202,7 @@ class Monitor:
 
     def menu(self):
         return [("메모리 표시", [(label, cid, key == self.mode) for cid, (key, label) in MEM_MODES.items()]),
+                ("테마", [(label, cid, key == self.theme) for cid, (key, label) in THEMES.items()]),
                 ("Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)),
                 None,
                 ("끝내기", EXIT, False)]
@@ -143,14 +218,21 @@ class Monitor:
             self.surface.show(show)
         if not show:
             return
-        spot = taskbar.spot()
-        if spot and spot[:2] != self.where:  # 트레이 아이콘이 늘거나 줄면 따라감
-            self.where = spot[:2]
-            self.surface.move(spot[0] - GAP - self.w, spot[1])
-        lines = [("CPU %d%%" % cpu, level_color(cpu)), (mem_text(self.mode, mem, used, total), level_color(mem))]
+        if self.theme == "pixel":
+            lines = pixel_rows(cpu, self.mode, mem, used, total)
+        else:
+            lines = [("CPU %d%%" % cpu, level_color(cpu)), (mem_text(self.mode, mem, used, total), level_color(mem))]
         if lines != self.last_lines:
             self.last_lines = lines
-            taskbar.paint_lines(self.surface, lines, self.line)
+            if self.theme == "pixel":
+                self.vis_w = paint_pixel(self.surface, lines, self.s)
+            else:
+                taskbar.paint_lines(self.surface, lines, self.line)
+                self.vis_w = taskbar.text_width(self.font, [t for t, _ in lines]) + self.pad + 2
+        spot = taskbar.spot()
+        if spot and (spot[:2], self.vis_w) != self.where:  # 트레이 아이콘이 늘거나 줄거나 폭이 바뀌면 따라감
+            self.where = spot[:2], self.vis_w
+            self.surface.view(spot[0] - GAP - self.vis_w, spot[1], self.w - self.vis_w, self.vis_w)
         self.surface.present()
         self.surface.topmost()  # 작업 표시줄을 누르면 그쪽이 앞으로 오므로 1초마다 다시 올라옴
 
@@ -162,12 +244,13 @@ class Monitor:
                 cid = self.commands.get_nowait()
                 if cid == AUTOSTART:
                     startup.toggle(RUN_NAME, __file__)
-                elif cid in MEM_MODES:
-                    self.mode = MEM_MODES[cid][0]
-                    next_update = 0.0  # 바로 다시 그림
+                elif cid in MEM_MODES or cid in THEMES:
+                    self.mode = MEM_MODES[cid][0] if cid in MEM_MODES else self.mode
+                    self.theme = THEMES[cid][0] if cid in THEMES else self.theme
+                    next_update, self.last_lines = 0.0, None  # 바로 다시 그림
                     try:
                         SETTINGS.parent.mkdir(parents=True, exist_ok=True)
-                        SETTINGS.write_text(json.dumps({"mem": self.mode}), encoding="utf-8")
+                        SETTINGS.write_text(json.dumps({"mem": self.mode, "theme": self.theme}), encoding="utf-8")
                     except OSError:
                         pass  # 못 남기면 다음에 퍼센트로 뜰 뿐
                 elif cid in (None, EXIT):
@@ -202,6 +285,29 @@ def check():
     assert set(MEM_KEYS) == {"pct", "gb", "both"} and len(MEM_MODES) == 3, "메뉴 id 가 겹치지 않음"
     font = taskbar.font(48)
     assert taskbar.text_width(font, ["MEM 14.2/63.9G"]) > taskbar.text_width(font, ["MEM 22%"]) > 0, "긴 글이 더 넓음"
+    total = 63.9
+    for k in MEM_KEYS:  # 픽셀 상자는 작업 표시줄 높이 안에, 가장 넓은 모양이 버퍼 안에
+        rows = pixel_rows(100, k, 100, total, total)
+        w, h = pixel_size(rows)
+        assert all(h * pixel_scale(b) <= b - 4 for b in (40, 48, 72, 76))
+        assert pixel_rows(5, k, 5, 1.0, total)[1][3][0][1] == "good" and pixel_level(HOT + 1) == "low"
+    assert pixel_size(pixel_rows(1, "both", 1, 1.0, total))[0] > pixel_size(pixel_rows(1, "pct", 1, 1.0, total))[0]
+
+    class Fake:  # 버퍼만 있는 Surface
+        def __init__(self, w, h):
+            self.w, self.h, self.pixels = w, h, bytearray(w * h * 4)
+
+        def clear(self):
+            self.pixels[:] = bytes(len(self.pixels))
+    rows = pixel_rows(50, "both", 22, 14.2, total)
+    f = Fake(400, 48)
+    vis = paint_pixel(f, rows, 2)
+    assert vis == pixel_size(rows)[0] * 2
+    cols = {i // 4 % f.w for i in range(3, len(f.pixels), 4) if f.pixels[i]}
+    assert min(cols) == f.w - vis and max(cols) == f.w - 1, "오른쪽 끝에 붙고 보이는 폭이 맞음"
+    lit = sum(1 for k in range(SEGMENTS) for o in [((48 - 38) // 2 + 3 * 2) * f.w * 4 + (f.w - vis + (24 + k * 3) * 2) * 4]
+              if tuple(f.pixels[o:o + 3]) == PIX["good"][::-1])
+    assert lit == 4, ("CPU 50% 면 8칸 중 4칸", lit)
     print("자체 점검 통과")
 
 

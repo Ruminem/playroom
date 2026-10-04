@@ -94,6 +94,11 @@ class Surface:
         """다음 present() 부터 이 자리에 그림."""
         self._pos = wintypes.POINT(left, top)
 
+    def view(self, left, top, sx, width):
+        """다음 present() 부터 버퍼의 가로 [sx, sx + width) 만 (left, top) 에 보임. 창도 그 폭이 됨 —
+        버퍼를 다시 안 만들고 보이는 폭만 바꿀 때 씀."""
+        self._pos, self._src, self._size = wintypes.POINT(left, top), wintypes.POINT(sx, 0), wintypes.SIZE(width, self.h)
+
     def show(self, on):
         user32.ShowWindow(self.hwnd, 4 if on else 0)  # SW_SHOWNOACTIVATE · SW_HIDE
 

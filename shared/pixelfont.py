@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""HUD 와 페이지가 같이 쓰는 픽셀 글꼴(3×5)과 아이콘(7×7). '#' 이 칠하는 칸."""
+"""usage-hud(HUD·페이지)와 sysmon 픽셀 테마가 같이 쓰는 픽셀 글꼴(3×5)과 아이콘(7×7). '#' 이 칠하는 칸."""
 
 GLYPHS = {
     "A": (".#.", "#.#", "###", "#.#", "#.#"), "B": ("##.", "#.#", "##.", "#.#", "##."),
@@ -32,11 +32,14 @@ ICONS = {
     "heart": (".rr.rr.", "rwrrrrr", "rrrrrrr", "rrrrrrr", ".rrrrr.", "..rrr..", "...r..."),
     "bolt": ("...yyy.", "..yyy..", ".yyy...", "yyyyyy.", "...yy..", "..yy...", ".y....."),
     "coin": ("..ooo..", ".oyyyo.", "oywyyyo", "oyyyyyo", "oyyyyyo", ".oyyyo.", "..ooo.."),
+    "cpu": (".p.p.p.", "ppppppp", ".pcccp.", "ppcwcpp", ".pcccp.", "ppppppp", ".p.p.p."),
+    "mem": (".......", "ggggggg", "gyygyyg", "gyygyyg", "ggggggg", "y.y.y.y", "......."),
 }
 
 # 팔레트는 Endesga 32 에서 골랐다 (색 값만 씀)
 COLORS = {
     "r": "#e43b44", "w": "#ffffff", "y": "#feae34", "o": "#b86f50",
+    "p": "#8b9bb4", "c": "#0099db", "g": "#3e8948",
     "bg": "#181425", "edge": "#3a4466", "slot": "#262b44", "text": "#c0cbdc",
     "good": "#63c74d", "mid": "#feae34", "low": "#e43b44", "dim": "#5a6988",
 }

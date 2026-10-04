@@ -4,13 +4,14 @@
   pythonw hud.py              띄우기 (창 없이 뒤에서 돎)
   python hud.py --toggle      떠 있으면 치우고, 없으면 띄움 (hud.bat 이 이걸 부름)
   python hud.py --stop        치우기
-  python hud.py --corner tr   자리: bl(기본) · br · tl · tr
+  python hud.py --corner tr   자리: bl(기본) · br · tl · tr · bar(작업 표시줄, sysmon 왼쪽)
   python hud.py --scale 4     픽셀 하나의 크기 (기본 3)
 
 HP 는 7일 창, ST 는 5시간 창의 **남은** 양이다. 칸 옆은 재설정까지 남은 시간.
 동전 줄은 오늘 쓴 정가. 창은 맨 위에 있지만 클릭을 아래로 통과시키고 포커스도 안 뺏는다.
 대신 트레이(알림 영역)에 하트 아이콘이 뜨고, 그 메뉴에서 숨기기·위치·크기·페이지·끝내기를 한다.
-메뉴에서 고른 위치와 크기는 SETTINGS 에 남아 다음에 켤 때도 쓰인다.
+메뉴에서 고른 위치와 크기는 SETTINGS 에 남아 다음에 켤 때도 쓰인다. '작업 표시줄' 자리에서는 두 줄짜리
+납작한 모양으로 sysmon(없으면 알림 영역) 왼쪽에 붙고, 크기는 작업 표시줄 높이에 맞춰 정해진다.
 """
 import argparse
 import ctypes
@@ -29,8 +30,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 import overlay
 import startup
+import taskbar
 import usage
-from font import COLORS, ICONS, text_pixels, text_width
+from pixelfont import COLORS, ICONS, text_pixels, text_width
 from tray import Tray, write_ico
 
 PID_FILE = Path(tempfile.gettempdir()) / "playroom-usage-hud.pid"
@@ -41,13 +43,19 @@ REFRESH_SEC = 60   # 정가를 다시 셈. 한도는 usage.LIMIT_EVERY 가 따�
 MARGIN = 12        # 작업 영역 가장자리에서 띄울 px
 SEGMENTS = 10      # 칸 수. 한 칸 = 10%
 W, H = 90, 29      # 패널 크기 (픽셀 단위)
+BAR_W, BAR_H = 132, 19  # 작업 표시줄 자리의 납작한 패널: 두 줄 + 오른쪽에 동전 칸
+BAR_RIGHT = 92     # 그 패널에서 남은 시간 글자의 오른쪽 끝
+BAR_GAP = 8        # sysmon 과 띄울 px
+SYSMON_CLASS = "PlayroomSysmonSurface"
 PAGE_PORT = 8765
 
 # 메뉴 id
 SHOW, PAGE, HELP, AUTOSTART, EXIT = 1, 30, 40, 50, 99
 
 RUN_NAME = "PlayroomUsageHud"  # Run 키 값 이름. 바꾸면 이미 켜 둔 등록이 꺼진 것으로 보임
-CORNERS = {10: ("bl", "왼쪽 아래"), 11: ("br", "오른쪽 아래"), 12: ("tl", "왼쪽 위"), 13: ("tr", "오른쪽 위")}
+CORNERS = {10: ("bl", "왼쪽 아래"), 11: ("br", "오른쪽 아래"), 12: ("tl", "왼쪽 위"), 13: ("tr", "오른쪽 위"),
+           14: ("bar", "작업 표시줄 (sysmon 왼쪽)")}
+CORNER_KEYS = tuple(c for c, _ in CORNERS.values())
 SCALES = {20 + s: s for s in (2, 3, 4, 5)}
 
 HELP_TEXT = """HP (하트) — 7일 한도의 남은 양
@@ -79,7 +87,7 @@ def load_settings():
     if not isinstance(data, dict):
         return {}
     ok = {}
-    if data.get("corner") in ("bl", "br", "tl", "tr"):
+    if data.get("corner") in CORNER_KEYS:
         ok["corner"] = data["corner"]
     if data.get("scale") in range(1, 9):
         ok["scale"] = data["scale"]
@@ -93,6 +101,8 @@ def level_color(left):
 class Hud:
     def __init__(self, scale, corner):
         self.s, self.corner, self.visible = scale, corner, True
+        # 지금 그리는 픽셀 크기 · 납작한 모양인가 · 창 자리 · 전체 화면에 가려 숨었나
+        self.ps, self.flat, self.geom, self.covered = scale, False, None, False
         self.root = tk.Tk()
         self.root.title("usage-hud")  # layers 가 이 제목으로 알아봄
         self.root.overrideredirect(True)
@@ -111,12 +121,25 @@ class Hud:
         threading.Thread(target=self.fetch_loop, daemon=True).start()
 
     def place(self):
-        s = self.s
-        self.canvas.configure(width=W * s, height=H * s)
-        l, t, r, b = overlay.work_area()
-        x = l + MARGIN if "l" in self.corner else r - MARGIN - W * s
-        y = t + MARGIN if "t" in self.corner else b - MARGIN - H * s
-        self.root.geometry(f"{W * s}x{H * s}+{x}+{y}")
+        """자리를 다시 셈. 작업 표시줄 자리면 sysmon 이 옮기거나 폭이 바뀔 때 따라가려고 1초마다 부름."""
+        spot = taskbar.spot() if self.corner == "bar" else None
+        if spot:
+            notify, top, bar_h = spot
+            s = max(1, (bar_h - 4) // BAR_H)
+            w, h = BAR_W * s, BAR_H * s
+            x = (taskbar.window_left(SYSMON_CLASS) or notify) - BAR_GAP - w
+            y = top + (bar_h - h) // 2
+        else:  # 작업 표시줄을 못 찾으면 왼쪽 아래 구석
+            s = self.s
+            w, h = W * s, H * s
+            l, t, r, b = overlay.work_area()
+            x = r - MARGIN - w if "r" in self.corner else l + MARGIN
+            y = t + MARGIN if "t" in self.corner else b - MARGIN - h
+        geom = f"{w}x{h}+{x}+{y}"
+        if geom != self.geom:
+            self.geom, self.ps, self.flat = geom, s, bool(spot)
+            self.canvas.configure(width=w, height=h)
+            self.root.geometry(geom)
 
     # ── 트레이 ──
     def menu(self):
@@ -146,13 +169,15 @@ class Hud:
     def handle(self, cid):
         if cid == SHOW:
             self.visible = not self.visible
-            self.root.deiconify() if self.visible else self.root.withdraw()
-            if self.visible:
-                overlay.click_through(self.root)  # 다시 보일 때 확장 스타일이 풀리지 않게
+            self.show(self.visible and not self.covered)
         elif cid in CORNERS or cid in SCALES:
             self.corner = CORNERS[cid][0] if cid in CORNERS else self.corner
             self.s = SCALES.get(cid, self.s)
+            if self.corner != "bar" and self.covered:
+                self.covered = False
+                self.show(self.visible)
             self.place()
+            self.draw()
             self.save()
         elif cid == AUTOSTART:
             startup.toggle(RUN_NAME, __file__)
@@ -164,6 +189,11 @@ class Hud:
                              args=(None, HELP_TEXT, "사용량 HUD 도움말", 0x40040)).start()  # 정보 · 맨 위
         elif cid == EXIT:
             self.tray.close()  # 트레이가 닫히면 None 이 와서 poll 이 끝냄
+
+    def show(self, on):
+        self.root.deiconify() if on else self.root.withdraw()
+        if on:
+            overlay.click_through(self.root)  # 다시 보일 때 확장 스타일이 풀리지 않게
 
     def save(self):
         try:
@@ -208,7 +238,7 @@ class Hud:
 
     # ── 그리기 ──
     def px(self, x, y, color, w=1, h=1):
-        s = self.s
+        s = self.ps
         self.canvas.create_rectangle(x * s, y * s, (x + w) * s, (y + h) * s, fill=color, width=0)
 
     def text(self, x, y, s, color):
@@ -221,7 +251,7 @@ class Hud:
                 if c != ".":
                     self.px(x + dx, y + dy, COLORS[c])
 
-    def bar_row(self, y, icon, label, bar, expired, blink):
+    def bar_row(self, y, icon, label, bar, expired, blink, right):
         self.icon(2, y, icon)
         self.text(11, y + 1, label, COLORS["text"])
         x0 = 20
@@ -230,7 +260,7 @@ class Hud:
                 self.px(x0 + i * 3, y + 1, COLORS["slot"], 2, 5)
             self.text(x0 + SEGMENTS * 3 + 2, y + 1, "?", COLORS["dim"])
             if expired:  # 로그인 토큰 만료 — 터미널에서 claude 를 열면 풀림
-                self.text(W - 2 - text_width("LOGIN"), y + 1, "LOGIN", COLORS["low"])
+                self.text(right - text_width("LOGIN"), y + 1, "LOGIN", COLORS["low"])
             return
         left = bar["left"]
         filled = round(left * SEGMENTS)
@@ -242,31 +272,49 @@ class Hud:
         pct = "%d%%" % round(left * 100)
         self.text(x0 + SEGMENTS * 3 + 2, y + 1, pct, color)
         until = usage.left(bar["reset"] - time.time())
-        self.text(W - 2 - text_width(until), y + 1, until, COLORS["dim"])
+        self.text(right - text_width(until), y + 1, until, COLORS["dim"])
 
     def draw(self):
         c = self.canvas
         c.delete("all")
-        self.px(0, 0, COLORS["edge"], W, 1)
-        self.px(0, H - 1, COLORS["edge"], W, 1)
-        self.px(0, 0, COLORS["edge"], 1, H)
-        self.px(W - 1, 0, COLORS["edge"], 1, H)
+        flat = self.flat
+        w, h = (BAR_W, BAR_H) if flat else (W, H)
+        self.px(0, 0, COLORS["edge"], w, 1)
+        self.px(0, h - 1, COLORS["edge"], w, 1)
+        self.px(0, 0, COLORS["edge"], 1, h)
+        self.px(w - 1, 0, COLORS["edge"], 1, h)
         snap = self.snap
         blink = int(time.time()) % 2 == 0
         bars = snap["bars"] if snap else {"7d": None, "5h": None}
         expired = bool(snap and snap["expired"])
-        self.bar_row(2, "heart", "HP", bars["7d"], expired, blink)
-        self.bar_row(11, "bolt", "ST", bars["5h"], expired, blink)
-        self.icon(2, 20, "coin")
+        right = BAR_RIGHT if flat else W - 2
+        pitch = 8 if flat else 9  # 납작한 모양은 줄 사이를 1칸 줄여 작업 표시줄에 들어가게
+        self.bar_row(2, "heart", "HP", bars["7d"], expired, blink, right)
+        self.bar_row(2 + pitch, "bolt", "ST", bars["5h"], expired, blink, right)
         gold = "%.2f" % snap["today"] if snap else "?"  # 동전이 달러 표시를 대신함
-        self.text(11, 21, gold, COLORS["y"])
-        self.text(W - 2 - text_width("TODAY"), 21, "TODAY", COLORS["dim"])
+        if flat:  # 두 줄 오른쪽에 칸막이를 두고 동전과 오늘 정가
+            self.px(right + 3, 2, COLORS["edge"], 1, h - 4)
+            self.icon(right + 6, 2, "coin")
+            self.text(right + 15, 3, gold, COLORS["y"])
+            self.text(w - 3 - text_width("TODAY"), 11, "TODAY", COLORS["dim"])
+        else:
+            self.icon(2, 20, "coin")
+            self.text(11, 21, gold, COLORS["y"])
+            self.text(W - 2 - text_width("TODAY"), 21, "TODAY", COLORS["dim"])
 
     def tick(self):
+        bar = self.corner == "bar"
+        if bar:
+            covered = taskbar.fullscreen_app()  # 전체 화면이면 작업 표시줄과 같이 숨음
+            if covered != self.covered:
+                self.covered = covered
+                self.show(self.visible and not covered)
+            self.place()
         self.draw()
         now = time.monotonic()
-        # 다른 맨 위 창(PIP 등)이 앞을 가져가도 가끔 다시 올라옴
-        if self.visible and now - self.last_topmost > 2 and not overlay.layers_running():
+        # 다른 맨 위 창(PIP 등)이 앞을 가져가도 가끔 다시 올라옴. 작업 표시줄 자리는 누르면 그쪽이
+        # 앞으로 오므로 sysmon 처럼 1초마다
+        if self.visible and now - self.last_topmost > (0.9 if bar else 2) and not overlay.layers_running():
             self.root.attributes("-topmost", True)
             self.last_topmost = now
         self.root.after(1000, self.tick)
@@ -283,7 +331,7 @@ def main():
     ap.add_argument("--toggle", action="store_true", help="떠 있으면 치우고, 없으면 띄움")
     # 안 주면 트레이 메뉴에서 마지막으로 고른 값, 그것도 없으면 bl · 3
     saved = load_settings()
-    ap.add_argument("--corner", default=saved.get("corner", "bl"), choices=("bl", "br", "tl", "tr"),
+    ap.add_argument("--corner", default=saved.get("corner", "bl"), choices=CORNER_KEYS,
                     help="자리 (기본 bl)")
     ap.add_argument("--scale", type=int, default=saved.get("scale", 3), choices=range(1, 9),
                     help="픽셀 크기 (기본 3)")

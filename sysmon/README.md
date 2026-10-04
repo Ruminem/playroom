@@ -6,7 +6,10 @@ CPU and memory use in two small lines on the taskbar, right next to the notifica
 
 ## Use
 
-Double-click [sysmon.bat](sysmon.bat) to start or stop it. A small bar-chart icon sits in the notification area; hover it for memory in GB. Its menu picks how memory is shown — percent (`MEM 22%`), amount (`MEM 14.2/63.9G`) or both (`MEM 14.2/63.9G 22%`), kept in `%LOCALAPPDATA%\playroom\sysmon.json` — starts it with Windows (same as [usage-hud](../usage-hud/#hud)) and exits.
+Double-click [sysmon.bat](sysmon.bat) to start or stop it. A small bar-chart icon sits in the notification area; hover it for memory in GB. Its menu picks how memory is shown — percent (`MEM 22%`), amount (`MEM 14.2/63.9G`) or both (`MEM 14.2/63.9G 22%`) — and the **theme**, both kept in `%LOCALAPPDATA%\playroom\sysmon.json`. It also starts it with Windows (same as [usage-hud](../usage-hud/#hud)) and exits.
+
+- **Default** — the two lines of text above
+- **Pixel** — the [usage-hud](../usage-hud/) look: a dark box with a chip and a memory-stick icon, an 8-cell bar per line and pixel-font numbers. Bars are green, orange above 70%, red above 90%. Put usage-hud on the taskbar too and the two sit side by side
 
 `python sysmon.py --stop` closes it, `python sysmon.py --check` runs the self-check.
 
@@ -20,6 +23,7 @@ It wakes ten times a second to handle messages and measures once a second. Measu
 - It draws onto a click-through, topmost window with per-pixel alpha ([surface.py](../shared/surface.py)) placed over the taskbar. Text is drawn by GDI in white with greyscale anti-aliasing, then the brightness becomes alpha and the line colour is applied, so the edges stay soft on any taskbar colour. The taskbar drawing lives in [taskbar.py](../shared/taskbar.py)
 - Every second it re-reads where the notification area (`TrayNotifyWnd`) starts, so it follows when tray icons come and go, and re-asserts topmost because clicking the taskbar brings it to the front — unless [layers](../layers/) is running, which then keeps the order
 - When a full-screen app is running (`SHQueryUserNotificationState`: busy, Direct3D full screen or presentation mode) it hides, since the taskbar is gone too
+- The pixel theme stamps rectangles straight into the same buffer, with the font and icons from [pixelfont.py](../shared/pixelfont.py). The buffer is sized for the widest theme and format, but the window only shows the part that is drawn (`Surface.view`), so usage-hud can sit right next to it
 - Not handled: an auto-hiding taskbar, a taskbar on the side or top, and monitors other than the primary one
 
 ---
@@ -32,7 +36,10 @@ It wakes ten times a second to handle messages and measures once a second. Measu
 
 ### 쓰는 법
 
-[sysmon.bat](sysmon.bat) 을 더블클릭하면 켜지고, 다시 누르면 꺼짐. 알림 영역에 작은 막대그래프 아이콘이 뜸. 마우스를 올리면 메모리를 GB 로 보여 줌. 메뉴에서 메모리를 퍼센트(`MEM 22%`)·용량(`MEM 14.2/63.9G`)·둘 다(`MEM 14.2/63.9G 22%`) 중 어떻게 보일지 고르고(`%LOCALAPPDATA%\playroom\sysmon.json` 에 남음), 윈도우 시작 시 실행([usage-hud](../usage-hud/#hud-1) 와 같음)을 켜고 끝냄.
+[sysmon.bat](sysmon.bat) 을 더블클릭하면 켜지고, 다시 누르면 꺼짐. 알림 영역에 작은 막대그래프 아이콘이 뜸. 마우스를 올리면 메모리를 GB 로 보여 줌. 메뉴에서 메모리를 퍼센트(`MEM 22%`)·용량(`MEM 14.2/63.9G`)·둘 다(`MEM 14.2/63.9G 22%`) 중 어떻게 보일지와 **테마** 를 고르고(둘 다 `%LOCALAPPDATA%\playroom\sysmon.json` 에 남음), 윈도우 시작 시 실행([usage-hud](../usage-hud/#hud-1) 와 같음)을 켜고 끝냄.
+
+- **기본** — 위의 글자 두 줄
+- **픽셀** — [usage-hud](../usage-hud/) 모양. 어두운 상자 안에 칩·메모리 막대 아이콘, 줄마다 8칸 막대, 픽셀 글꼴 숫자가 들어감. 막대는 초록이고 70% 를 넘으면 주황, 90% 를 넘으면 빨강. usage-hud 도 작업 표시줄에 두면 둘이 나란히 붙음
 
 `python sysmon.py --stop` 으로 끄고, `python sysmon.py --check` 로 자체 점검을 돌림.
 
@@ -46,4 +53,5 @@ It wakes ten times a second to handle messages and measures once a second. Measu
 - 작업 표시줄 위에 얹은 클릭 통과·맨 위·픽셀 알파 창([surface.py](../shared/surface.py))에 그림. 글자는 GDI 로 흰색 회색조 안티에일리어싱으로 그린 뒤 밝기를 알파로 바꿔 줄 색을 입힘. 그래서 작업 표시줄 색이 무엇이든 가장자리가 부드러움. 작업 표시줄 그리기는 [taskbar.py](../shared/taskbar.py) 에 있음
 - 1초마다 알림 영역(`TrayNotifyWnd`)이 어디서 시작하는지 다시 읽어 트레이 아이콘이 늘거나 줄면 따라감. 작업 표시줄을 누르면 그쪽이 앞으로 오므로 맨 위도 1초마다 다시 잡음. [layers](../layers/) 가 떠 있으면 순서는 그쪽에 맡김
 - 전체 화면 앱이 돌면(`SHQueryUserNotificationState` 가 바쁨·Direct3D 전체 화면·발표 모드) 작업 표시줄도 사라지므로 같이 숨음
+- 픽셀 테마는 같은 버퍼에 네모를 바로 찍고, 글꼴과 아이콘은 [pixelfont.py](../shared/pixelfont.py) 의 것을 씀. 버퍼는 가장 넓은 테마·모양에 맞춰 잡지만 창은 그린 부분만 보여서(`Surface.view`) usage-hud 가 바로 옆에 붙을 수 있음
 - 안 따지는 것: 자동 숨기기 작업 표시줄, 옆이나 위에 둔 작업 표시줄, 주 모니터가 아닌 모니터
