@@ -12,7 +12,9 @@ SCALE = 3  # 그림 한 칸 = 화면 px
 
 COLORS = {"k": (38, 43, 68), "o": (247, 118, 34), "l": (254, 174, 52), "w": (255, 255, 255),
           "p": (232, 183, 150), "e": (24, 20, 37), "z": (192, 203, 220),
-          "b": (150, 98, 58), "c": (236, 218, 186), "y": (250, 186, 60)}  # b·c·y 는 새
+          "b": (150, 98, 58), "c": (236, 218, 186), "y": (250, 186, 60),  # b·c·y 는 새
+          "d": (196, 128, 72), "a": (122, 76, 44),  # 강아지 털·귀
+          "h": (214, 214, 226), "g": (62, 68, 94)}  # 토끼 회색 · 펭귄 등
 
 # 오른쪽을 봄. 왼쪽은 좌우로 뒤집어 씀. 모든 그림은 같은 크기, 발바닥이 맨 아랫줄
 HEAD = (".............k.....k..",
@@ -102,6 +104,89 @@ BIRD_ART = {"bird_stand": BIRD, "bird_air": NO_LEGS,
 BIRD_W, BIRD_H = len(BIRD[0]) * SCALE, len(BIRD) * SCALE
 BIRD_FOOT = (5 * SCALE, 8 * SCALE)
 
+# 강아지. 꼬리 자리(왼쪽 위)를 비워 두고 꼬리를 덮어 흔듦
+DOG_HEAD = ("...........kkkkk....",
+            "..........kdddddk...",
+            ".........kaaddedk...",
+            ".........kaaddddkkk.",
+            ".........kaadddwwwek",
+            ".........kaadddwwwk.",
+            ".....kkkkkaaddddkk..")
+DOG_BODY = ("....kddddddddddddk..",
+            "....kdddddddddddddk.",
+            "....kddwwwwwwwwddk..")
+DOG_LEGS = {"stand": ("....kdk.kdk.kdk.kdk.",
+                      "....kdk.kdk.kdk.kdk.",
+                      "....kkk.kkk.kkk.kkk."),
+            "walk1": ("....kdk.kdk.kdk.kdk.",
+                      "...kdk..kdk..kdk.kdk",
+                      "...kkk..kkk..kkk.kkk"),
+            "walk2": ("....kdk.kdk.kdk.kdk.",
+                      ".....kdkdk...kdkdk..",
+                      ".....kkkkk...kkkkk..")}
+TAIL_UP, TAIL_WAG = (".k..", "kdk.", "kdk.", ".kdk"), ("....", "kk..", "kddk", ".kdk")
+DOG_ART = {"dog_" + name: put(DOG_HEAD + DOG_BODY + legs, TAIL_UP, 1, 2) for name, legs in DOG_LEGS.items()}
+DOG_ART["dog_wag"] = put(DOG_HEAD + DOG_BODY + DOG_LEGS["stand"], TAIL_WAG, 1, 2)
+DOG_ART["dog_sit"] = DOG_HEAD[:6] + (".........kaaddddkk..",
+                                     "........kddddddk....",
+                                     ".......kdddddwwk....",
+                                     ".......kddddwwwk....",
+                                     "..kk...kddddwwwk....",
+                                     "..kdkkkkddddkdk.....",
+                                     "...kkkkkkkkkkkk.....")
+DOG_ART["dog_sleep"] = ("....................",) * 7 + (".............kddddk.",
+                                                          "....kkkkkkkkkaddkdkk",
+                                                          "...kdddddddddaaddwwk",
+                                                          "..kddddddddddaadwwwk",
+                                                          ".kkdddwwwwwwdddddkk.",
+                                                          "..kkkkkkkkkkkkkkkk..")
+
+# 토끼
+RABBIT = ("........kk.kk.",
+          ".......kpk.kpk",
+          ".......kpk.kpk",
+          ".......kpkkkpk",
+          "......khhhhhhk",
+          "......khhhhehk",
+          "...kkkkhhhhhhp",
+          "..khhhhhhhhhk.",
+          ".kwhhhhhhhhhk.",
+          "kwwhhhhhhhhk..",
+          ".khhhhhhhhhk..",
+          "..khhhwhhhkk..",
+          "..khhk.khhhk..",
+          "..kkkk.kkkkkk.")
+RABBIT_ART = {"rab_stand": RABBIT,
+              "rab_sniff": put(RABBIT, ("w",), 13, 6),  # 코 씰룩
+              "rab_jump": RABBIT[:11] + ("kkhhhhhhhhk...",
+                                         "khhkk.kwk.....",
+                                         "kkk...kkk.....")}
+
+# 펭귄. 서 있는 그림은 양옆 한 칸씩 띄워 배 깔고 미끄러지는 그림과 폭을 맞춤
+PENGUIN = ("....kkkk....",
+           "...kggggk...",
+           "..kgggwegk..",
+           "..kgggggkoo.",
+           "..kggwwwk...",
+           ".kggwwwwwk..",
+           ".kgwwwwwwk..",
+           "kggwwwwwwwk.",
+           "kggwwwwwwwk.",
+           "kgkwwwwwwwk.",
+           ".kkwwwwwwwk.",
+           "..kwwwwwwk..",
+           "..kgwwwwgk..",
+           "...kggggk...")
+PENGUIN_FEET = {"stand": ("...kokkok...", "..kookkook.."),
+                "walk1": ("...kokkk....", "..kookk....."),
+                "walk2": ("....kkkok...", ".....kkook..")}
+PENG_ART = {"peng_" + name: tuple("." + r + "." for r in PENGUIN + feet) for name, feet in PENGUIN_FEET.items()}
+PENG_ART["peng_slide"] = ("..............",) * 11 + ("...kkkkkkkk...",
+                                                      ".kkggggggwegk.",
+                                                      "kgwwwwwwwwggko",
+                                                      ".kwwwwwwwwwkk.",
+                                                      "kokkkkkkkkkk..")
+
 WALK, RUN = 38, 150      # px/초. 비 올 때 걷기는 RUN 의 절반
 STEP, RUN_STEP = 0.2, 0.08  # 걸음 그림 바꾸는 간격 초
 HOP_V, GRAVITY = 420, 1500  # 깜짝 뛰기: 처음 위로 px/초, 중력 px/초²
@@ -131,8 +216,8 @@ def segments(rows, flip):
 
 def sprites():
     """{(그림 이름, 오른쪽을 보나): 조각들}. Z 는 ('zzz', True)."""
-    sp = {(name, right): segments(rows, not right) for name, rows in (*ART.items(), *BIRD_ART.items())
-          for right in (True, False)}
+    sp = {(name, right): segments(rows, not right) for art in (ART, BIRD_ART, DOG_ART, RABBIT_ART, PENG_ART)
+          for name, rows in art.items() for right in (True, False)}
     sp[("zzz", True)] = segments(ZZZ, False)
     return sp
 
@@ -150,11 +235,15 @@ def stamp(px, stride, x, y, segs, width, height):
 
 
 class Cat:
-    """상태: walk · stand · sit · sleep · hop(깜짝 뛰기) · run(뛰어 달아남). 시각은 밖에서 받음."""
+    """상태: walk · stand · sit · sleep · hop(깜짝 뛰기) · run(뛰어 달아남). 시각은 밖에서 받음.
+    강아지·펭귄은 그림(PRE 로 시작하는 이름)·크기·빠르기만 바꿔 이어받음."""
+    PRE, W, H, FOOT, WALK_V = "", W, H, FOOT, WALK
+    DUR = {"walk": (3, 9), "stand": (1.5, 4), "sit": (3, 8), "sleep": (12, 30), "hop": (9, 9), "run": (1.2, 1.8)}
+    snowy = False  # 눈·우박 더미가 있는 날. weather 가 매 프레임 넣음 (펭귄만 봄)
 
     def __init__(self, width, rng=random):
         self.rng, self.width = rng, width
-        self.x = rng.uniform(0, max(0, width - W))
+        self.x = rng.uniform(0, max(0, width - self.W))
         self.right = rng.random() < 0.5
         self.hop, self.vy = 0.0, 0.0  # 바닥 위로 뜬 높이 px, 위로 속도
         self.zz = []  # 떠오르는 Z 들의 나온 시각
@@ -162,12 +251,10 @@ class Cat:
 
     def go(self, state, now):
         self.state, self.since = state, now
-        lo, hi = {"walk": (3, 9), "stand": (1.5, 4), "sit": (3, 8), "sleep": (12, 30), "hop": (9, 9),
-                  "run": (1.2, 1.8)}[state]
-        self.until = now + self.rng.uniform(lo, hi)
+        self.until = now + self.rng.uniform(*self.DUR[state])
 
     def startle(self, now):
-        """번개. 자고 있었어도 깸."""
+        """번개·우박. 자고 있었어도 깸."""
         if self.state != "hop":
             self.go("hop", now)
             self.vy, self.zz = HOP_V, []
@@ -198,11 +285,11 @@ class Cat:
             return
         if now >= self.until:
             self.next_state(now, rainy)
-        if self.state in ("walk", "run"):
-            speed = RUN if self.state == "run" else RUN / 2 if rainy else WALK
+        if self.state in ("walk", "run", "slide"):
+            speed = RUN if self.state != "walk" else RUN / 2 if rainy else self.WALK_V
             self.x += speed * dt * (1 if self.right else -1)
-            if self.x <= 0 or self.x >= self.width - W:  # 끝에 닿으면 돌아섬
-                self.x = min(max(self.x, 0), max(0, self.width - W))
+            if self.x <= 0 or self.x >= self.width - self.W:  # 끝에 닿으면 돌아섬
+                self.x = min(max(self.x, 0), max(0, self.width - self.W))
                 self.right = self.x <= 0
         if self.state == "sleep":
             if not self.zz or now - self.zz[-1] >= ZZ_EVERY:
@@ -214,22 +301,22 @@ class Cat:
     def pose(self, now, rainy):
         if self.state in ("walk", "run"):
             step = RUN_STEP if self.state == "run" or rainy else STEP
-            return "walk1" if int((now - self.since) / step) % 2 == 0 else "walk2"
-        return {"hop": "stand"}.get(self.state, self.state)
+            return self.PRE + ("walk1" if int((now - self.since) / step) % 2 == 0 else "walk2")
+        return self.PRE + {"hop": "stand"}.get(self.state, self.state)
 
     def feet(self):
         """발이 닿는 열 범위 [a, b)."""
-        a, b = FOOT if self.right else (W - FOOT[1], W - FOOT[0])
+        a, b = self.FOOT if self.right else (self.W - self.FOOT[1], self.W - self.FOOT[0])
         return int(self.x) + a, int(self.x) + b
 
     def draw(self, px, stride, height, sprites, ground, now, rainy):
         """ground: 발 밑 열들 중 가장 높이 쌓인 높이 px. 그 위에 섬."""
         x = int(self.x)
-        y = height - int(ground) - H - int(self.hop)
+        y = height - int(ground) - self.H - int(self.hop)
         stamp(px, stride, x, y, sprites[(self.pose(now, rainy), self.right)], self.width, height)
         for t in self.zz:  # 머리 위에서 비스듬히 떠오름
             k = (now - t) / ZZ_RISE
-            hx = x + (W - 5 * SCALE if self.right else 2 * SCALE)
+            hx = x + (self.W - 5 * SCALE if self.right else 2 * SCALE)
             zx = hx + int(k * 14 * (1 if self.right else -1))
             zy = y + 4 * SCALE - int(k * 40)
             if 0 <= zx <= self.width - 4 * SCALE:
@@ -237,8 +324,7 @@ class Cat:
 
 
 class Bird:
-    """Cat 과 같은 겉모습. 상태: hop(콩콩) · peck(쪼기) · stand(두리번) · fly_out · away(화면 밖) · fly_in.
-    날아 나간 쪽 반대편 끝에서 같은 방향으로 날아 들어와 내려앉음."""
+    """Cat 과 같은 겉모습. 상태: hop(콩콩) · peck(쪼기) · stand(두리번) · fly(화면 안 다른 자리로 날아가 앉음)."""
 
     def __init__(self, width, rng=random):
         self.rng, self.width = rng, width
@@ -249,42 +335,42 @@ class Bird:
 
     def go(self, state, now):
         self.state, self.since = state, now
-        lo, hi = {"hop": (1, 3), "peck": (0.8, 2), "stand": (1, 3), "fly_out": (99, 99), "away": (4, 10),
-                  "fly_in": (99, 99)}[state]
+        lo, hi = {"hop": (1, 3), "peck": (0.8, 2), "stand": (1, 3), "fly": (99, 99)}[state]
         self.until = now + self.rng.uniform(lo, hi)
 
+    def fly(self, now, far):
+        """화면 안 다른 자리로 날아감. far 면 지금 자리에서 먼 쪽 1/3 로."""
+        room = max(0, self.width - BIRD_W)
+        if far:
+            self.land = self.rng.uniform(0, room / 3) if self.x > room / 2 else self.rng.uniform(room * 2 / 3, room)
+        else:
+            self.land = self.rng.uniform(0, room)
+            if abs(self.land - self.x) < 120:  # 너무 가까우면 넓은 쪽으로 120px 밀어 냄
+                self.land = self.x + (120 if self.x < room / 2 else -120)
+                self.land = min(max(self.land, 0), room)
+        self.start, self.right = self.x, self.land >= self.x
+        self.go("fly", now)
+
     def startle(self, now):
-        """번개·우박. 땅에 있으면 날아감."""
-        if self.state in ("hop", "peck", "stand"):
-            self.go("fly_out", now)
+        """번개·우박. 땅에 있으면 멀리 날아감."""
+        if self.state != "fly":
+            self.fly(now, True)
 
     def update(self, dt, now, rainy):
         s, sign = self.state, 1 if self.right else -1
-        if s == "fly_out":
+        if s == "fly":  # 날아오르며 가고, 앉을 자리 가까이서 내려옴
             self.x += FLY * dt * sign
-            self.alt = min(FLY_ALT, self.alt + FLY * 0.6 * dt)
-            if self.x <= -BIRD_W or self.x >= self.width:
-                self.x = min(max(self.x, -BIRD_W), self.width)
-                self.go("away", now)
-            return
-        if s == "away":
-            if now >= self.until:
-                self.x = -BIRD_W if self.right else self.width
-                self.land = self.rng.uniform(0.15, 0.85) * max(0, self.width - BIRD_W)
-                self.go("fly_in", now)
-            return
-        if s == "fly_in":
-            self.x += FLY * dt * sign
-            left = (self.land - self.x) * sign  # 내려앉을 자리까지 남은 px
-            self.alt = FLY_ALT * min(1.0, max(0.0, left) / 200)
+            left = (self.land - self.x) * sign  # 앉을 자리까지 남은 px
             if left <= 0:
                 self.x, self.alt = self.land, 0.0
                 self.go("stand", now)
+            else:
+                self.alt = FLY_ALT * min(1.0, (abs(self.land - self.start) - left) / 80, left / 160)
             return
         if now >= self.until:
             r = self.rng.random()
             if r < 0.1:
-                self.go("fly_out", now)
+                self.fly(now, False)
                 return
             if s == "hop" and r < 0.4:
                 self.right = not self.right
@@ -303,22 +389,111 @@ class Bird:
                 self.right = not self.right
 
     def pose(self, now):
-        if self.state in ("fly_out", "fly_in"):
+        if self.state == "fly":
             return "bird_fly1" if int((now - self.since) / FLAP) % 2 == 0 else "bird_fly2"
         if self.state == "peck":
             return "bird_peck" if int((now - self.since) / 0.25) % 2 == 0 else "bird_stand"
         return "bird_stand"
 
     def feet(self):
-        """발이 닿는 열 범위 [a, b). 화면 밖에 있어도 화면 안의 비지 않은 범위."""
+        """발이 닿는 열 범위 [a, b)."""
         a, b = BIRD_FOOT if self.right else (BIRD_W - BIRD_FOOT[1], BIRD_W - BIRD_FOOT[0])
-        a = min(max(int(self.x) + a, 0), self.width - 1)
-        return a, max(min(int(self.x) + b, self.width), a + 1)
+        return int(self.x) + a, int(self.x) + b
 
     def draw(self, px, stride, height, sprites, ground, now, rainy):
-        if self.state != "away":
-            y = height - int(ground) - BIRD_H - int(self.alt)
-            stamp(px, stride, int(self.x), y, sprites[(self.pose(now), self.right)], self.width, height)
+        y = height - int(ground) - BIRD_H - int(self.alt)
+        stamp(px, stride, int(self.x), y, sprites[(self.pose(now), self.right)], self.width, height)
+
+
+class Dog(Cat):
+    """고양이처럼 걷고 앉고 자며, 서 있을 땐 꼬리를 흔듦."""
+    PRE, W, H, FOOT = "dog_", 20 * SCALE, 13 * SCALE, (4 * SCALE, 19 * SCALE)
+
+    def pose(self, now, rainy):
+        p = super().pose(now, rainy)
+        return "dog_wag" if self.state == "stand" and int((now - self.since) / 0.18) % 2 else p
+
+
+class Penguin(Cat):
+    """뒤뚱뒤뚱 걷다 서고, 눈·우박이 쌓인 날엔 가끔 배를 깔고 미끄러짐. 앉거나 자지 않음."""
+    PRE, W, H, FOOT, WALK_V = "peng_", 14 * SCALE, 16 * SCALE, (4 * SCALE, 10 * SCALE), 22
+    DUR = {**Cat.DUR, "slide": (0.8, 1.6)}
+
+    def next_state(self, now, rainy):
+        r = self.rng.random()
+        if self.state == "walk":
+            self.go("slide" if self.snowy and r < 0.3 else "stand", now)
+        else:
+            if self.state == "stand" and r < 0.5:
+                self.right = not self.right
+            self.go("walk", now)
+
+
+class Rabbit:
+    """깡충 뛰어 다니다 서서 코를 씰룩임. 놀라면 돌아서 빠르게 뛰어 달아남. Cat 과 같은 겉모습."""
+    W, H, FOOT = 14 * SCALE, 14 * SCALE, (2 * SCALE, 12 * SCALE)
+    JUMP = {"hop": (0.42, 34, 20, (2, 6)), "run": (0.3, 60, 28, (4, 6))}  # 한 번에 초, 앞으로 px, 높이 px, 몇 번
+
+    def __init__(self, width, rng=random):
+        self.rng, self.width = rng, width
+        self.x = rng.uniform(0, max(0, width - self.W))
+        self.right = rng.random() < 0.5
+        self.alt = 0.0
+        self.go("stand", 0.0)
+
+    def go(self, state, now):
+        self.state, self.since = state, now
+        if state in self.JUMP:  # 뛰는 동안은 착지할 때 끝나게 횟수로 셈
+            self.until = now + self.JUMP[state][0] * self.rng.randint(*self.JUMP[state][3])
+        else:
+            self.until = now + self.rng.uniform(*{"stand": (1, 3), "sniff": (1, 2.5)}[state])
+
+    def startle(self, now):
+        if self.state != "run":
+            self.right = not self.right
+            self.go("run", now)
+
+    def update(self, dt, now, rainy):
+        if now >= self.until:
+            r = self.rng.random()
+            if self.state in self.JUMP:
+                self.go("sniff" if r < 0.5 else "stand", now)
+            else:
+                if r < 0.4:
+                    self.right = not self.right
+                self.go("hop" if r < 0.7 else "sniff" if self.state == "stand" else "stand", now)
+        jump = self.JUMP.get(self.state)
+        if not jump:
+            self.alt = 0.0
+            return
+        period, dx, up, _ = jump
+        p = (now - self.since) % period / period
+        self.alt = 4 * up * p * (1 - p)
+        self.x += dx / period * dt * (1 if self.right else -1)
+        if self.x <= 0 or self.x >= self.width - self.W:
+            self.x = min(max(self.x, 0), max(0, self.width - self.W))
+            self.right = self.x <= 0
+
+    def pose(self, now):
+        if self.state in self.JUMP:
+            return "rab_jump" if self.alt > 2 else "rab_stand"
+        if self.state == "sniff":
+            return "rab_sniff" if int((now - self.since) / 0.15) % 2 else "rab_stand"
+        return "rab_stand"
+
+    def feet(self):
+        a, b = self.FOOT if self.right else (self.W - self.FOOT[1], self.W - self.FOOT[0])
+        return int(self.x) + a, int(self.x) + b
+
+    def draw(self, px, stride, height, sprites, ground, now, rainy):
+        y = height - int(ground) - self.H - int(self.alt)
+        stamp(px, stride, int(self.x), y, sprites[(self.pose(now), self.right)], self.width, height)
+
+
+# weather 가 동물만 있을 때 다시 그리는 맨 아래 띠 높이 px. 깜짝 뛰기는 프레임마다 더해 가서 30fps 에서
+# v·dt 만큼 더 오름. Zz 는 이보다 낮게 뜸
+BAND = max(max(c.H for c in (Cat, Dog, Penguin)) + int(HOP_V ** 2 / (2 * GRAVITY) + HOP_V / 30),
+           BIRD_H + FLY_ALT, Rabbit.H + Rabbit.JUMP["run"][2]) + 4
 
 
 def check():
@@ -379,27 +554,67 @@ def check():
     rows = [y for y in range(200) if any(px[y * 2000 + 400:(y + 1) * 2000])]
     assert rows[-1] == 200 - 20 - 1 and rows[0] == 200 - 20 - H, (rows[0], rows[-1])
 
+    for art, cls in ((BIRD_ART, Bird), (DOG_ART, Dog), (RABBIT_ART, Rabbit), (PENG_ART, Penguin)):
+        for name, rows in art.items():
+            assert all(len(r) * SCALE == getattr(cls, "W", BIRD_W) for r in rows), name
+            assert len(rows) * SCALE == getattr(cls, "H", BIRD_H), name
+            assert set("".join(rows)) <= set(COLORS) | {"."}, name
+            assert rows[-1].strip(".") or name in ("bird_air", "bird_fly1", "bird_fly2"), (name, "발바닥이 맨 아랫줄")
+    # 다른 동물: 10분 돌리며 몇 프레임마다 실제로 그려, 화면 안·weather 가 다시 그리는 바닥 띠 안인지 봄
+    band = BAND
+    px = bytearray(500 * 4 * 200)
+    for cls, want in ((Cat, {"walk", "stand", "sit", "sleep"}), (Dog, {"walk", "stand", "sit", "sleep"}),
+                      (Rabbit, {"hop", "stand", "sniff"}),
+                      (Penguin, {"walk", "stand", "slide"})):
+        a = cls(500, random.Random(4))
+        a.snowy, now, seen, top = True, 0.0, set(), 200
+        for i in range(30 * 600):
+            now += 1 / 30
+            a.update(1 / 30, now, False)
+            assert 0 <= a.x <= 500 - cls.W, (cls.__name__, a.x)
+            seen.add(a.state)
+            if i % 7 == 0 or a.state in ("hop", "run"):
+                px[:] = bytes(len(px))
+                a.draw(px, 2000, 200, sp, 0, now, False)
+                top = min(top, (len(px) - len(px.lstrip(b"\0"))) // 2000)
+        assert want <= seen, (cls.__name__, seen)
+        a.startle(now)
+        assert a.state == ("run" if cls is Rabbit else "hop"), (cls.__name__, "놀람")
+        for _ in range(60):
+            now += 1 / 30
+            a.update(1 / 30, now, False)
+            px[:] = bytes(len(px))
+            a.draw(px, 2000, 200, sp, 0, now, False)
+            top = min(top, (len(px) - len(px.lstrip(b"\0"))) // 2000)
+        assert 200 - top <= band, (cls.__name__, 200 - top, "바닥 띠 밖으로 나감")
+    dog = Dog(500, random.Random(1))
+    dog.go("stand", 0.0)
+    assert {dog.pose(t / 30, False) for t in range(30)} == {"dog_stand", "dog_wag"}, "서 있으면 꼬리를 흔듦"
+    peng = Penguin(500, random.Random(4))
+    for _ in range(30 * 600):
+        now += 1 / 30
+        peng.update(1 / 30, now, False)
+        assert peng.state != "slide", "눈 없는 날엔 안 미끄러짐"
+
     # 새
-    for name, rows in BIRD_ART.items():
-        assert len(rows) == len(BIRD) and all(len(r) == len(BIRD[0]) for r in rows), name
-        assert set("".join(rows)) <= set(COLORS) | {"."}, name
-    band = H + HOP_V ** 2 / (2 * GRAVITY)  # weather 가 다시 그리는 바닥 띠
     bird, now, seen, trips = Bird(500, random.Random(5)), 0.0, set(), 0
     for _ in range(30 * 600):
         now += 1 / 30
         before = bird.state
         bird.update(1 / 30, now, False)
-        assert -BIRD_W <= bird.x <= 500 and 0 <= bird.alt and bird.alt + BIRD_H <= band, (bird.x, bird.alt)
-        a, b = bird.feet()
-        assert 0 <= a < b <= 500
-        trips += before == "fly_in" and bird.state == "stand"
-        if before == "away" and bird.state == "fly_in":
-            assert bird.x == (-BIRD_W if bird.right else 500), "반대편 끝 밖에서 날아 들어옴"
+        assert 0 <= bird.x <= 500 - BIRD_W, ("화면 밖으로 안 나감", bird.x)
+        assert 0 <= bird.alt and bird.alt + BIRD_H <= band, bird.alt
+        if before == "fly" and bird.state == "stand":
+            trips += 1
+            assert abs(bird.x - bird.start) >= 100, "옆으로 조금 옮기는 게 아니라 날아서 감"
+            assert bird.x == bird.land, "고른 자리에 정확히 앉음 (지나치면 끝에서 화면 밖)"
         seen.add(bird.state)
-    assert seen == {"hop", "peck", "stand", "fly_out", "away", "fly_in"} and trips >= 3, (seen, trips)
-    bird.go("peck", now)
-    bird.startle(now)
-    assert bird.state == "fly_out", "놀라면 날아감"
+    assert seen == {"hop", "peck", "stand", "fly"} and trips >= 3, (seen, trips)
+    for x in (20, 400):
+        bird.x = x
+        bird.go("peck", now)
+        bird.startle(now)
+        assert bird.state == "fly" and abs(bird.land - x) > 200, "놀라면 먼 쪽으로 날아감"
     # 가로 잘라내기: 왼쪽 끝 밖으로 반쯤 나간 새는 화면 안쪽 절반만, 버퍼 밖으로 안 넘침
     px = bytearray(100 * 4 * 50)
     full = bytearray(len(px))
