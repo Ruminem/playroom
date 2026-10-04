@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""모든 창 위에 내리는 눈과 비. 보이기만 하고 클릭은 그대로 아래 창으로 간다.
+"""모든 창 위에 내리는 눈·비·뇌우·벚꽃·낙엽과 떠다니는 반딧불이. 보이기만 하고 클릭은 그대로 아래 창으로 간다.
 
   pythonw weather.py            띄우기 (창 없이 뒤에서 돎)
   python weather.py --toggle    떠 있으면 치우고, 없으면 띄움 (weather.bat 이 이걸 부름)
@@ -8,8 +8,9 @@
   python weather.py --check     자체 점검
 
 작업 영역(작업 표시줄 뺀 주 모니터) 전체를 덮는 픽셀 알파 창(shared/surface.py)에 30fps 로 그린다.
-눈은 원근 세 층으로 바람에 흔들리며 내리고 작업 표시줄 위에 쌓였다 천천히 녹는다. 비는 기운
-빗줄기로 내리고 바닥에서 튄다. 트레이의 눈송이 메뉴에서 눈·비·양·숨기기·끝내기를 하고,
+눈은 원근 세 층으로 바람에 흔들리며 내리고 작업 표시줄 위에 쌓였다 천천히 녹는다. 꽃잎·낙엽도 같은 층과
+더미를 쓰되 빙글빙글 돌며 팔랑인다. 비는 기운 빗줄기로 내리고 바닥에서 튀며, 뇌우는 거기에 번개를 더한다.
+반딧불이는 화면 아래쪽을 떠다니며 깜빡인다. 트레이의 눈송이 메뉴에서 종류·양·숨기기·끝내기를 하고,
 고른 것은 SETTINGS 에 남는다.
 """
 import argparse
@@ -59,7 +60,34 @@ DIFFUSE = 0.12     # 표면을 매끈하게 퍼뜨리는 정도
 MELT_PER_SEC = 0.0045  # 높이에 비례해 녹는 비율. 넣는 양 ÷ 이 값에서 높이가 멈춤 ('보통' 이면 10px 쯤)
 SETTLE_SEC = 0.25
 
-SNOW, RAIN, SHOW, EXIT = 1, 2, 3, 99
+STORM_MULT = 1.5   # 뇌우는 비보다 굵게
+BOLT_EVERY = (5, 14)  # '보통' 일 때 번개 간격 초. 양에 반비례
+BOLT_CORE, BOLT_GLOW = (244, 246, 255), (140, 160, 255)
+BOLT_LEVELS = (1.0, 0.55, 0.25)
+BOLT_FLICKER = ((0.0, 0.07, 0), (0.12, 0.24, 0), (0.24, 0.42, 1), (0.42, 0.6, 2))  # (시작 초, 끝 초, 밝기 단계)
+BOLT_PAD = 4       # 줄기 둘레 번짐 px
+
+# 잎 층: (비율, 길이 px 들, 속도 px/초, 알파, 흔들림 px, 바람을 받는 정도, 쌓일 때 부피 — 0 이면 안 쌓임)
+LEAF_LAYERS = ((0.4, (6,), (18, 30), 160, 10, 0.8, 0),
+               (0.45, (10, 12), (30, 48), 230, 22, 1.1, 0.9),
+               (0.15, (17,), (45, 70), 245, 36, 1.4, 1.4))
+LEAF_ANGLES = 12
+LEAF_FLIPS = (0.9, 0.6, 0.3, -0.3, -0.6, -0.9)  # 앞에서 본 너비 비율. 음수는 뒷면 — 조금 어둡게
+LEAF_KINDS = {  # 비율: 양 → 개수, ratio: 너비/길이, notch: 끝에 홈(벚꽃잎)
+    "petals": {"palette": ((255, 196, 212), (250, 172, 194), (255, 224, 232)), "ratio": 0.62, "notch": True,
+               "share": 0.6},
+    "leaves": {"palette": ((216, 98, 36), (232, 146, 40), (186, 58, 38), (204, 164, 52)), "ratio": 0.5,
+               "notch": False, "share": 0.45}}
+
+FLY_SHARE = 0.17   # 양 → 반딧불 마리 수 ('보통' 25마리)
+FLY_CORE, FLY_HALO = (246, 255, 184), (172, 236, 70)
+FLY_LEVELS = 8
+FLY_SIZES = ((1.3, 6.0), (2.0, 9.0))  # (빛 알갱이 반지름, 번짐 반지름) — 멀리, 가까이
+
+KINDS = {1: ("snow", "눈"), 2: ("rain", "비"), 3: ("storm", "뇌우"), 4: ("petals", "벚꽃"),
+         5: ("leaves", "낙엽"), 6: ("fireflies", "반딧불이")}
+KIND_NAMES = tuple(k for k, _ in KINDS.values())
+SHOW, EXIT = 20, 99
 AMOUNTS = {10: ("few", "적게", 60), 11: ("normal", "보통", 150), 12: ("many", "많이", 300)}
 COUNT = {key: n for key, _, n in AMOUNTS.values()}
 
@@ -132,6 +160,139 @@ def stamp(px, stride, x, y, rows):
         off += stride
 
 
+def leaf_shape(length, ratio, angle, flip, notch):
+    """돌고 뒤집힌 꽃잎·잎 모양: 행마다 (덮인 정도, 밝기) 목록. 2×2 로 나눠 덮인 정도를 센다.
+    꽃잎은 둥근 타원에 끝 홈, 잎은 양끝이 뾰족한 렌즈. 뒷면(flip < 0)은 어둡고, 밑동 쪽도 조금 어둡다."""
+    a = length / 2
+    b = a * ratio * abs(flip)
+    n = int(math.ceil(length)) + 2
+    c = n / 2 - 0.5
+    ca, sa = math.cos(angle), math.sin(angle)
+    shade = 1.0 if flip > 0 else 0.76
+    power = 0.5 if notch else 0.9
+    out = []
+    for y in range(n):
+        row = []
+        for x in range(n):
+            cov = 0
+            for sx, sy in ((-0.25, -0.25), (0.25, -0.25), (-0.25, 0.25), (0.25, 0.25)):
+                dx, dy = x + sx - c, y + sy - c
+                u, v = dx * ca + dy * sa, dy * ca - dx * sa
+                if abs(u) < a and abs(v) <= b * (1 - (u / a) ** 2) ** power + 0.15 \
+                        and not (notch and u > a * 0.7 and abs(v) < b * 0.25):
+                    cov += 1
+            u0 = (x - c) * ca + (y - c) * sa
+            row.append((cov / 4, shade * (0.86 + 0.14 * max(-1.0, min(1.0, u0 / a)))))
+        out.append(row)
+    return n, out
+
+
+def paint(shape, color, alpha):
+    n, rows = shape
+    return n, [trim(b"".join(pixel(tuple(int(ch * k) for ch in color), alpha * cov) for cov, k in row))
+               for row in rows]
+
+
+def glow(core_r, halo_r, level, fx, fy):
+    """반딧불 빛: 또렷한 알갱이에 넓고 옅은 번짐. level 은 0..1 밝기."""
+    n = int(math.ceil(2 * halo_r)) + 2
+    c = n / 2 - 0.5
+    rows = []
+    for y in range(n):
+        row = b""
+        for x in range(n):
+            d = math.hypot(x - c - fx, y - c - fy)
+            core = min(1.0, max(0.0, core_r + 0.5 - d))
+            halo = 0.6 * math.exp(-(d / (halo_r * 0.6)) ** 2)
+            color = tuple(int(FLY_HALO[i] + (FLY_CORE[i] - FLY_HALO[i]) * core) for i in range(3))
+            row += pixel(color, 255 * level * min(1.0, core + halo))
+        rows.append(trim(row))
+    return n, rows
+
+
+def blink(t, period):
+    """반딧불 한 마리의 밝기 0..1. 주기 안에서 0.3초 켜지고 0.7초 머물고 0.8초 꺼지며, 나머지는 어둠."""
+    t %= period
+    if t < 0.3:
+        return t / 0.3
+    if t < 1.0:
+        return 1.0
+    if t < 1.8:
+        return 1 - (t - 1.0) / 0.8
+    return 0.0
+
+
+def bolt_segments(w, h, rng):
+    """번개 줄기: (x0, y0, x1, y1, 굵기) 목록. 본줄기는 위에서 아래로 지그재그, 곁가지는 비스듬히 짧게."""
+    end = rng.uniform(0.35, 0.75) * h
+    segs = []
+    lo, hi = BOLT_PAD + 2, w - BOLT_PAD - 3
+
+    def walk(x, y, drift, steps, width, branches):
+        for _ in range(steps):
+            nx = min(hi, max(lo, x + rng.gauss(drift, 7)))
+            ny = min(h - BOLT_PAD - 3, y + rng.uniform(8, 18))
+            segs.append((x, y, nx, ny, width))
+            if branches and rng.random() < 0.12:
+                walk(nx, ny, rng.choice((-1, 1)) * rng.uniform(6, 12), rng.randint(4, 14), width * 0.55, False)
+            x, y = nx, ny
+            if y >= end:
+                break
+
+    x0 = min(hi, max(lo, rng.uniform(w * 0.1, w * 0.9)))
+    walk(x0, float(BOLT_PAD), rng.uniform(-3, 3), 10 ** 6, 1.0, True)  # BOLT_PAD 부터 — 번짐이 위로 안 넘치게
+    return segs
+
+
+def dab(width):
+    """줄기의 한 점: (dx, dy, 밝기 0..255) 목록. 가운데는 하얗게 차고 둘레는 옅게 번짐."""
+    out = []
+    for dy in range(-BOLT_PAD, BOLT_PAD + 1):
+        for dx in range(-BOLT_PAD, BOLT_PAD + 1):
+            d = math.hypot(dx, dy)
+            v = 255 * max(min(1.0, max(0.0, width + 0.6 - d)), 0.35 * math.exp(-(d / (1.2 + width * 1.6)) ** 2))
+            if v >= 4:
+                out.append((dx, dy, int(v)))
+    return out
+
+
+def bolt_sprite(segs):
+    """줄기를 밝기 판(bytearray) 하나에 최댓값으로 찍고, 밝기 단계마다 색을 입혀 그림 조각으로.
+    픽셀마다 파이썬을 돌면 수십만 번이라, 색 입히기와 단계 낮추기는 bytes.translate 표로 한다."""
+    xs = [v for s in segs for v in (s[0], s[2])]
+    ys = [v for s in segs for v in (s[1], s[3])]
+    bx, by = int(min(xs)) - BOLT_PAD, int(min(ys)) - BOLT_PAD
+    bw, bh = int(max(xs)) - bx + BOLT_PAD + 2, int(max(ys)) - by + BOLT_PAD + 2
+    lum = bytearray(bw * bh)
+    dabs = {}
+    for x0, y0, x1, y1, width in segs:
+        pts = dabs.setdefault(width, dab(width))
+        steps = int(math.hypot(x1 - x0, y1 - y0)) + 1
+        for i in range(steps):
+            cx, cy = int(x0 + (x1 - x0) * i / steps) - bx, int(y0 + (y1 - y0) * i / steps) - by
+            for dx, dy, v in pts:
+                o = (cy + dy) * bw + cx + dx
+                if v > lum[o]:
+                    lum[o] = v
+    lum = bytes(lum)
+    levels = []
+    for k in BOLT_LEVELS:
+        a_tab = bytes(int(v * k) for v in range(256))
+        # 밝을수록 하얀 가운데 색, 옅을수록 푸른 번짐 색. premultiplied 라 색 = 색 × 알파
+        chans = [bytes(int(a * (BOLT_GLOW[i] + (BOLT_CORE[i] - BOLT_GLOW[i]) * (v / 255) ** 2) / 255)
+                       for v, a in enumerate(a_tab)) for i in (2, 1, 0)]
+        rows = []
+        for y in range(bh):
+            line = lum[y * bw:(y + 1) * bw]
+            lead = bw - len(line.lstrip(b"\0"))
+            line = line.strip(b"\0")
+            px = bytearray(len(line) * 4)
+            px[0::4], px[1::4], px[2::4], px[3::4] = (line.translate(t) for t in (*chans, a_tab))
+            rows.append((lead * 4, bytes(px)))
+        levels.append(rows)
+    return bx, by, levels
+
+
 # ── 쌓인 눈 ──
 class Pile:
     """픽셀 열마다 높이(실수 px). 떨어진 자리에 둔덕을 보태고, settle() 이 흘러내림·퍼짐·녹음을 한다."""
@@ -185,6 +346,23 @@ def pile_column_parts():
     return edges, body
 
 
+def pile_parts_mixed(palette):
+    """꽃잎·낙엽 더미: 색 덩어리를 섞은 몸통 여러 벌. 열마다 하나씩 골라 무더기처럼 보이게."""
+    rng = random.Random(7)
+    rim = tuple(int(ch * 0.72) for ch in palette[0])
+    edges = [pixel(rim, 255 * q / 16) for q in range(16)]
+    bodies = []
+    for _ in range(16):
+        col = []
+        while len(col) < PILE_STRIP:
+            color = rng.choice(palette)
+            for _ in range(rng.randint(2, 4)):
+                k = 1 - 0.3 * min(1.0, len(col) / 14)  # 깊을수록 그늘
+                col.append(pixel(tuple(int(ch * k) for ch in color), 255))
+        bodies.append(b"".join(col[:PILE_STRIP]))
+    return edges, bodies
+
+
 def pile_column(v, edges, body, zero):
     n = min(int(v), PILE_STRIP - 1)
     q = int((v - int(v)) * 16)
@@ -199,7 +377,7 @@ def load_settings():
     if not isinstance(data, dict):
         return {}
     ok = {}
-    if data.get("kind") in ("snow", "rain"):
+    if data.get("kind") in KIND_NAMES:
         ok["kind"] = data["kind"]
     if data.get("amount") in COUNT:
         ok["amount"] = data["amount"]
@@ -220,8 +398,9 @@ class Weather:
         self.rain_sprites = [{n: streak(n, layer[3], layer[4]) for n in range(layer[1][0], layer[1][1] + 1)}
                              for layer in RAIN_LAYERS]
         self.droplet = disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR)
-        self.pile_edges, self.pile_body = pile_column_parts()
+        self.snow_pile = pile_column_parts()
         self.pile_zero = bytes(PILE_STRIP * 4)
+        self.sprite_cache = {}  # 꽃잎·낙엽·반딧불 그림은 그 종류를 처음 고를 때 그림
         self.commands = queue.Queue()  # 트레이 스레드 → 그리는 스레드
         write_ico(ICON_FILE, ICON, ICON_COLORS)
         self.tray = Tray(TRAY_CLASS, ICON_FILE, "날씨", self.menu, self.commands.put)
@@ -231,8 +410,8 @@ class Weather:
 
     # ── 트레이 ──
     def menu(self):
-        return [("눈", SNOW, self.kind == "snow"),
-                ("비", RAIN, self.kind == "rain"),
+        return [*((label, cid, key == self.kind) for cid, (key, label) in KINDS.items()),
+                None,
                 ("양", [(label, cid, key == self.amount) for cid, (key, label, _) in AMOUNTS.items()]),
                 None,
                 ("보이기", SHOW, self.visible),
@@ -240,8 +419,8 @@ class Weather:
                 ("끝내기", EXIT, False)]
 
     def handle(self, cid):
-        if cid in (SNOW, RAIN):
-            self.kind = "snow" if cid == SNOW else "rain"
+        if cid in KINDS:
+            self.kind = KINDS[cid][0]
         elif cid in AMOUNTS:
             self.amount = AMOUNTS[cid][0]
         elif cid == SHOW:
@@ -305,13 +484,116 @@ class Weather:
 
     def render_pile(self):
         strip32 = self.strip.cast("I")
-        w, last = self.w, self.pile_last
+        w, last, bodies, pick = self.w, self.pile_last, self.pile_bodies, self.pile_pick
         for x, v in enumerate(self.pile.h):
             key = int(v * 16)
             if key != last[x]:  # 1/16 px 아래로 안 바뀐 열은 건너뜀
                 last[x] = key
-                strip32[x::w] = memoryview(pile_column(v, self.pile_edges, self.pile_body,
+                strip32[x::w] = memoryview(pile_column(v, self.pile_edges, bodies[pick[x]],
                                                        self.pile_zero)).cast("I")
+
+    # ── 꽃잎·낙엽 ──
+    def leaf_sprites(self, kind):
+        """[층][크기][색] → 각도 × 뒤집힘 그림 목록. 모양은 크기마다 한 번 재고 색만 바꿔 칠함."""
+        if kind not in self.sprite_cache:
+            spec = LEAF_KINDS[kind]
+            out = []
+            for layer in LEAF_LAYERS:
+                sizes = []
+                for length in layer[1]:
+                    shapes = [leaf_shape(length, spec["ratio"], math.tau * ai / LEAF_ANGLES, flip, spec["notch"])
+                              for ai in range(LEAF_ANGLES) for flip in LEAF_FLIPS]
+                    sizes.append([[paint(s, color, layer[3]) for s in shapes] for color in spec["palette"]])
+                out.append(sizes)
+            self.sprite_cache[kind] = out
+        return self.sprite_cache[kind]
+
+    def new_leaf(self, li, top):
+        layer = LEAF_LAYERS[li]
+        y = -random.uniform(15, 80) if top else random.uniform(0, self.h)
+        # [x, y, 속도, 층, 크기, 색, 흔들림 위상, 흔들림 빠르기, 각도, 도는 빠르기, 뒤집힘 위상, 뒤집힘 빠르기]
+        return [random.uniform(0, self.w), y, random.uniform(*layer[2]), li, random.randrange(len(layer[1])),
+                random.randrange(len(LEAF_KINDS[self.kind]["palette"])), random.uniform(0, 6.3),
+                random.uniform(0.3, 0.8), random.uniform(0, math.tau), random.uniform(-2.5, 2.5),
+                random.uniform(0, math.tau), random.uniform(1.5, 4.0)]
+
+    def flutter(self, dt, now):
+        px, stride, w, h, ph = self.surface.pixels, self.stride, self.w, self.h, self.pile.h
+        wind, sprites, nflip = self.wind(now), self.leaves_sprites, len(LEAF_FLIPS)
+        for f in self.leaves:
+            layer = LEAF_LAYERS[f[3]]
+            f[10] += f[11] * dt
+            c = math.cos(f[10])
+            f[1] += f[2] * (1.35 - 0.6 * abs(c)) * dt  # 옆으로 선 잎은 빨리, 넓게 누운 잎은 천천히 떨어짐
+            f[0] = (f[0] + wind * layer[5] * dt) % w
+            f[8] += f[9] * dt
+            x = f[0] + math.sin(f[6] + now * f[7]) * layer[4]
+            frames = sprites[f[3]][f[4]][f[5]]
+            n = frames[0][0]
+            xi, yi = int(x), int(f[1])
+            col = min(max(xi + n // 2, 0), w - 1)
+            if yi + n >= h - ph[col]:
+                if layer[6]:
+                    self.pile.add(col, layer[6])
+                f[:] = self.new_leaf(f[3], True)
+                continue
+            if yi < 0 or xi < 0 or xi + n > w:
+                continue
+            ai = int(f[8] / math.tau * LEAF_ANGLES) % LEAF_ANGLES
+            stamp(px, stride, xi, yi, frames[ai * nflip + min(nflip - 1, int((1 - c) * nflip / 2))][1])
+
+    # ── 반딧불이 ──
+    def fly_sprites(self):
+        """[크기][밝기 단계 1..8][1/4 픽셀 위치 16벌]."""
+        if "fireflies" not in self.sprite_cache:
+            self.sprite_cache["fireflies"] = [
+                [[glow(core, halo, lv / FLY_LEVELS, fx / 4, fy / 4) for fy in range(4) for fx in range(4)]
+                 for lv in range(1, FLY_LEVELS + 1)] for core, halo in FLY_SIZES]
+        return self.sprite_cache["fireflies"]
+
+    def new_fly(self):
+        # [x, y, 방향, 빠르기, 크기, 깜빡임 주기, 주기 어긋남, 방향이 틀어지는 빠르기]
+        return [random.uniform(0, self.w), random.uniform(self.h * 0.35, self.h - 12), random.uniform(0, math.tau),
+                random.uniform(8, 26), 1 if random.random() < 0.35 else 0, random.uniform(2.5, 5.5),
+                random.uniform(0, 6), 0.0]
+
+    def fireflies(self, dt, now):
+        px, stride, w, h, sprites = self.surface.pixels, self.stride, self.w, self.h, self.flies_sprites
+        for f in self.flies:
+            f[7] = max(-1.2, min(1.2, f[7] + random.gauss(0, 1.5) * dt))
+            f[2] += f[7] * dt
+            f[0] = (f[0] + math.cos(f[2]) * f[3] * dt) % w
+            f[1] += math.sin(f[2]) * f[3] * 0.6 * dt
+            if (f[1] < h * 0.3 and math.sin(f[2]) < 0) or (f[1] > h - 12 and math.sin(f[2]) > 0):
+                f[2] = -f[2]  # 화면 아래쪽 2/3 안에서 위아래로 튕김
+            lv = round(blink(now + f[6], f[5]) * FLY_LEVELS)
+            if not lv:
+                continue
+            frames = sprites[f[4]][lv - 1]
+            n = frames[0][0]
+            x, y = f[0] - n / 2, f[1] - n / 2
+            xi, yi = int(x), int(y)
+            if 0 <= xi and xi + n <= w and 0 <= yi and yi + n <= h:
+                stamp(px, stride, xi, yi, frames[int((y - yi) * 4) * 4 + int((x - xi) * 4)][1])
+
+    # ── 번개 ──
+    def lightning(self, now):
+        if self.bolt is None and now >= self.next_bolt:
+            bx, by, levels = bolt_sprite(bolt_segments(self.w, self.h, random))
+            self.bolt = (now, bx, by, levels)
+            lo, hi = BOLT_EVERY
+            k = COUNT["normal"] / COUNT[self.amount]
+            self.next_bolt = now + random.uniform(lo * k, hi * k)
+        if self.bolt is None:
+            return
+        t0, bx, by, levels = self.bolt
+        t = now - t0
+        if t > BOLT_FLICKER[-1][1]:
+            self.bolt = None
+            return
+        for start, end, lv in BOLT_FLICKER:
+            if start <= t < end:
+                stamp(self.surface.pixels, self.stride, bx, by, levels[lv])
 
     # ── 비 ──
     def new_drop(self, li, top):
@@ -354,29 +636,50 @@ class Weather:
 
     # ── 돌리기 ──
     def reset(self):
-        n = COUNT[self.amount]
-        self.flakes, self.drops, self.splashes = [], [], []
+        n, kind = COUNT[self.amount], self.kind
+        self.flakes, self.drops, self.splashes, self.leaves, self.flies = [], [], [], [], []
+        self.bolt, self.next_bolt = None, time.perf_counter() + random.uniform(2, 5)
         self.pile = Pile(self.w)
         self.strip = memoryview(bytearray(self.stride * PILE_STRIP))
         self.pile_last = [0] * self.w
-        if self.kind == "snow":
+        self.pile_edges, body = self.snow_pile
+        self.pile_bodies, self.pile_pick = [body], [0] * self.w
+        if kind == "snow":
             self.flakes = [self.new_flake(li, False) for li, layer in enumerate(SNOW_LAYERS)
                            for _ in range(round(n * layer[0]))]
-        else:
+        elif kind in ("rain", "storm"):
+            mult = RAIN_MULT * (STORM_MULT if kind == "storm" else 1)
             self.drops = [self.new_drop(li, False) for li, layer in enumerate(RAIN_LAYERS)
-                          for _ in range(round(n * RAIN_MULT * layer[0]))]
+                          for _ in range(round(n * mult * layer[0]))]
+        elif kind in LEAF_KINDS:
+            spec = LEAF_KINDS[kind]
+            self.leaves_sprites = self.leaf_sprites(kind)
+            self.pile_edges, self.pile_bodies = pile_parts_mixed(spec["palette"])
+            self.pile_pick = []
+            while len(self.pile_pick) < self.w:  # 3–7열씩 같은 몸통 — 열마다 고르면 세로 줄무늬가 됨
+                self.pile_pick += [random.randrange(len(self.pile_bodies))] * random.randint(3, 7)
+            self.leaves = [self.new_leaf(li, False) for li, layer in enumerate(LEAF_LAYERS)
+                           for _ in range(round(n * spec["share"] * layer[0]))]
+        else:
+            self.flies_sprites = self.fly_sprites()
+            self.flies = [self.new_fly() for _ in range(round(n * FLY_SHARE))]
 
     def frame(self, dt, now):
         self.surface.clear()
-        if self.kind == "snow":
+        kind = self.kind
+        if kind == "snow" or kind in LEAF_KINDS:
             if now - self.last_settle >= SETTLE_SEC:
                 self.pile.settle(MELT_PER_SEC * (now - self.last_settle))
                 self.last_settle = now
                 self.render_pile()
             self.surface.pixels[(self.h - PILE_STRIP) * self.stride:] = self.strip
-            self.snow(dt, now)
+            self.snow(dt, now) if kind == "snow" else self.flutter(dt, now)
+        elif kind == "fireflies":
+            self.fireflies(dt, now)
         else:
             self.rain(dt)
+            if kind == "storm":
+                self.lightning(now)
         self.surface.present()
         if now - self.last_topmost > 2:
             self.surface.topmost()
@@ -429,11 +732,32 @@ def check():
     edges, body = pile_column_parts()
     for v in (0.0, 0.5, 7.3, PILE_CAP):
         assert len(pile_column(v, edges, body, bytes(PILE_STRIP * 4))) == PILE_STRIP * 4, "열 길이가 띠 높이"
-    for rows in (disc(3.0, 1.8, 235, SNOW_COLOR, SNOW_RIM, 0.5, 0.25)[1], streak(30, 165, 1.6)[1]):
+    rng = random.Random(3)
+    segs = bolt_segments(400, 300, rng)
+    assert all(0 <= v[0] < 400 and 0 <= v[2] < 400 and 0 <= v[1] < 300 and 0 <= v[3] < 300 for v in segs), \
+        "번개는 화면 안에"
+    assert any(s[4] < 1 for s in segs) and segs[0][1] == BOLT_PAD, "위에서 시작하고 곁가지가 있음 (씨앗 3)"
+    bx, by, levels = bolt_sprite(segs)
+    assert bx >= 0 and by >= 0 and by + len(levels[0]) <= 300, "그림 조각이 화면 밖으로 안 나감"
+    assert bx + max(skip // 4 + len(d) // 4 for skip, d in levels[0]) <= 400
+    for seed in range(5):  # 좁은 폭이면 지그재그가 반드시 가장자리에 닿음
+        nx, _, narrow = bolt_sprite(bolt_segments(30, 300, random.Random(seed)))
+        assert nx >= 0 and nx + max(skip // 4 + len(d) // 4 for skip, d in narrow[0]) <= 30, "가장자리에서 막힘"
+    assert sum(len(d) for sk, d in levels[0]) > 4 * 200, "줄기가 그려져 있음"
+    petal = paint(leaf_shape(13, 0.62, 0.7, -0.55, True), (255, 196, 212), 240)
+    edge_on = paint(leaf_shape(13, 0.62, 0.7, 0.3, True), (255, 196, 212), 240)
+    assert sum(len(d) for _, d in petal[1]) > sum(len(d) for _, d in edge_on[1]), "옆으로 서면 좁아 보임"
+    assert [round(blink(t, 4), 6) for t in (0, 0.15, 0.5, 1.4, 2, 3.9)] == [0, 0.5, 1, 0.5, 0, 0], "깜빡임 곡선"
+    sprites = [disc(3.0, 1.8, 235, SNOW_COLOR, SNOW_RIM, 0.5, 0.25)[1], streak(30, 165, 1.6)[1], petal[1],
+               paint(leaf_shape(9, 0.5, 2.0, 0.9, False), (216, 98, 36), 225)[1], glow(1.5, 6.5, 0.6, 0.25, 0.5)[1],
+               levels[0]]
+    for rows in sprites + levels[1:]:
         for skip, data in rows:
             assert skip % 4 == 0 and len(data) % 4 == 0
             for i in range(0, len(data), 4):
                 assert max(data[i:i + 3]) <= data[i + 3], "premultiplied 는 색이 알파를 못 넘음"
+    for rows in sprites:  # 어둡게 낮춘 번개 단계는 끝 픽셀 알파가 0 으로 떨어질 수 있어 뺌
+        for skip, data in rows:
             assert not data or (data[3] and data[-1]), "앞뒤 투명 픽셀은 잘려 있어야 함"
     print("자체 점검 통과")
 
@@ -444,7 +768,7 @@ def main():
     ap.add_argument("--toggle", action="store_true", help="떠 있으면 치우고, 없으면 띄움")
     ap.add_argument("--check", action="store_true", help="자체 점검")
     saved = load_settings()  # 안 주면 트레이 메뉴에서 마지막으로 고른 값
-    ap.add_argument("--kind", default=saved.get("kind", "snow"), choices=("snow", "rain"))
+    ap.add_argument("--kind", default=saved.get("kind", "snow"), choices=KIND_NAMES)
     ap.add_argument("--amount", default=saved.get("amount", "normal"), choices=tuple(COUNT))
     args = ap.parse_args()
 
