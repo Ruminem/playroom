@@ -245,7 +245,8 @@ class Layers:
         px = lambda n: round(n * float(w.tk.call("tk", "scaling")) * 0.75)  # 96dpi 기준 px → 지금 화면 px
         font = tkfont.Font(w, family=UI_FONT, size=10)
         style = ttk.Style(w)
-        style.configure(".", font=font)
+        style.configure(".", font=font, background="white")
+        w.configure(bg="white")
         style.configure("Treeview", rowheight=round(font.metrics("linespace") * 1.8))
         style.configure("Treeview.Heading", font=(UI_FONT, 9), foreground=MUTED)
         style.configure("Title.TLabel", font=(UI_FONT, 12, "bold"))
