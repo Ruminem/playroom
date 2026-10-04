@@ -8,7 +8,7 @@ import ctypes as C
 import ctypes.util
 
 objc = C.cdll.LoadLibrary(C.util.find_library("objc"))
-C.cdll.LoadLibrary("/System/Library/Frameworks/AppKit.framework/AppKit")
+APPKIT = C.cdll.LoadLibrary("/System/Library/Frameworks/AppKit.framework/AppKit")
 FOUNDATION = C.cdll.LoadLibrary("/System/Library/Frameworks/Foundation.framework/Foundation")
 objc.objc_getClass.restype = C.c_void_p
 objc.objc_getClass.argtypes = [C.c_char_p]
@@ -72,6 +72,7 @@ app = send(cls("NSApplication"), "sharedApplication")
 send(app, "setActivationPolicy:", 1, restype=C.c_bool, argtypes=(C.c_long,))  # accessory: 독에 안 뜸
 send(app, "finishLaunching", restype=None)
 RUN_LOOP_MODE = C.c_void_p.in_dll(FOUNDATION, "NSDefaultRunLoopMode").value
+TRACKING_MODE = C.c_void_p.in_dll(APPKIT, "NSEventTrackingRunLoopMode").value
 
 
 def pool():
@@ -83,7 +84,7 @@ def drain(p):
 
 
 def pump():
-    """쌓인 이벤트를 다 돌림. 메뉴를 열면 닫힐 때까지 여기서 안 돌아온다(그동안 그림이 멈춤)."""
+    """쌓인 이벤트를 다 돌림. 메뉴를 열면 닫힐 때까지 여기서 안 돌아온다(그동안은 while_tracking)."""
     p = pool()
     while True:
         ev = send(app, "nextEventMatchingMask:untilDate:inMode:dequeue:", 0xFFFFFFFFFFFFFFFF, None, RUN_LOOP_MODE,
@@ -92,6 +93,18 @@ def pump():
             break
         send(app, "sendEvent:", ev, restype=None, argtypes=(C.c_void_p,))
     drain(p)
+
+
+def while_tracking(fn, period):
+    """메뉴를 여는 동안엔 pump 가 안 돌아와 파이썬 루프가 멈춘다. 그동안 런 루프가 도는 이벤트 추적
+    모드에만 타이머를 걸어 fn() 을 period 초마다 부른다. 기본 모드에선 안 불려 평소 루프와 안 겹친다.
+    프로세스마다 한 번만 부른다 — 클래스가 처음 넘긴 fn 으로 등록돼 두 번째 fn 은 무시된다."""
+    target = new_object("PlayroomTracker", {"tick:": lambda _: fn()})
+    timer = send(cls("NSTimer"), "timerWithTimeInterval:target:selector:userInfo:repeats:", period, target,
+                 objc.sel_registerName(b"tick:"), None, True,
+                 argtypes=(C.c_double, C.c_void_p, C.c_void_p, C.c_void_p, C.c_bool))
+    send(send(cls("NSRunLoop"), "currentRunLoop"), "addTimer:forMode:", timer, TRACKING_MODE, restype=None,
+         argtypes=(C.c_void_p, C.c_void_p))
 
 
 def main_screen():

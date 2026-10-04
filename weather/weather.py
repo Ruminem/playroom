@@ -726,21 +726,30 @@ class Weather:
             self.surface.topmost()
             self.last_topmost = now
 
+    def step(self):
+        """한 프레임 진행. 숨겨져 있으면 안 그리고 False."""
+        now = time.perf_counter()
+        dt = min(now - self.last, 0.1)  # 멈췄다 돌아와도 한 번에 순간 이동하지 않게
+        self.last = now
+        if not self.visible:
+            return False
+        self.frame(dt, now)
+        return True
+
     def run(self):
         period = 1 / FPS
+        if MAC:  # 메뉴 막대 메뉴를 연 동안엔 아래 루프가 pump 에 묶이므로 런 루프 타이머가 대신 그림
+            from cocoa import while_tracking
+            while_tracking(self.step, period)
         nxt = time.perf_counter()
         while True:
             self.surface.pump()
             if self.poll():
                 break
-            now = time.perf_counter()
-            dt = min(now - self.last, 0.1)  # 멈췄다 돌아와도 한 번에 순간 이동하지 않게
-            self.last = now
-            if not self.visible:
+            if not self.step():
                 time.sleep(0.2)
                 nxt = time.perf_counter()
                 continue
-            self.frame(dt, now)
             nxt += period
             delay = nxt - time.perf_counter()
             if delay < -period:  # 많이 밀렸으면 따라잡으려 몰아 그리지 말고 다시 맞춤
