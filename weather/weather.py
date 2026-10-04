@@ -28,6 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 import overlay
+import startup
 from surface import Surface
 from tray import Tray, write_ico
 
@@ -87,7 +88,8 @@ FLY_SIZES = ((1.3, 6.0), (2.0, 9.0))  # (빛 알갱이 반지름, 번짐 반지�
 KINDS = {1: ("snow", "눈"), 2: ("rain", "비"), 3: ("storm", "뇌우"), 4: ("petals", "벚꽃"),
          5: ("leaves", "낙엽"), 6: ("fireflies", "반딧불이")}
 KIND_NAMES = tuple(k for k, _ in KINDS.values())
-SHOW, EXIT = 20, 99
+SHOW, AUTOSTART, EXIT = 20, 50, 99
+RUN_NAME = "PlayroomWeather"  # 시작할 때는 인자 없이 떠서 저장된 종류·양을 따름
 AMOUNTS = {10: ("few", "적게", 60), 11: ("normal", "보통", 150), 12: ("many", "많이", 300)}
 COUNT = {key: n for key, _, n in AMOUNTS.values()}
 
@@ -415,6 +417,7 @@ class Weather:
                 ("양", [(label, cid, key == self.amount) for cid, (key, label, _) in AMOUNTS.items()]),
                 None,
                 ("보이기", SHOW, self.visible),
+                ("Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)),
                 None,
                 ("끝내기", EXIT, False)]
 
@@ -426,6 +429,9 @@ class Weather:
         elif cid == SHOW:
             self.visible = not self.visible
             self.surface.show(self.visible)
+            return
+        elif cid == AUTOSTART:
+            startup.toggle(RUN_NAME, __file__)
             return
         elif cid == EXIT:
             self.tray.close()  # 트레이가 닫히면 None 이 와서 poll 이 끝냄

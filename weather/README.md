@@ -12,7 +12,7 @@ Snow, rain, a thunderstorm, cherry blossom petals, autumn leaves or fireflies ov
 
 ## Use
 
-Double-click [weather.bat](weather.bat) to start or stop it. A snowflake icon sits in the notification area; its menu picks the kind, sets the amount (light · normal · heavy), hides it and exits. Your choice is remembered in `%LOCALAPPDATA%\playroom\weather.json`.
+Double-click [weather.bat](weather.bat) to start or stop it. A snowflake icon sits in the notification area; its menu picks the kind, sets the amount (light · normal · heavy), hides it, starts it with Windows and exits. Your choice is remembered in `%LOCALAPPDATA%\playroom\weather.json`, and starting with Windows uses it.
 
 ```bash
 python weather.py --toggle --kind rain --amount many
@@ -55,7 +55,7 @@ PIP 영상이든 지금 타이핑하는 앱이든 모든 창 위로 눈·비·�
 
 ### 쓰는 법
 
-[weather.bat](weather.bat) 을 더블클릭하면 켜지고 다시 누르면 꺼짐. 알림 영역에 눈송이 아이콘이 뜨고, 그 메뉴에서 종류를 고르고, 양(적게·보통·많이)을 정하고, 숨기고, 끝냄. 고른 것은 `%LOCALAPPDATA%\playroom\weather.json` 에 남음.
+[weather.bat](weather.bat) 을 더블클릭하면 켜지고 다시 누르면 꺼짐. 알림 영역에 눈송이 아이콘이 뜨고, 그 메뉴에서 종류를 고르고, 양(적게·보통·많이)을 정하고, 숨기고, 윈도우 시작 시 실행을 켜고, 끝냄. 고른 것은 `%LOCALAPPDATA%\playroom\weather.json` 에 남고, 윈도우와 같이 켜질 때도 이걸 따름.
 
 ```bash
 python weather.py --toggle --kind rain --amount many

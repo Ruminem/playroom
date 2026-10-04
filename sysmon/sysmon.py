@@ -23,6 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 import overlay
+import startup
 from surface import Surface
 from tray import Tray, write_ico
 
@@ -34,7 +35,8 @@ SURFACE_CLASS = "PlayroomSysmonSurface"
 GAP = 8            # 알림 영역과 띄울 px
 WARN, HOT = 70, 90  # 이 % 를 넘으면 주황, 빨강
 WHITE, ORANGE, RED = (255, 255, 255), (254, 174, 52), (228, 59, 68)
-EXIT = 99
+AUTOSTART, EXIT = 50, 99
+RUN_NAME = "PlayroomSysmon"
 
 ICON_COLORS = {"g": "#63c74d", "y": "#feae34"}
 ICON = (".......",
@@ -134,7 +136,7 @@ class Monitor:
         self.prev = cpu_times()
 
     def menu(self):
-        return [("끝내기", EXIT, False)]
+        return [("Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)), None, ("끝내기", EXIT, False)]
 
     def render(self, lines):
         """글자를 흰색으로 그린 뒤, 밝기(초록 칸)를 알파로 삼아 줄마다 색을 입힌다."""
@@ -179,7 +181,10 @@ class Monitor:
         while True:
             self.surface.pump()
             try:
-                if self.commands.get_nowait() in (None, EXIT):
+                cid = self.commands.get_nowait()
+                if cid == AUTOSTART:
+                    startup.toggle(RUN_NAME, __file__)
+                elif cid in (None, EXIT):
                     if self.tray.hwnd:
                         self.tray.close()  # 아이콘을 지우고 나면 None 이 다시 옴
                         continue

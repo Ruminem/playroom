@@ -26,12 +26,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 import overlay
+import startup
 from tray import Tray, write_ico
 
 PID_FILE = Path(tempfile.gettempdir()) / "playroom-layers.pid"
 ICON_FILE = Path(tempfile.gettempdir()) / "playroom-layers.ico"
 SETTINGS = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "playroom" / "layers.json"
-OPEN, EXIT = 1, 99
+OPEN, AUTOSTART, EXIT = 1, 50, 99
+RUN_NAME = "PlayroomLayers"
 ENFORCE_MS = 500
 
 # 값이 없는 칸은 아무것이나 맞음. HUD 는 python/pythonw 어느 쪽으로 떠도 맞게 exe 를 비움
@@ -158,7 +160,7 @@ class Layers:
         self.tray = Tray(overlay.LAYERS_TRAY, ICON_FILE, "창 순서", self.menu, self.commands.put)
 
     def menu(self):
-        return [("순서 정하기…", OPEN, False), None, ("끝내기", EXIT, False)]
+        return [("순서 정하기…", OPEN, False), ("Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)), None, ("끝내기", EXIT, False)]
 
     def poll(self):
         try:
@@ -170,6 +172,8 @@ class Layers:
                     return
                 if cid == OPEN:
                     self.open()
+                elif cid == AUTOSTART:
+                    startup.toggle(RUN_NAME, __file__)
                 elif cid == EXIT:
                     self.tray.close()  # 트레이가 닫히면 None 이 와서 끝남
         except queue.Empty:

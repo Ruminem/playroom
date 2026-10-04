@@ -6,7 +6,7 @@ CPU and memory use in two small lines on the taskbar, right next to the notifica
 
 ## Use
 
-Double-click [sysmon.bat](sysmon.bat) to start or stop it. A small bar-chart icon sits in the notification area; hover it for memory in GB, and use its menu to exit.
+Double-click [sysmon.bat](sysmon.bat) to start or stop it. A small bar-chart icon sits in the notification area; hover it for memory in GB. Its menu starts it with Windows (same as [usage-hud](../usage-hud/#hud)) and exits.
 
 `python sysmon.py --stop` closes it, `python sysmon.py --check` runs the self-check.
 
@@ -32,7 +32,7 @@ It wakes ten times a second to handle messages and measures once a second. Measu
 
 ### 쓰는 법
 
-[sysmon.bat](sysmon.bat) 을 더블클릭하면 켜지고, 다시 누르면 꺼짐. 알림 영역에 작은 막대그래프 아이콘이 뜸. 마우스를 올리면 메모리를 GB 로 보여 주고, 메뉴에서 끌 수 있음.
+[sysmon.bat](sysmon.bat) 을 더블클릭하면 켜지고, 다시 누르면 꺼짐. 알림 영역에 작은 막대그래프 아이콘이 뜸. 마우스를 올리면 메모리를 GB 로 보여 줌. 메뉴에서 윈도우 시작 시 실행([usage-hud](../usage-hud/#hud-1) 와 같음)을 켜고 끝냄.
 
 `python sysmon.py --stop` 으로 끄고, `python sysmon.py --check` 로 자체 점검을 돌림.
 
