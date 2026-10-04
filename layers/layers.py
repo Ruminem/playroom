@@ -244,8 +244,11 @@ class Layers:
     # ── 순서 맞추기 ──
     def ranked(self, wins):
         """목록 순서대로 지금 떠 있는 창들. 한 규칙에 창이 여럿이면 지금 앞뒤 그대로, 두 규칙에 맞으면 윗 규칙."""
-        out = []
+        out, off = [], overlay.below()
         for rule in self.rules:
+            # ponytail: 규칙 이름의 첫 낱말로 도구를 알아봄. 사용자가 이름을 바꾼 규칙은 '항상 위' 를 꺼도 올림
+            if (rule.get("name") or "").split(" ")[0] in off:
+                continue
             out += [w for w in wins if matches(rule, w) and w not in out]
         return out
 

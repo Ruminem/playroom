@@ -415,6 +415,9 @@ class Weather:
         l, t, r, b = overlay.work_area()
         self.w, self.h = r - l, b - t
         self.surface = Surface(l, t, self.w, self.h, SURFACE_CLASS)
+        self.on_top = MAC or overlay.on_top("weather")  # 런처의 '항상 위'. 맥은 런처가 없음
+        if not self.on_top:
+            self.surface.topmost(False)
         self.stride = self.w * 4
         s = self.stride
         self.snow_sprites = [[[place(disc(rad, layer[4], layer[3], SNOW_COLOR, SNOW_RIM, fx / 4, fy / 4), s)
@@ -893,7 +896,7 @@ class Weather:
             if kind == "storm":
                 self.lightning(now)
         self.surface.present(top) if top else self.surface.present()
-        if now - self.last_topmost > 2:
+        if self.on_top and now - self.last_topmost > 2:
             self.surface.topmost()
             self.last_topmost = now
 

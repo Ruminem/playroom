@@ -111,7 +111,8 @@ class Hud:
         self.root = tk.Tk()
         self.root.title("usage-hud")  # layers 가 이 제목으로 알아봄
         self.root.overrideredirect(True)
-        self.root.attributes("-topmost", True)
+        self.on_top = overlay.on_top("usage-hud")  # 런처의 '항상 위'
+        self.root.attributes("-topmost", self.on_top)
         self.canvas = tk.Canvas(self.root, bg=COLORS["bg"], bd=0, highlightthickness=0)
         self.canvas.pack()
         self.place()
@@ -326,7 +327,7 @@ class Hud:
         now = time.monotonic()
         # 다른 맨 위 창(PIP 등)이 앞을 가져가도 가끔 다시 올라옴. 작업 표시줄 자리는 누르면 그쪽이
         # 앞으로 오므로 sysmon 처럼 1초마다
-        if self.visible and now - self.last_topmost > (0.9 if bar else 2) and not overlay.layers_running():
+        if self.on_top and self.visible and now - self.last_topmost > (0.9 if bar else 2) and not overlay.layers_running():
             self.root.attributes("-topmost", True)
             self.last_topmost = now
         self.root.after(1000, self.tick)

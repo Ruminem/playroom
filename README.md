@@ -10,6 +10,7 @@ A hobby playroom. One folder per experiment, each with its own short README.
 - [weather](weather/) — snow, rain, a thunderstorm, hail, fireflies or fireworks over every window, picture-in-picture video included. Clicks go straight through to whatever you are working on; snow piles up on the taskbar and slowly melts. Optional pixel animals — a cat, bird, dog, rabbit or penguin, several at once — wander along the taskbar, with or without weather. Also runs on macOS, with its icon in the menu bar
 - [sysmon](sysmon/) — CPU and memory use in two small lines on the taskbar, just left of the notification icons. Turns orange above 70% and red above 90%. A pixel theme matches usage-hud, which can sit on the taskbar right next to it. Also runs on macOS, in the menu bar
 - [layers](layers/) — decides which always-on-top window goes in front: the overlays here, a picture-in-picture video, any window you add. Without it the overlays take turns jumping in front of each other
+- [launcher](launcher/) — one window to run or stop the tools above, keep each on top or not, start it with Windows, and install or uninstall it as a Start menu shortcut
 - [shared](shared/) — the tray icon, per-pixel alpha window, taskbar text, single-instance, work-area and start-with-Windows helpers the overlays share
 
 ## License
@@ -30,6 +31,7 @@ Apache-2.0. See [LICENSE](LICENSE).
 - [weather](weather/) — PIP 영상까지 포함해 모든 창 위로 눈·비·뇌우·우박을 내리거나 반딧불이·불꽃놀이를 띄움. 클릭은 하던 작업으로 그대로 통과하고, 눈은 작업 표시줄 위에 쌓였다가 천천히 녹음. 픽셀 고양이·새·강아지·토끼·펭귄을 켜면(여럿도 됨) 날씨와 같이 또는 혼자 작업 표시줄 위를 돌아다님. 맥에서도 돌고, 아이콘은 메뉴 막대에 뜸
 - [sysmon](sysmon/) — 작업 표시줄의 알림 아이콘 바로 왼쪽에 CPU·메모리 사용률을 작은 두 줄로 띄움. 70% 를 넘으면 주황, 90% 를 넘으면 빨강. 픽셀 테마는 usage-hud 와 같은 모양이고, usage-hud 를 작업 표시줄에 두면 바로 옆에 붙음. 맥에서도 돌고, 메뉴 막대에 뜸
 - [layers](layers/) — 맨 위에 뜨는 창들 중 무엇이 앞에 올지 정함. 여기 오버레이들, PIP 영상, 직접 넣은 아무 창이나. 없으면 오버레이들이 서로 번갈아 앞으로 튀어나옴
+- [launcher](launcher/) — 위 도구들을 한 창에서 실행·중단하고, 항상 위·윈도우 시작 시 실행을 켜고 끄고, 시작 메뉴 바로가기로 설치·제거함
 - [shared](shared/) — 오버레이들이 같이 쓰는 트레이 아이콘, 픽셀 알파 창, 작업 표시줄 글자, 한 번만 뜨게 하기, 작업 영역, 윈도우 시작 시 실행 코드
 
 ### 라이선스

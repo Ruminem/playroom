@@ -4,10 +4,28 @@
 각 폴더의 스크립트는 sys.path 에 이 폴더를 넣고 import 한다.
 """
 import ctypes
+import json
 import os
+import tempfile
 import time
+from pathlib import Path
 
 LAYERS_TRAY = "PlayroomLayersTray"
+LAUNCHER_FILE = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "playroom" / "launcher.json"
+
+
+def below():
+    """런처에서 '항상 위' 를 끈 도구 이름들 (weather · sysmon · usage-hud)."""
+    try:
+        names = json.loads(LAUNCHER_FILE.read_text(encoding="utf-8")).get("below", [])
+    except (OSError, ValueError, AttributeError):
+        return set()
+    return {n for n in names if isinstance(n, str)} if isinstance(names, list) else set()
+
+
+def on_top(name):
+    """도구는 뜰 때 한 번 읽는다. 런처는 값을 바꾸면 그 도구를 다시 띄운다."""
+    return name not in below()
 
 
 def running_pid(pid_file):

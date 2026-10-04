@@ -302,6 +302,9 @@ class Monitor:
         self.mode, self.theme = load_settings()
         use_theme(self.theme)
         self.surface = Surface(x - GAP - self.w, top, self.w, self.h, SURFACE_CLASS)
+        self.on_top = MAC or overlay.on_top("sysmon")  # 런처의 '항상 위'. 맥은 런처가 없음
+        if not self.on_top:
+            self.surface.topmost(False)
         taskbar.prepare(self.surface, self.font)
         self.vis_w = self.w
         self.commands = queue.Queue()
@@ -344,7 +347,8 @@ class Monitor:
             self.where = spot[:2], self.vis_w
             self.surface.view(spot[0] - GAP - self.vis_w, spot[1], self.w - self.vis_w, self.vis_w)
         self.surface.present()
-        self.surface.topmost()  # 작업 표시줄을 누르면 그쪽이 앞으로 오므로 1초마다 다시 올라옴
+        if self.on_top:
+            self.surface.topmost()  # 작업 표시줄을 누르면 그쪽이 앞으로 오므로 1초마다 다시 올라옴
 
     def run(self):
         next_update = 0.0

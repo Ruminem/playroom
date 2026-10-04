@@ -69,7 +69,7 @@ kernel32.GetModuleHandleW.restype = wintypes.HMODULE
 
 # 겹친 창 · 클릭 통과 · 작업 표시줄에 안 뜸 · 포커스 안 뺏음 · 맨 위
 EX_STYLE = 0x80000 | 0x20 | 0x80 | 0x8000000 | 0x8
-HWND_TOPMOST = wintypes.HWND(-1)
+HWND_TOPMOST, HWND_NOTOPMOST = wintypes.HWND(-1), wintypes.HWND(-2)
 
 
 class Surface:
@@ -120,11 +120,12 @@ class Surface:
     def show(self, on):
         user32.ShowWindow(self.hwnd, 4 if on else 0)  # SW_SHOWNOACTIVATE · SW_HIDE
 
-    def topmost(self):
-        """다른 맨 위 창(PIP 등)이 앞을 가져가도 다시 올라옴. layers 가 떠 있으면 그쪽에 맡김."""
-        if overlay.layers_running():
+    def topmost(self, on=True):
+        """다른 맨 위 창(PIP 등)이 앞을 가져가도 다시 올라옴. layers 가 떠 있으면 그쪽에 맡김.
+        on=False 는 맨 위에서 내림('항상 위' 끔). 부를 때마다 보통 창들 맨 앞으로 오므로 뜰 때 한 번만 부름."""
+        if on and overlay.layers_running():
             return
-        user32.SetWindowPos(self.hwnd, HWND_TOPMOST, 0, 0, 0, 0, 0x1 | 0x2 | 0x10)  # NOSIZE NOMOVE NOACTIVATE
+        user32.SetWindowPos(self.hwnd, HWND_TOPMOST if on else HWND_NOTOPMOST, 0, 0, 0, 0, 0x1 | 0x2 | 0x10)  # NOSIZE NOMOVE NOACTIVATE
 
     def pump(self):
         while user32.PeekMessageW(ctypes.byref(self._msg), None, 0, 0, 1):  # PM_REMOVE
