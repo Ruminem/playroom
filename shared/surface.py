@@ -8,6 +8,8 @@ pixels 는 그 메모리를 바로 가리키는 memoryview 라 슬라이스 대�
 import ctypes
 from ctypes import wintypes
 
+import overlay
+
 user32 = ctypes.windll.user32
 gdi32 = ctypes.windll.gdi32
 kernel32 = ctypes.windll.kernel32
@@ -96,7 +98,9 @@ class Surface:
         user32.ShowWindow(self.hwnd, 4 if on else 0)  # SW_SHOWNOACTIVATE · SW_HIDE
 
     def topmost(self):
-        """다른 맨 위 창(PIP 등)이 앞을 가져가도 다시 올라옴."""
+        """다른 맨 위 창(PIP 등)이 앞을 가져가도 다시 올라옴. layers 가 떠 있으면 그쪽에 맡김."""
+        if overlay.layers_running():
+            return
         user32.SetWindowPos(self.hwnd, HWND_TOPMOST, 0, 0, 0, 0, 0x1 | 0x2 | 0x10)  # NOSIZE NOMOVE NOACTIVATE
 
     def pump(self):

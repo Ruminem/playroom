@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
-"""놀이방의 맨 위 오버레이들이 같이 쓰는 것: 한 번만 뜨게 하기, 작업 영역, tk 창 클릭 통과.
+"""놀이방의 맨 위 오버레이들이 같이 쓰는 것: 한 번만 뜨게 하기, 작업 영역, tk 창 클릭 통과, layers 양보.
 
 각 폴더의 스크립트는 sys.path 에 이 폴더를 넣고 import 한다.
 """
 import ctypes
 import os
 import time
+
+LAYERS_TRAY = "PlayroomLayersTray"
 
 
 def running_pid(pid_file):
@@ -56,3 +58,9 @@ def click_through(root):
     user32.SetWindowLongW(hwnd, -20, user32.GetWindowLongW(hwnd, -20) | flags)
     # 겹친 창은 알파를 한 번 정해 줘야 그려진다. 색 키(-transparentcolor) 창에 부르면 색 키가 지워진다
     user32.SetLayeredWindowAttributes(hwnd, 0, 255, 2)  # LWA_ALPHA, 불투명
+
+
+def layers_running():
+    """layers 가 떠 있으면 창 순서는 그쪽이 정하므로, 오버레이는 스스로 맨 위로 올리지 않는다.
+    둘 다 올리면 2초마다 서로 앞을 뺏고, 캡처 도구 같은 남의 맨 위 창까지 덮는다."""
+    return bool(ctypes.windll.user32.FindWindowW(LAYERS_TRAY, None))

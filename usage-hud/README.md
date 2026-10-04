@@ -40,7 +40,7 @@ Opens `http://127.0.0.1:8765/` with the same bars and a bar chart of the last se
 
 ## How it works
 
-- A borderless tkinter window, kept on top by re-asserting topmost every two seconds
+- A borderless tkinter window, kept on top by re-asserting topmost every two seconds, or left to [layers](../layers/) when that is running
 - `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE` makes it click-through, hidden from the taskbar and non-activating — the same trick as [cat-follower](https://github.com/Ruminem/cursor-playground/tree/main/cat-follower)
 - [font.py](font.py) holds a 3×5 pixel font and 7×7 icons that both the HUD and the page draw from
 - [shared/tray.py](../shared/tray.py) calls `Shell_NotifyIconW` through ctypes, with a hidden window and message loop on its own thread. The tray icon is the heart drawn into a multi-size `.ico` at start. pystray was left out because it is LGPL
@@ -89,7 +89,7 @@ python page.py
 
 ### 어떻게 하나
 
-- 테두리 없는 tkinter 창을 2초마다 다시 맨 위로 올림
+- 테두리 없는 tkinter 창을 2초마다 다시 맨 위로 올림. [layers](../layers/) 가 떠 있으면 그쪽에 맡김
 - `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE` 로 클릭 통과, 작업 표시줄 숨김, 포커스 안 뺏음 — [cat-follower](https://github.com/Ruminem/cursor-playground/tree/main/cat-follower) 와 같은 방식
 - [font.py](font.py) 에 3×5 픽셀 글꼴과 7×7 아이콘이 있고 HUD 와 페이지가 같이 씀
 - [shared/tray.py](../shared/tray.py) 가 ctypes 로 `Shell_NotifyIconW` 를 부르고, 제 스레드에서 숨은 창과 메시지 루프를 돌림. 트레이 아이콘은 시작할 때 하트를 크기 여러 벌짜리 `.ico` 로 그려 씀. pystray 는 LGPL 이라 안 씀

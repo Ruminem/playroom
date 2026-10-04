@@ -141,6 +141,7 @@ class Hud:
     def __init__(self, scale, corner):
         self.s, self.corner, self.visible = scale, corner, True
         self.root = tk.Tk()
+        self.root.title("usage-hud")  # layers 가 이 제목으로 알아봄
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
         self.canvas = tk.Canvas(self.root, bg=COLORS["bg"], bd=0, highlightthickness=0)
@@ -315,7 +316,7 @@ class Hud:
         self.draw()
         now = time.monotonic()
         # 다른 맨 위 창(PIP 등)이 앞을 가져가도 가끔 다시 올라옴
-        if self.visible and now - self.last_topmost > 2:
+        if self.visible and now - self.last_topmost > 2 and not overlay.layers_running():
             self.root.attributes("-topmost", True)
             self.last_topmost = now
         self.root.after(1000, self.tick)

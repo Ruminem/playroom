@@ -18,7 +18,7 @@ It wakes ten times a second to handle messages and measures once a second. Measu
 
 - CPU is the share of non-idle time between two `GetSystemTimes` calls a second apart; memory is `dwMemoryLoad` from `GlobalMemoryStatusEx`. Both matched the performance counters and WMI when checked
 - It draws onto a click-through, topmost window with per-pixel alpha ([surface.py](../shared/surface.py)) placed over the taskbar. Text is drawn by GDI in white with greyscale anti-aliasing, then the brightness becomes alpha and the line colour is applied, so the edges stay soft on any taskbar colour
-- Every second it re-reads where the notification area (`TrayNotifyWnd`) starts, so it follows when tray icons come and go, and re-asserts topmost because clicking the taskbar brings it to the front
+- Every second it re-reads where the notification area (`TrayNotifyWnd`) starts, so it follows when tray icons come and go, and re-asserts topmost because clicking the taskbar brings it to the front — unless [layers](../layers/) is running, which then keeps the order
 - When a full-screen app is running (`SHQueryUserNotificationState`: busy, Direct3D full screen or presentation mode) it hides, since the taskbar is gone too
 - Not handled: an auto-hiding taskbar, a taskbar on the side or top, and monitors other than the primary one
 
@@ -44,6 +44,6 @@ It wakes ten times a second to handle messages and measures once a second. Measu
 
 - CPU 는 1초 간격으로 부른 `GetSystemTimes` 두 번 사이에서 쉬지 않은 시간의 비율이고, 메모리는 `GlobalMemoryStatusEx` 의 `dwMemoryLoad` 임. 성능 카운터·WMI 값과 맞는 것을 봤음
 - 작업 표시줄 위에 얹은 클릭 통과·맨 위·픽셀 알파 창([surface.py](../shared/surface.py))에 그림. 글자는 GDI 로 흰색 회색조 안티에일리어싱으로 그린 뒤 밝기를 알파로 바꿔 줄 색을 입힘. 그래서 작업 표시줄 색이 무엇이든 가장자리가 부드러움
-- 1초마다 알림 영역(`TrayNotifyWnd`)이 어디서 시작하는지 다시 읽어 트레이 아이콘이 늘거나 줄면 따라감. 작업 표시줄을 누르면 그쪽이 앞으로 오므로 맨 위도 1초마다 다시 잡음
+- 1초마다 알림 영역(`TrayNotifyWnd`)이 어디서 시작하는지 다시 읽어 트레이 아이콘이 늘거나 줄면 따라감. 작업 표시줄을 누르면 그쪽이 앞으로 오므로 맨 위도 1초마다 다시 잡음. [layers](../layers/) 가 떠 있으면 순서는 그쪽에 맡김
 - 전체 화면 앱이 돌면(`SHQueryUserNotificationState` 가 바쁨·Direct3D 전체 화면·발표 모드) 작업 표시줄도 사라지므로 같이 숨음
 - 안 따지는 것: 자동 숨기기 작업 표시줄, 옆이나 위에 둔 작업 표시줄, 주 모니터가 아닌 모니터
