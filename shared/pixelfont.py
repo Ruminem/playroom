@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""usage-hud(HUD·페이지)와 sysmon 픽셀 테마가 같이 쓰는 픽셀 글꼴(3×5)과 아이콘(7×7). '#' 이 칠하는 칸."""
+"""usage-hud(HUD·페이지)와 sysmon 픽셀 테마가 같이 쓰는 픽셀 글꼴(3×5)과 아이콘(7×7), 색 테마. '#' 이 칠하는 칸."""
 
 GLYPHS = {
     "A": (".#.", "#.#", "###", "#.#", "#.#"), "B": ("##.", "#.#", "##.", "#.#", "##."),
@@ -43,6 +43,37 @@ COLORS = {
     "bg": "#181425", "edge": "#3a4466", "slot": "#262b44", "text": "#c0cbdc",
     "good": "#63c74d", "mid": "#feae34", "low": "#e43b44", "dim": "#5a6988",
 }
+CLASSIC = dict(COLORS)
+
+# 테마: 이름 → (메뉴 글, 색 전부). 클래식 말고는 COLORS 의 키를 다 채워 클래식 색이 섞이지 않게
+PALETTES = {
+    "classic": ("클래식", CLASSIC),
+    "gameboy": ("게임보이", {
+        "bg": "#0f380f", "edge": "#306230", "slot": "#1e4d1e", "text": "#9bbc0f", "dim": "#5f8a1f",
+        "good": "#9bbc0f", "mid": "#c4d66b", "low": "#e0f0a0", "r": "#8bac0f", "w": "#e0f0a0",
+        "y": "#c4d66b", "o": "#306230", "p": "#8bac0f", "c": "#9bbc0f", "g": "#8bac0f"}),
+    "neon": ("네온", {
+        "bg": "#0d0221", "edge": "#ff2a6d", "slot": "#2a1b3d", "text": "#d1f7ff", "dim": "#7a5c9e",
+        "good": "#05d9e8", "mid": "#f9c80e", "low": "#ff2a6d", "r": "#ff2a6d", "w": "#ffffff",
+        "y": "#f9c80e", "o": "#b8336a", "p": "#7a5c9e", "c": "#05d9e8", "g": "#01c38d"}),
+    "amber": ("앰버 단말기", {
+        "bg": "#140c00", "edge": "#5a3800", "slot": "#2e1d00", "text": "#ffb000", "dim": "#8a5a00",
+        "good": "#ffb000", "mid": "#ffd27a", "low": "#ff5a1f", "r": "#ff8c1a", "w": "#fff0c8",
+        "y": "#ffc340", "o": "#8a5a00", "p": "#b07a20", "c": "#ffb000", "g": "#c88a10"}),
+    "ocean": ("심해", {
+        "bg": "#0b1d2e", "edge": "#2d5d7b", "slot": "#13324a", "text": "#cfe8f5", "dim": "#5d8aa8",
+        "good": "#4fd1c5", "mid": "#f6c177", "low": "#eb6f92", "r": "#eb6f92", "w": "#ffffff",
+        "y": "#f6c177", "o": "#b07a4f", "p": "#7aa2c0", "c": "#4fd1c5", "g": "#3fa796"}),
+    "paper": ("종이 (밝음)", {
+        "bg": "#f4ecd8", "edge": "#b8a88a", "slot": "#ddd2b8", "text": "#3b3024", "dim": "#8a7a62",
+        "good": "#3e8948", "mid": "#d07a1a", "low": "#c0392b", "r": "#e43b44", "w": "#ffffff",
+        "y": "#e8a020", "o": "#8a5030", "p": "#6a7a94", "c": "#0077b6", "g": "#3e8948"}),
+}
+
+
+def use_palette(name):
+    """COLORS 를 그 자리에서 갈아 끼움. 가져다 쓰는 쪽이 같은 dict 를 보므로 그리는 코드는 그대로. 모르는 이름은 클래식."""
+    COLORS.update(PALETTES.get(name, PALETTES["classic"])[1])
 
 
 def text_width(s):
@@ -65,4 +96,9 @@ if __name__ == "__main__":
     assert all(len(i) == 7 and all(len(r) == 7 for r in i) for i in ICONS.values())
     assert all(c in COLORS for i in ICONS.values() for r in i for c in r if c != ".")
     assert text_width("HP") == 7 and (0, 0) in set(text_pixels("h"))
+    assert all(set(p) == set(CLASSIC) for _, p in PALETTES.values()), "테마마다 색을 빠짐없이"
+    use_palette("neon")
+    assert COLORS["bg"] == "#0d0221" and COLORS["good"] == "#05d9e8"
+    use_palette("없는 이름")
+    assert COLORS == CLASSIC
     print("ok")

@@ -9,8 +9,8 @@
 
 HP 는 7일 창, ST 는 5시간 창의 **남은** 양이다. 칸 옆은 재설정까지 남은 시간.
 동전 줄은 오늘 쓴 정가. 창은 맨 위에 있지만 클릭을 아래로 통과시키고 포커스도 안 뺏는다.
-대신 트레이(알림 영역)에 하트 아이콘이 뜨고, 그 메뉴에서 숨기기·위치·크기·페이지·끝내기를 한다.
-메뉴에서 고른 위치와 크기는 SETTINGS 에 남아 다음에 켤 때도 쓰인다. '작업 표시줄' 자리에서는 두 줄짜리
+대신 트레이(알림 영역)에 하트 아이콘이 뜨고, 그 메뉴에서 숨기기·위치·크기·테마·페이지·끝내기를 한다.
+메뉴에서 고른 위치·크기·테마는 SETTINGS 에 남아 다음에 켤 때도 쓰인다. '작업 표시줄' 자리에서는 두 줄짜리
 납작한 모양으로 sysmon(없으면 알림 영역) 왼쪽에 붙고, 크기는 작업 표시줄 높이에 맞춰 정해진다.
 """
 import argparse
@@ -32,7 +32,7 @@ import overlay
 import startup
 import taskbar
 import usage
-from pixelfont import COLORS, ICONS, text_pixels, text_width
+from pixelfont import COLORS, ICONS, PALETTES, text_pixels, text_width, use_palette
 from tray import Tray, write_ico
 
 PID_FILE = Path(tempfile.gettempdir()) / "playroom-usage-hud.pid"
@@ -57,6 +57,7 @@ CORNERS = {10: ("bl", "왼쪽 아래"), 11: ("br", "오른쪽 아래"), 12: ("tl
            14: ("bar", "작업 표시줄 (sysmon 왼쪽)")}
 CORNER_KEYS = tuple(c for c, _ in CORNERS.values())
 SCALES = {20 + s: s for s in (2, 3, 4, 5)}
+THEMES = {60 + i: key for i, key in enumerate(PALETTES)}
 
 HELP_TEXT = """HP (하트) — 7일 한도의 남은 양
 ST (번개) — 5시간 한도의 남은 양
@@ -91,6 +92,8 @@ def load_settings():
         ok["corner"] = data["corner"]
     if data.get("scale") in range(1, 9):
         ok["scale"] = data["scale"]
+    if data.get("theme") in PALETTES:
+        ok["theme"] = data["theme"]
     return ok
 
 
@@ -99,8 +102,9 @@ def level_color(left):
 
 
 class Hud:
-    def __init__(self, scale, corner):
-        self.s, self.corner, self.visible = scale, corner, True
+    def __init__(self, scale, corner, theme):
+        self.s, self.corner, self.visible, self.theme = scale, corner, True, theme
+        use_palette(theme)
         # 지금 그리는 픽셀 크기 · 납작한 모양인가 · 창 자리 · 전체 화면에 가려 숨었나
         self.ps, self.flat, self.geom, self.covered = scale, False, None, False
         self.root = tk.Tk()
@@ -146,6 +150,7 @@ class Hud:
         return [("HUD 보이기", SHOW, self.visible),
                 ("위치", [(name, cid, c == self.corner) for cid, (c, name) in CORNERS.items()]),
                 ("크기", [("%d배" % s, cid, s == self.s) for cid, s in SCALES.items()]),
+                ("테마", [(PALETTES[t][0], cid, t == self.theme) for cid, t in THEMES.items()]),
                 ("Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)),
                 None,
                 ("페이지 열기 (7일치)", PAGE, False),
@@ -179,6 +184,12 @@ class Hud:
             self.place()
             self.draw()
             self.save()
+        elif cid in THEMES:
+            self.theme = THEMES[cid]
+            use_palette(self.theme)
+            self.canvas.configure(bg=COLORS["bg"])  # 트레이 아이콘은 다음에 켤 때 새 색으로
+            self.draw()
+            self.save()
         elif cid == AUTOSTART:
             startup.toggle(RUN_NAME, __file__)
         elif cid == PAGE:
@@ -198,7 +209,7 @@ class Hud:
     def save(self):
         try:
             SETTINGS.parent.mkdir(parents=True, exist_ok=True)
-            SETTINGS.write_text(json.dumps({"corner": self.corner, "scale": self.s}), encoding="utf-8")
+            SETTINGS.write_text(json.dumps({"corner": self.corner, "scale": self.s, "theme": self.theme}), encoding="utf-8")
         except OSError:
             pass  # 못 남겨도 지금 화면은 바뀌었으니 넘어감
 
@@ -358,7 +369,7 @@ def main():
         pass
     PID_FILE.write_text(str(os.getpid()))
     try:
-        Hud(args.scale, args.corner).run()
+        Hud(args.scale, args.corner, saved.get("theme", "classic")).run()
     finally:
         if running_pid() == os.getpid():
             PID_FILE.unlink(missing_ok=True)

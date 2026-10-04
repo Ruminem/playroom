@@ -14,7 +14,9 @@ Each bar shows the time left until it resets, and blinks below 10%.
 
 Double-click [hud.bat](hud.bat) to show or hide it. It sits in the bottom-left corner above the taskbar, on top of every window, even a picture-in-picture video that is topmost too, but clicks pass straight through it and it never takes focus.
 
-Because the HUD itself cannot be clicked, a heart icon sits in the notification area. Its menu shows or hides the HUD, moves it to another corner or onto the **taskbar**, changes its size (2–5×), starts it with Windows, opens the page, shows a short help and exits. The corner and size you pick are remembered in `%LOCALAPPDATA%\playroom\usage-hud.json`. Hovering the icon shows the numbers as text.
+Because the HUD itself cannot be clicked, a heart icon sits in the notification area. Its menu shows or hides the HUD, moves it to another corner or onto the **taskbar**, changes its size (2–5×) or **theme**, starts it with Windows, opens the page, shows a short help and exits. The corner, size and theme you pick are remembered in `%LOCALAPPDATA%\playroom\usage-hud.json`. Hovering the icon shows the numbers as text.
+
+There are six themes — only the colours change: classic, Game Boy (four greens), neon, amber terminal, deep sea and paper (a light one). The tray icon picks up a new theme the next time the HUD starts, and the page always stays classic
 
 On the taskbar it turns into a flat two-line panel — HP and ST on the left, the coin and today's cost on the right — just left of [sysmon](../sysmon/) (or of the notification icons when sysmon is off). Its size follows the taskbar height there, so the size menu applies only in the corners. It follows when sysmon moves or changes width, hides with a full-screen app, and may cover the end of a long row of taskbar buttons
 
@@ -44,7 +46,7 @@ Opens `http://127.0.0.1:8765/` with the same bars and a bar chart of the last se
 
 - A borderless tkinter window, kept on top by re-asserting topmost every two seconds, or left to [layers](../layers/) when that is running
 - `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE` makes it click-through, hidden from the taskbar and non-activating — the same trick as [cat-follower](https://github.com/Ruminem/cursor-playground/tree/main/cat-follower)
-- [pixelfont.py](../shared/pixelfont.py) holds a 3×5 pixel font and 7×7 icons that the HUD, the page and sysmon's pixel theme draw from
+- [pixelfont.py](../shared/pixelfont.py) holds a 3×5 pixel font, 7×7 icons and the colour palettes that the HUD, the page and sysmon's pixel theme draw from
 - [shared/tray.py](../shared/tray.py) calls `Shell_NotifyIconW` through ctypes, with a hidden window and message loop on its own thread. The tray icon is the heart drawn into a multi-size `.ico` at start. pystray was left out because it is LGPL
 
 ---
@@ -65,7 +67,9 @@ Claude Code 구독 한도를 레트로 게임 HUD 로 그림. 윈도우 전용�
 
 [hud.bat](hud.bat) 을 더블클릭하면 켜지고 다시 누르면 꺼짐. 작업 표시줄 위 왼쪽 아래 구석에 모든 창보다 위에 뜨지만(같이 맨 위에 뜨는 PIP 영상보다도 위), 클릭은 그대로 아래로 통과하고 포커스도 안 뺏음.
 
-HUD 자체는 클릭이 안 되므로 알림 영역에 하트 아이콘이 뜸. 그 메뉴에서 HUD 보이기·숨기기, 다른 구석이나 **작업 표시줄** 로 옮기기, 크기(2–5배) 바꾸기, 윈도우 시작 시 실행, 페이지 열기, 짧은 도움말, 끝내기를 함. 고른 위치와 크기는 `%LOCALAPPDATA%\playroom\usage-hud.json` 에 남음. 아이콘에 마우스를 올리면 숫자가 글로 보임.
+HUD 자체는 클릭이 안 되므로 알림 영역에 하트 아이콘이 뜸. 그 메뉴에서 HUD 보이기·숨기기, 다른 구석이나 **작업 표시줄** 로 옮기기, 크기(2–5배)나 **테마** 바꾸기, 윈도우 시작 시 실행, 페이지 열기, 짧은 도움말, 끝내기를 함. 고른 위치·크기·테마는 `%LOCALAPPDATA%\playroom\usage-hud.json` 에 남음. 아이콘에 마우스를 올리면 숫자가 글로 보임.
+
+테마는 여섯이고 색만 바뀜: 클래식, 게임보이(초록 네 가지), 네온, 앰버 단말기, 심해, 종이(밝은 바탕). 트레이 아이콘은 다음에 켤 때 새 테마 색이 되고, 페이지는 늘 클래식임
 
 작업 표시줄에서는 두 줄짜리 납작한 패널이 됨 — 왼쪽에 HP·ST, 오른쪽에 동전과 오늘 정가 — [sysmon](../sysmon/) 바로 왼쪽(sysmon 이 꺼져 있으면 알림 아이콘 왼쪽)에 붙음. 크기는 작업 표시줄 높이에 맞춰 정해져서 크기 메뉴는 구석에서만 먹음. sysmon 이 옮기거나 폭이 바뀌면 따라가고, 전체 화면 앱이 돌면 숨고, 작업 표시줄 단추가 길게 늘어서 있으면 그 끝을 덮을 수 있음
 
@@ -95,5 +99,5 @@ python page.py
 
 - 테두리 없는 tkinter 창을 2초마다 다시 맨 위로 올림. [layers](../layers/) 가 떠 있으면 그쪽에 맡김
 - `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE` 로 클릭 통과, 작업 표시줄 숨김, 포커스 안 뺏음 — [cat-follower](https://github.com/Ruminem/cursor-playground/tree/main/cat-follower) 와 같은 방식
-- [pixelfont.py](../shared/pixelfont.py) 에 3×5 픽셀 글꼴과 7×7 아이콘이 있고 HUD·페이지·sysmon 픽셀 테마가 같이 씀
+- [pixelfont.py](../shared/pixelfont.py) 에 3×5 픽셀 글꼴·7×7 아이콘·색 팔레트가 있고 HUD·페이지·sysmon 픽셀 테마가 같이 씀
 - [shared/tray.py](../shared/tray.py) 가 ctypes 로 `Shell_NotifyIconW` 를 부르고, 제 스레드에서 숨은 창과 메시지 루프를 돌림. 트레이 아이콘은 시작할 때 하트를 크기 여러 벌짜리 `.ico` 로 그려 씀. pystray 는 LGPL 이라 안 씀

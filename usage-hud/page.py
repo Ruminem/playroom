@@ -16,10 +16,10 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 import usage
-from pixelfont import COLORS, GLYPHS, ICONS
+from pixelfont import CLASSIC, GLYPHS, ICONS
 
 PAGE = Path(__file__).resolve().parent / "page.html"
-FONT = json.dumps({"glyphs": GLYPHS, "icons": ICONS, "colors": COLORS})
+FONT = json.dumps({"glyphs": GLYPHS, "icons": ICONS, "colors": CLASSIC})  # HUD 안에서 열려도 HUD 테마를 안 따라감
 
 
 class Handler(BaseHTTPRequestHandler):

@@ -6,9 +6,9 @@
   python sysmon.py --stop      치우기
   python sysmon.py --check     자체 점검
 
-작업 표시줄 위에 얹은 맨 위·클릭 통과 알파 창(shared/surface.py)이다. 테마는 둘이다. 기본은 GDI 로
+작업 표시줄 위에 얹은 맨 위·클릭 통과 알파 창(shared/surface.py)이다. 테마는 글자와 픽셀이다. 기본은 GDI 로
 흰색 회색조 안티에일리어싱 글자를 그린 뒤 밝기를 알파로 바꿔 색을 입히고, 픽셀은 usage-hud 와 같은
-글꼴(shared/pixelfont.py)로 어두운 상자 안에 아이콘·칸 막대·숫자를 그린다. 1초마다 다시 재고, 트레이 아이콘이
+글꼴(shared/pixelfont.py)로 상자 안에 아이콘·칸 막대·숫자를 그린다. 픽셀은 같은 파일의 팔레트 여섯 중 하나로 칠한다. 1초마다 다시 재고, 트레이 아이콘이
 늘거나 줄면 따라 옮기며, 전체 화면 앱이 돌면 숨는다. 끝내기는 트레이의 막대 아이콘 메뉴에서 한다.
 """
 import argparse
@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 import overlay
 import startup
 import taskbar
-from pixelfont import COLORS, ICONS, text_pixels, text_width
+from pixelfont import COLORS, ICONS, PALETTES, text_pixels, text_width, use_palette
 from surface import Surface
 from tray import Tray, write_ico
 
@@ -45,10 +45,12 @@ RUN_NAME = "PlayroomSysmon"
 # 메모리 줄 모양: id → (키, 메뉴 글). 글자 색은 어느 모양이든 사용률로 정함
 MEM_MODES = {60: ("pct", "퍼센트 (MEM 22%)"), 61: ("gb", "용량 (MEM 14.2/63.9G)"), 62: ("both", "둘 다 (MEM 14.2/63.9G 22%)")}
 MEM_KEYS = {key for key, _ in MEM_MODES.values()}
-THEMES = {70: ("text", "기본 (글자)"), 71: ("pixel", "픽셀 (HUD 처럼)")}
+# 테마: 글자, 또는 픽셀 상자에 pixelfont 의 팔레트 하나. 예전 설정의 "pixel" 은 클래식 픽셀로 읽음
+THEMES = {70: ("text", "기본 (글자)")}
+THEMES.update({71 + i: (key, "픽셀 · " + name) for i, (key, (name, _)) in enumerate(PALETTES.items())})
 THEME_KEYS = {key for key, _ in THEMES.values()}
 SEGMENTS = 8       # 픽셀 테마 막대 칸 수
-PIX = {k: tuple(int(v[i:i + 2], 16) for i in (1, 3, 5)) for k, v in COLORS.items()}
+PIX = {}           # 픽셀 테마가 버퍼에 찍을 RGB. use_theme 이 채움
 PCT_W = text_width("100%")
 
 ICON_COLORS = {"g": "#63c74d", "y": "#feae34"}
@@ -108,7 +110,14 @@ def load_settings():
         mode, theme = data.get("mem"), data.get("theme")
     except (OSError, ValueError, AttributeError):
         mode = theme = None
+    theme = "classic" if theme == "pixel" else theme
     return mode if mode in MEM_KEYS else "pct", theme if theme in THEME_KEYS else "text"
+
+
+def use_theme(theme):
+    """픽셀 팔레트를 COLORS 에 깔고 PIX 를 다시 만듦. 글자 테마는 이 색들을 안 씀"""
+    use_palette(theme)
+    PIX.update({k: tuple(int(v[i:i + 2], 16) for i in (1, 3, 5)) for k, v in COLORS.items()})
 
 
 def level_color(p):
@@ -191,6 +200,7 @@ class Monitor:
         self.w, self.h = max(widest + self.pad + 2, widest_pixel), h
         self.line = round(h * 0.44)
         self.mode, self.theme = load_settings()
+        use_theme(self.theme)
         self.surface = Surface(x - GAP - self.w, top, self.w, self.h, SURFACE_CLASS)
         taskbar.prepare(self.surface, self.font)
         self.vis_w = self.w
@@ -218,13 +228,13 @@ class Monitor:
             self.surface.show(show)
         if not show:
             return
-        if self.theme == "pixel":
+        if self.theme != "text":
             lines = pixel_rows(cpu, self.mode, mem, used, total)
         else:
             lines = [("CPU %d%%" % cpu, level_color(cpu)), (mem_text(self.mode, mem, used, total), level_color(mem))]
         if lines != self.last_lines:
             self.last_lines = lines
-            if self.theme == "pixel":
+            if self.theme != "text":
                 self.vis_w = paint_pixel(self.surface, lines, self.s)
             else:
                 taskbar.paint_lines(self.surface, lines, self.line)
@@ -247,6 +257,7 @@ class Monitor:
                 elif cid in MEM_MODES or cid in THEMES:
                     self.mode = MEM_MODES[cid][0] if cid in MEM_MODES else self.mode
                     self.theme = THEMES[cid][0] if cid in THEMES else self.theme
+                    use_theme(self.theme)
                     next_update, self.last_lines = 0.0, None  # 바로 다시 그림
                     try:
                         SETTINGS.parent.mkdir(parents=True, exist_ok=True)
@@ -301,13 +312,17 @@ def check():
             self.pixels[:] = bytes(len(self.pixels))
     rows = pixel_rows(50, "both", 22, 14.2, total)
     f = Fake(400, 48)
-    vis = paint_pixel(f, rows, 2)
-    assert vis == pixel_size(rows)[0] * 2
-    cols = {i // 4 % f.w for i in range(3, len(f.pixels), 4) if f.pixels[i]}
-    assert min(cols) == f.w - vis and max(cols) == f.w - 1, "오른쪽 끝에 붙고 보이는 폭이 맞음"
-    lit = sum(1 for k in range(SEGMENTS) for o in [((48 - 38) // 2 + 3 * 2) * f.w * 4 + (f.w - vis + (24 + k * 3) * 2) * 4]
-              if tuple(f.pixels[o:o + 3]) == PIX["good"][::-1])
-    assert lit == 4, ("CPU 50% 면 8칸 중 4칸", lit)
+    assert len(THEME_KEYS) == len(PALETTES) + 1, "글자 + 팔레트마다 하나"
+    for theme in PALETTES:  # 테마를 바꾸면 막대도 그 팔레트의 색으로 찍힘
+        use_theme(theme)
+        vis = paint_pixel(f, rows, 2)
+        assert vis == pixel_size(rows)[0] * 2
+        cols = {i // 4 % f.w for i in range(3, len(f.pixels), 4) if f.pixels[i]}
+        assert min(cols) == f.w - vis and max(cols) == f.w - 1, "오른쪽 끝에 붙고 보이는 폭이 맞음"
+        good = tuple(int(PALETTES[theme][1]["good"][i:i + 2], 16) for i in (5, 3, 1))  # BGR
+        lit = sum(1 for k in range(SEGMENTS) for o in [((48 - 38) // 2 + 3 * 2) * f.w * 4 + (f.w - vis + (24 + k * 3) * 2) * 4]
+                  if tuple(f.pixels[o:o + 3]) == good)
+        assert lit == 4, ("CPU 50% 면 8칸 중 4칸", theme, lit)
     print("자체 점검 통과")
 
 
