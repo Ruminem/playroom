@@ -37,6 +37,7 @@ from tray import Tray, write_ico
 
 PID_FILE = Path(tempfile.gettempdir()) / "playroom-usage-hud.pid"
 ICON_FILE = Path(tempfile.gettempdir()) / "playroom-usage-hud.ico"
+LOG_FILE = Path(tempfile.gettempdir()) / "playroom-usage-hud.log"  # pythonw 로 돌다 죽을 때 남는 traceback
 SETTINGS = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "playroom" / "usage-hud.json"
 TRAY_CLASS = "PlayroomUsageHudTray"  # --stop 이 이 이름으로 창을 찾아 닫으라고 보냄
 REFRESH_SEC = 60   # 정가를 다시 셈. 한도는 usage.LIMIT_EVERY 가 따로 5분에 한 번으로 묶음
@@ -363,6 +364,9 @@ def main():
                               "--corner", args.corner, "--scale", str(args.scale)], close_fds=True)
             return
 
+    if sys.stderr is None:  # pythonw 는 stderr 가 없어 죽어도 흔적이 없음. tk 콜백 오류도 여기로 감
+        sys.stderr = open(LOG_FILE, "a", encoding="utf-8", buffering=1)
+        print(time.strftime("--- %Y-%m-%d %H:%M:%S 시작"), file=sys.stderr)
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(2)  # 배율 높은 화면에서 흐려지지 않게
     except (AttributeError, OSError):

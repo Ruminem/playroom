@@ -1,3 +1,7 @@
+- 여기까지 됨 (2026-10-04 — 윈도우 재부팅 뒤 HUD 만 안 뜸): 21:31 재부팅 뒤 sysmon·layers·weather 는 Run 키로 떴는데 HUD 는 프로세스도 PID 파일도 없었다. 이벤트 로그에 충돌이 없고 PID 파일이 지워진 것은 파이썬 예외로 main 의 finally 를 탄 모양이다. 손으로 띄우면 멀쩡하고 테마 6종·위치 바꾸기를 직접 불러도 안 죽는다. pythonw 는 stderr 가 없어 흔적이 안 남으므로, stderr 가 None 이면 %TEMP%\playroom-usage-hud.log 로 받게 했다(일부러 죽여 traceback 이 남는 것 확인)
+- 다음 할 것: 다음 재부팅 뒤 HUD 가 또 안 뜨면 그 로그의 traceback 을 보고 고칠 것. 부팅 직후에만 없는 것(탐색기 트레이·작업 표시줄·네트워크)이 유력하다
+- 막힌 것: 원인 미확정 — 재부팅을 해야 재현됨
+
 - 여기까지 됨 (2026-10-04 — 맥 로그인 시 실행 끊김): 재부팅 뒤 weather 가 끊긴 것은 LaunchAgent 에 ProcessType 이 없어 launchd 가 daemon 으로 띄웠기 때문이다. 같은 그리기를 재 보니 터미널 30.1fps·간격 95% 34ms, daemon 24.6fps·103ms, Interactive 30.1fps·36ms. shared/mac/startup.py 가 ProcessType Interactive 를 쓰고, 옛 판 plist 는 꺼진 것으로 봐서 메뉴에서 다시 켜면 새로 쓴다. 이 맥의 weather plist 는 새로 써서 다시 올렸다. sysmon 은 로그인 시 실행을 안 켜 둬서 재부팅 뒤 안 떴던 것
 - 다음 할 것: 맥에서 sysmon 메뉴의 로그인 시 실행 켜기. UsageBar 의 plist 도 daemon 으로 뜨지만 그림을 안 움직여 그대로 둠
 - 막힌 것: 없음
