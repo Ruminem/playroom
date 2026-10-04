@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""모든 창 위에 내리는 눈·비·뇌우·벚꽃·낙엽과 떠다니는 반딧불이. 보이기만 하고 클릭은 그대로 아래 창으로 간다.
+"""모든 창 위에 내리는 눈·비·뇌우·벚꽃·낙엽과 떠다니는 반딧불이, 유성우. 보이기만 하고 클릭은 그대로 아래 창으로 간다.
 
   pythonw weather.py            띄우기 (창 없이 뒤에서 돎)
   python weather.py --toggle    떠 있으면 치우고, 없으면 띄움 (weather.bat 이 이걸 부름)
@@ -9,8 +9,8 @@
 
 작업 영역(작업 표시줄 뺀 주 모니터) 전체를 덮는 픽셀 알파 창(shared/surface.py)에 기본 60fps 로 그린다(메뉴에서 30–180).
 눈은 원근 세 층으로 바람에 흔들리며 내리고 작업 표시줄 위에 쌓였다 천천히 녹는다. 꽃잎·낙엽도 같은 층과
-더미를 쓰되 빙글빙글 돌며 팔랑인다. 비는 기운 빗줄기로 내리고 바닥에서 튀며, 뇌우는 거기에 번개를 더한다.
-반딧불이는 화면 아래쪽을 떠다니며 깜빡인다. 고양이(pet.py)를 켜면 바닥이나 쌓인 더미 위를 돌아다닌다.
+더미를 쓰되 빙글빙글 돌며 팔랑인다. 비는 세 겹 깊이의 빗줄기가 돌풍에 기울며 내리고 바닥에서 튀며, 뇌우는 거기에 번개와 빗발의 물결을 더한다.
+반딧불이는 화면 아래쪽을 떠다니며 깜빡이고, 유성은 화면 위 한 점에서 퍼져 나온다. 고양이(pet.py)를 켜면 바닥이나 쌓인 더미 위를 돌아다닌다.
 트레이의 눈송이 메뉴에서 종류·양·고양이·숨기기·끝내기를 하고(양은 10% 칸으로 0–100%),
 고른 것은 SETTINGS 에 남는다.
 """
@@ -51,15 +51,29 @@ FPS = 60           # 기본. 13fps 는 끊겨 보였음. 타이머 해상도를 
 FPS_IDS = {40: 30, 41: 60, 42: 120, 43: 180}
 SNOW_COLOR, SNOW_RIM = (248, 250, 255), (165, 176, 198)  # 테두리를 옅은 회청색으로 — 흰 창 위에서도 보이게
 RAIN_COLOR = (200, 214, 236)
+RAIN_LIT, RAIN_LIT_COLOR = 1.7, (236, 242, 255)  # 번개가 번쩍일 때 빗줄기 — 알파 배수, 색
 
 # 눈 층: (비율, 반지름들 px, 속도 px/초, 알파, 번짐 px, 흔들림 px, 바람을 받는 정도, 바닥에 쌓이나)
 SNOW_LAYERS = ((0.45, (0.7, 0.9, 1.1), (16, 28), 150, 0.8, 4, 0.4, False),   # 멀리
                (0.42, (1.3, 1.6, 2.0), (32, 52), 225, 0.9, 10, 0.7, True),   # 가운데
                (0.13, (2.4, 3.0, 3.6), (58, 88), 235, 1.8, 18, 1.0, True))   # 가까이 — 크고 번짐
 # 비 층: (비율, 길이 px, 속도 px/초, 알파, 굵기 px)
-RAIN_LAYERS = ((0.6, (16, 26), (650, 820), 120, 1.0),
-               (0.4, (30, 44), (900, 1150), 190, 1.6))
-SLANT = 0.12       # 빗줄기 기울기 (가로 / 세로)
+RAIN_LAYERS = ((0.45, (9, 15), (460, 580), 75, 0.8),       # 멀리 — 가늘고 흐리고 느림, 안 튐
+               (0.35, (16, 26), (650, 820), 120, 1.0),
+               (0.25, (30, 44), (900, 1150), 190, 1.6))
+SLANT = 0.12       # 빗줄기 기본 기울기 (가로 / 세로)
+SLANTS = tuple(i * 0.05 for i in range(8))  # 미리 그려 두는 기울기들. 돌풍은 이 사이를 오감
+GUST = {"rain": (0.06, 0.10), "storm": (0.16, 0.20)}  # 종류 → (기본에 더함, 출렁임 폭)
+CROWN_SEC = 0.09   # 빗방울이 바닥에 닿는 순간 ㅅ자 튐을 보여 주는 시간
+# 유성우: 하늘 위 바깥 한 점(복사점)에서 퍼져 나옴
+METEOR_RATE = 3.0  # 양 100% 일 때 초당 유성 수
+METEOR_LIFE = (0.35, 0.9)
+METEOR_SPEED = (1000, 1800)
+METEOR_TAILS = (100, 220)  # 꼬리 길이 px — 보통, 불덩이
+FIREBALL = 0.05    # 불덩이 비율
+METEOR_DIRS = 24   # 아래쪽 반원을 나눈 방향 수 (7.5° 씩)
+METEOR_LEVELS = 4  # 밝기 단계 — 나타났다 사라지는 동안
+METEOR_HEAD, METEOR_TAIL = (255, 255, 255), (150, 180, 255)
 RAIN_MULT = 2      # 비는 빨리 지나가 같은 개수면 듬성듬성해 보여서 눈의 두 배
 
 PILE_CAP = 16      # 쌓인 눈의 최대 높이 px. 군데군데 솟는 둔덕이 화면을 덜 가리게
@@ -99,7 +113,8 @@ FLY_LEVELS = 8
 FLY_SIZES = ((1.3, 6.0), (2.0, 9.0))  # (빛 알갱이 반지름, 번짐 반지름) — 멀리, 가까이
 
 KINDS = {1: ("snow", "눈"), 2: ("rain", "비"), 3: ("storm", "뇌우"), 4: ("petals", "벚꽃"),
-         5: ("leaves", "낙엽"), 6: ("fireflies", "반딧불이"), 7: ("none", "날씨 없음")}  # 없음은 고양이만
+         5: ("leaves", "낙엽"), 6: ("fireflies", "반딧불이"), 8: ("meteors", "유성우"),
+         7: ("none", "날씨 없음")}  # 없음은 고양이만. id 는 설정 파일과 무관해 순서만 바꿔도 됨
 KIND_NAMES = tuple(k for k, _ in KINDS.values())
 SHOW, PET, PANEL, AUTOSTART, EXIT = 20, 21, 30, 50, 99
 RUN_NAME = "PlayroomWeather"  # 시작할 때는 인자 없이 떠서 저장된 종류·양을 따름
@@ -172,17 +187,61 @@ def disc(r, soft, alpha, core, rim, fx=0.0, fy=0.0):
     return n, rows
 
 
-def streak(length, alpha, width):
-    """SLANT 만큼 기운 빗줄기. 꼬리(위)는 투명하고 머리(아래)로 갈수록 진함."""
-    sw = int(length * SLANT) + 4
+def streak(length, alpha, width, slant=SLANT, color=RAIN_COLOR):
+    """slant 만큼 기운 빗줄기. 셔터가 열린 동안 떨어진 자국처럼 고른 선 — 양끝만 부드럽고 아래가 조금 진함."""
+    sw = int(length * slant) + 4
     rows = []
     for j in range(length):
-        a = alpha * ((j + 1) / length) ** 1.6
-        xc = j * SLANT + 1.5
-        row = b"".join(pixel(RAIN_COLOR, a * min(1.0, max(0.0, width / 2 + 0.5 - abs(x - xc))))
+        u = (j + 0.5) / length
+        a = alpha * (0.6 + 0.4 * u) * min(1.0, u / 0.3, (1 - u) / 0.12)
+        xc = j * slant + 1.5
+        row = b"".join(pixel(color, a * min(1.0, max(0.0, width / 2 + 0.5 - abs(x - xc))))
                        for x in range(sw))
         rows.append(trim(row))
     return sw, rows
+
+
+def crown(k):
+    """빗방울이 바닥에 닿는 순간의 ㅅ자 튐, k 번째 단계(0..2). 가지가 자라며 옅어짐. 맨 아래 가운데가 닿은 자리."""
+    n, c = 9, 4
+    grid = [[0.0] * n for _ in range(n)]
+    for i in range(1, k + 3):
+        for side in (-1, 1):
+            x, y = c + side * i * 0.8, n - 1 - i * 0.9
+            for gy in range(max(0, int(y)), min(n, int(y) + 2)):  # 점 하나를 둘레 네 칸에 나눠 칠함
+                for gx in range(max(0, int(x)), min(n, int(x) + 2)):
+                    grid[gy][gx] = max(grid[gy][gx], (1 - abs(gx - x)) * (1 - abs(gy - y)))
+    return n, [trim(b"".join(pixel(RAIN_COLOR, 200 * (1 - k / 3) * v) for v in row)) for row in grid]
+
+
+def meteor(angle, length, level):
+    """angle(라디안, 화면 좌표) 쪽으로 나는 유성. 흰 머리 뒤로 푸른 꼬리가 length px 옅어짐.
+    선 둘레 픽셀만 셈함. (너비, 높이, 머리 x, 머리 y, [(건너뜀, 데이터) 행…])"""
+    dx, dy, pad = math.cos(angle), math.sin(angle), 3
+    tx, ty = -dx * length, -dy * length  # 머리를 원점에 둔 꼬리 끝
+    x0, x1 = math.floor(min(0, tx)) - pad, math.ceil(max(0, tx)) + pad
+    y0, y1 = math.floor(min(0, ty)) - pad, math.ceil(max(0, ty)) + pad
+    rows = []
+    for y in range(y0, y1 + 1):
+        s0, s1 = sorted(((y - pad) / ty, (y + pad) / ty)) if abs(ty) > 1e-9 else (0.0, 1.0)  # 이 행 둘레를 지나는 구간
+        s0, s1 = max(0.0, s0), min(1.0, s1)
+        if s0 > s1:
+            rows.append((0, b""))
+            continue
+        lo = max(x0, math.floor(min(tx * s0, tx * s1)) - pad)
+        hi = min(x1, math.ceil(max(tx * s0, tx * s1)) + pad)
+        row = b""
+        for x in range(lo, hi + 1):
+            s = min(1.0, max(0.0, -(x * dx + y * dy) / length))  # 0 머리 · 1 꼬리 끝
+            dist = math.hypot(x - tx * s, y - ty * s)
+            a = min(1.0, max(0.0, (1.9 - 1.2 * s) / 2 + 0.5 - dist)) * (1 - s) ** 1.6
+            a = max(a, min(1.0, max(0.0, (2.6 - math.hypot(x, y)) / 1.6)))  # 머리 빛
+            t = min(1.0, s * 3)
+            row += pixel(tuple(int(METEOR_HEAD[i] + (METEOR_TAIL[i] - METEOR_HEAD[i]) * t) for i in range(3)),
+                         255 * level * a)
+        skip, data = trim(row)
+        rows.append((skip + (lo - x0) * 4, data))
+    return x1 - x0 + 1, y1 - y0 + 1, -x0, -y0, rows
 
 
 def place(sprite, stride):
@@ -439,9 +498,8 @@ class Weather:
         self.snow_sprites = [[[place(disc(rad, layer[4], layer[3], SNOW_COLOR, SNOW_RIM, fx / 4, fy / 4), s)
                                for fy in range(4) for fx in range(4)] for rad in layer[1]]
                              for layer in SNOW_LAYERS]
-        self.rain_sprites = [{n: place(streak(n, layer[3], layer[4]), s) for n in range(layer[1][0], layer[1][1] + 1)}
-                             for layer in RAIN_LAYERS]
         self.droplet = place(disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR), s)
+        self.crown = [place(crown(k), s) for k in range(3)]
         self.full_clear, self.blank = True, False  # 다음 프레임은 화면 전체를 지움 · 빈 화면이라 쉬는 중
         self.snow_pile = pile_column_parts()
         self.pile_zero = bytes(PILE_STRIP * 4)
@@ -690,27 +748,92 @@ class Weather:
             if start <= t < end:
                 stamp(self.surface.pixels, self.stride, bx, by, levels[lv])
 
+    # ── 유성우 ──
+    def meteor_set(self):
+        """[불덩이 0/1][방향][밝기 단계] → (너비, 높이, 머리 x, 머리 y, 행들). 유성우를 처음 고를 때 그림."""
+        if "meteors" not in self.sprite_cache:
+            self.sprite_cache["meteors"] = [[[(*m[:4], place((0, m[4]), self.stride)[1])
+                                              for m in (meteor((i + 0.5) * math.pi / METEOR_DIRS, length, lv / METEOR_LEVELS)
+                                                        for lv in range(1, METEOR_LEVELS + 1))]
+                                             for i in range(METEOR_DIRS)] for length in METEOR_TAILS]
+        return self.sprite_cache["meteors"]
+
+    def meteors(self, dt):
+        px, stride, w, h, sprites = self.surface.pixels, self.stride, self.w, self.h, self.meteor_sprites
+        if random.random() < METEOR_RATE * self.amount / 100 * dt:
+            x, y = random.uniform(0.1 * w, 0.9 * w), random.uniform(0.08 * h, 0.5 * h)
+            a = math.atan2(y - self.radiant[1], x - self.radiant[0])  # 복사점이 화면 위 바깥이라 늘 아래쪽 반원
+            v = random.uniform(*METEOR_SPEED)
+            # [x, y, vx, vy, 나이, 수명, 방향, 불덩이]
+            self.shooting.append([x, y, math.cos(a) * v, math.sin(a) * v, 0.0, random.uniform(*METEOR_LIFE),
+                                  min(METEOR_DIRS - 1, int(a / math.pi * METEOR_DIRS)), int(random.random() < FIREBALL)])
+        live = []
+        for m in self.shooting:
+            m[4] += dt
+            m[0] += m[2] * dt
+            m[1] += m[3] * dt
+            if m[4] >= m[5] or not (0 <= m[0] < w and 0 <= m[1] < h):
+                continue
+            live.append(m)
+            lv = max(1, math.ceil(math.sin(math.pi * m[4] / m[5]) * METEOR_LEVELS))  # 나타났다 사라짐
+            sw, sh, ax, ay, rows = sprites[m[7]][m[6]][lv - 1]
+            # ponytail: 꼬리가 화면 밖으로 삐져나오는 동안은 안 그림. 거슬리면 행마다 잘라 찍기로
+            xi, yi = int(m[0]) - ax, int(m[1]) - ay
+            if 0 <= xi and xi + sw <= w and 0 <= yi and yi + sh <= h:
+                stamp(px, stride, xi, yi, rows)
+        self.shooting = live
+
     # ── 비 ──
+    def rain_set(self):
+        """[번쩍임 0/1][기울기][층] → {길이: 그림}. 비·뇌우를 처음 고를 때 그림."""
+        if "rain" not in self.sprite_cache:
+            self.sprite_cache["rain"] = [[[{n: place(streak(n, layer[3] * k, layer[4], s, color), self.stride)
+                                            for n in range(layer[1][0], layer[1][1] + 1)} for layer in RAIN_LAYERS]
+                                          for s in SLANTS] for k, color in ((1, RAIN_COLOR), (RAIN_LIT, RAIN_LIT_COLOR))]
+        return self.sprite_cache["rain"]
+
+    def gust(self, now):
+        """지금 빗줄기 기울기. 주기가 다른 사인 둘을 섞어 몇 초 단위로 세졌다 잦아듦."""
+        base, amp = GUST[self.kind]
+        g = 0.6 * math.sin(now * 0.37 + self.gust_phase) + 0.4 * math.sin(now * 0.91 + 2 * self.gust_phase)
+        return min(SLANTS[-1], max(0.0, base + amp * g))
+
     def new_drop(self, li, top):
         layer = RAIN_LAYERS[li]
         n = random.randint(*layer[1])
         y = -n - random.uniform(0, self.h * 0.4) if top else random.uniform(0, self.h)
-        # [x, y, 속도, 층, 길이]
-        return [random.uniform(-self.h * SLANT, self.w), y, random.uniform(*layer[2]), li, n]
+        # [x, y, 속도, 층, 길이, 보이는 밀도 문턱]
+        return [random.uniform(-self.h * SLANTS[-1], self.w), y, random.uniform(*layer[2]), li, n, random.random()]
 
-    def rain(self, dt):
+    def rain(self, dt, now):
         px, stride, w, h = self.surface.pixels, self.stride, self.w, self.h
+        slant = self.gust(now)
+        lit = 0
+        if self.bolt is not None:  # 번개가 제일 밝은 동안은 빗줄기도 번쩍 드러남
+            t = now - self.bolt[0]
+            lit = int(any(s <= t < e and lv == 0 for s, e, lv in BOLT_FLICKER))
+        sprites = self.rain_sprites[lit][round(slant / SLANTS[1])]
+        # 뇌우는 빗발이 물결처럼 굵어졌다 가늘어짐 — 문턱보다 큰 빗방울은 떨어지기만 하고 안 그림
+        dens = 1.0 if self.kind == "rain" else 0.7 + 0.3 * math.sin(now * 0.5 + self.gust_phase)
         for d in self.drops:
             d[1] += d[2] * dt
-            d[0] += d[2] * SLANT * dt
+            d[0] += d[2] * slant * dt
             if d[1] + d[4] >= h:
-                self.splash(d[0] + d[4] * SLANT, d[3])
+                if d[5] < dens:
+                    self.splash(d[0] + d[4] * slant, d[3])
                 d[:] = self.new_drop(d[3], True)
                 continue
-            sw, rows = self.rain_sprites[d[3]][d[4]]
+            if d[5] >= dens:
+                continue
+            sw, rows = sprites[d[3]][d[4]]
             xi, yi = int(d[0]), int(d[1])
             if yi >= 0 and 0 <= xi and xi + sw <= w:
                 stamp(px, stride, xi, yi, rows)
+        self.splatter(dt)
+
+    def splatter(self, dt):
+        """튄 물방울과 ㅅ자 튐을 움직이고 찍음."""
+        px, stride, w, h = self.surface.pixels, self.stride, self.w, self.h
         n, rows = self.droplet
         live = []
         for s in self.splashes:  # [x, y, vx, vy, 남은 초]
@@ -723,9 +846,21 @@ class Weather:
                 stamp(px, stride, xi, yi, rows)
                 live.append(s)
         self.splashes = live
+        live = []
+        for c in self.crowns:  # [닿은 x, 남은 초]
+            c[1] -= dt
+            n, rows = self.crown[min(2, int((1 - c[1] / CROWN_SEC) * 3))]
+            xi = int(c[0]) - n // 2
+            if c[1] > 0 and 0 <= xi <= w - n:
+                stamp(px, stride, xi, h - n, rows)
+                live.append(c)
+        self.crowns = live
 
     def splash(self, x, li):
-        for _ in range(random.randint(1, 3) if li else random.randint(0, 1)):  # 먼 빗줄기는 덜 튐
+        if not li:
+            return  # 멀리 것은 안 튐
+        self.crowns.append([x, CROWN_SEC])
+        for _ in range(random.randint(1, 3) if li == 2 else random.randint(0, 1)):  # 가까운 빗줄기가 더 튐
             # 물방울 그림 밑변이 바닥에 닿는 자리에서 출발. 더 아래서 뜨면 첫 프레임에 그 차이만큼 못 오른 것은
             # 화면 밖으로 보고 지워서 180fps(한 프레임 0.5–1.2px)에서는 하나도 안 보였음
             self.splashes.append([x, self.h - self.droplet[0], random.uniform(-90, 90), random.uniform(-220, -90),
@@ -736,6 +871,7 @@ class Weather:
         n, kind = count(self.amount), self.kind
         self.full_clear = True
         self.flakes, self.drops, self.splashes, self.leaves, self.flies = [], [], [], [], []
+        self.crowns, self.shooting, self.gust_phase = [], [], random.uniform(0, math.tau)
         self.bolt, self.next_bolt = None, time.perf_counter() + random.uniform(2, 5)
         self.pile = Pile(self.w)
         self.strip = memoryview(bytearray(self.stride * PILE_STRIP))
@@ -747,8 +883,12 @@ class Weather:
                            for _ in range(round(n * layer[0]))]
         elif kind in ("rain", "storm"):
             mult = RAIN_MULT * (STORM_MULT if kind == "storm" else 1)
+            self.rain_sprites = self.rain_set()
             self.drops = [self.new_drop(li, False) for li, layer in enumerate(RAIN_LAYERS)
                           for _ in range(round(n * mult * layer[0]))]
+        elif kind == "meteors":
+            self.meteor_sprites = self.meteor_set()
+            self.radiant = (random.uniform(-0.2, 1.2) * self.w, -random.uniform(0.2, 0.8) * self.h)
         elif kind in LEAF_KINDS:
             spec = LEAF_KINDS[kind]
             self.leaves_sprites = self.leaf_sprites(kind)
@@ -792,8 +932,10 @@ class Weather:
             self.snow(dt, now) if kind == "snow" else self.flutter(dt, now)
         elif kind == "fireflies":
             self.fireflies(dt, now)
+        elif kind == "meteors":
+            self.meteors(dt)
         elif kind in ("rain", "storm"):
-            self.rain(dt)
+            self.rain(dt, now)
             if kind == "storm":
                 self.lightning(now)
         self.surface.present(top) if top else self.surface.present()
@@ -842,14 +984,32 @@ class Weather:
 
 def check():
     fake = types.SimpleNamespace(surface=types.SimpleNamespace(pixels=bytearray(40 * 40 * 4)), stride=40 * 4, w=40, h=40,
-                                 drops=[], splashes=[], droplet=place(disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR), 40 * 4))
+                                 splashes=[], crowns=[], droplet=place(disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR), 40 * 4),
+                                 crown=[place(crown(k), 40 * 4) for k in range(3)])
     for fps in (30, 60, 180):
-        fake.splashes = []
+        fake.splashes, fake.crowns = [], []
         for _ in range(20):
-            Weather.splash(fake, 20, 1)
+            Weather.splash(fake, 20, 2)
         n = len(fake.splashes)
-        Weather.rain(fake, 1 / fps)
+        Weather.splatter(fake, 1 / fps)
         assert len(fake.splashes) == n > 0, "튄 물방울이 첫 프레임에 사라지면 안 됨 (%dfps)" % fps
+        assert len(fake.crowns) == 20, "ㅅ자 튐도 첫 프레임에 보임 (%dfps)" % fps
+    Weather.splash(fake, 20, 0)
+    assert len(fake.crowns) == 20, "먼 층은 안 튐"
+    for kind in GUST:
+        for phase in (0, 1.3, 4):
+            fake.kind, fake.gust_phase = kind, phase
+            for now in range(0, 60, 3):
+                assert round(Weather.gust(fake, now) / SLANTS[1]) < len(SLANTS), "돌풍 기울기는 미리 그린 범위 안"
+    alphas = [max(d[3::4]) for _, d in streak(30, 190, 1.0)[1]]
+    assert alphas[0] < alphas[15] > alphas[-1] and alphas[-2] > alphas[2], "빗줄기는 양끝이 옅고 아래가 조금 진함"
+    for i in (0, METEOR_DIRS // 2, METEOR_DIRS - 1):
+        mw, mh, ax, ay, mrows = meteor((i + 0.5) * math.pi / METEOR_DIRS, 100, 1.0)
+        assert 0 <= ax < mw and 0 <= ay < mh and len(mrows) == mh, "머리가 그림 안"
+        head = mrows[ay][1][(ax * 4 - mrows[ay][0]) + 3]
+        assert head == 255 and sum(len(d) for _, d in mrows) > 4 * 100, "머리가 가장 밝고 꼬리가 그려져 있음"
+        assert all(skip + len(d) <= mw * 4 for skip, d in mrows), "행이 그림 너비를 안 넘음"
+    assert "meteors" in KIND_NAMES and len(KINDS) <= 8, "설정 창 종류 칸은 4×2"
     p = Pile(40)
     p.add(20, 2.0)
     vol = PILE_PER_FLAKE * 2.0
@@ -902,7 +1062,7 @@ def check():
     assert [round(blink(t, 4), 6) for t in (0, 0.15, 0.5, 1.4, 2, 3.9)] == [0, 0.5, 1, 0.5, 0, 0], "깜빡임 곡선"
     sprites = [disc(3.0, 1.8, 235, SNOW_COLOR, SNOW_RIM, 0.5, 0.25)[1], streak(30, 165, 1.6)[1], petal[1],
                paint(leaf_shape(9, 0.5, 2.0, 0.9, False), (216, 98, 36), 225)[1], glow(1.5, 6.5, 0.6, 0.25, 0.5)[1],
-               levels[0]]
+               levels[0], crown(0)[1], crown(2)[1], meteor(1.0, 100, 1.0)[4], streak(20, 190 * RAIN_LIT, 1.6, 0.35, RAIN_LIT_COLOR)[1]]
     for rows in sprites + levels[1:]:
         for skip, data in rows:
             assert skip % 4 == 0 and len(data) % 4 == 0

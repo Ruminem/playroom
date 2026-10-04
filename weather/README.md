@@ -2,13 +2,14 @@
 
 **English** · [한국어](#korean)
 
-Snow, rain, a thunderstorm, cherry blossom petals, autumn leaves or fireflies over every window — a picture-in-picture video, the app you are typing in, all of it. It is only something to look at: clicks and keys go straight through to whatever is underneath. Windows only, Python standard library only.
+Snow, rain, a thunderstorm, cherry blossom petals, autumn leaves, fireflies or a meteor shower over every window — a picture-in-picture video, the app you are typing in, all of it. It is only something to look at: clicks and keys go straight through to whatever is underneath. Windows only, Python standard library only.
 
 - **Snow** falls in three layers of depth — small dim flakes far away, large soft ones close up — swaying and drifting with a gusting wind. Near flakes pile up on top of the taskbar into a soft bank that slowly melts; far ones disappear behind it
-- **Rain** falls in slanted streaks that fade towards the tail and splashes at the bottom
-- **Storm** is heavier rain with a lightning bolt every few seconds — a jagged channel with side branches that flashes, goes dark, flashes again and fades. The whole screen does not flash; that would get in the way of work
+- **Rain** falls in three depths of even, soft-ended streaks — faint and thin far away, bold up close. Gusts slowly tilt the rain back and forth, and drops landing up front kick up a little crown and a few droplets
+- **Storm** is heavier rain with a lightning bolt every few seconds — a jagged channel with side branches that flashes, goes dark, flashes again and fades. Gusts are stronger, the rain thickens and thins in waves, and the streaks light up while the bolt is brightest. The whole screen does not flash; that would get in the way of work
 - **Petals** and **leaves** fall in the same three layers as snow but spin and flip as they go; a petal turned edge-on falls faster than one lying flat. They pile up on the taskbar in a patchwork of their colours
 - **Fireflies** drift slowly around the lower two thirds of the screen, each glowing up, holding and fading on its own rhythm
+- **Meteor shower** sends white-headed meteors with blue tails across the upper half, all fanning out from one radiant above the screen like a real shower; now and then a long fireball. About three a second at 100%. The first time you pick it there is a pause of under a second while the meteors are drawn
 - A **cat** can be switched on with any of these, or on its own with **No weather**. A pixel cat walks along the top of the taskbar — on top of the snow or leaf bank if there is one — stops, sits, curls up to sleep with a rising Z, and jumps and runs off when lightning strikes. In rain it trots faster and never sleeps
 
 ## Use
@@ -59,13 +60,14 @@ The size of the work area is read once at start. After changing resolution or mo
 
 [English](#weather) · **한국어**
 
-PIP 영상이든 지금 타이핑하는 앱이든 모든 창 위로 눈·비·뇌우·벚꽃잎·낙엽을 내리거나 반딧불이를 띄움. 보이기만 하고, 클릭과 키 입력은 그대로 아래 창으로 감. 윈도우 전용이고 파이썬 표준 라이브러리만 씀.
+PIP 영상이든 지금 타이핑하는 앱이든 모든 창 위로 눈·비·뇌우·벚꽃잎·낙엽을 내리거나 반딧불이·유성우를 띄움. 보이기만 하고, 클릭과 키 입력은 그대로 아래 창으로 감. 윈도우 전용이고 파이썬 표준 라이브러리만 씀.
 
 - **눈**은 원근 세 층으로 내림 — 멀리 있는 것은 작고 흐리고, 가까이 있는 것은 크고 번짐. 돌풍에 흔들리며 흘러가고, 가까운 눈송이는 작업 표시줄 위에 부드러운 눈더미로 쌓였다가 천천히 녹음. 먼 것은 그 뒤로 사라짐
-- **비**는 꼬리 쪽이 옅어지는 비스듬한 빗줄기로 내리고 바닥에서 튐
-- **뇌우**는 더 굵은 비에 몇 초마다 번개가 침. 곁가지가 붙은 지그재그 줄기가 번쩍–꺼짐–번쩍–사그라듦 순으로 깜빡임. 화면 전체를 번쩍이게 하지는 않음 — 일하는 데 방해가 됨
+- **비**는 양끝만 부드러운 고른 빗줄기가 세 겹 깊이로 내림 — 멀리는 가늘고 흐리게, 가까이는 굵게. 돌풍에 빗줄기가 천천히 기울었다 섰다 하고, 앞쪽 빗방울은 바닥에 닿을 때 작은 ㅅ자 튐과 물방울을 튀김
+- **뇌우**는 더 굵은 비에 몇 초마다 번개가 침. 곁가지가 붙은 지그재그 줄기가 번쩍–꺼짐–번쩍–사그라듦 순으로 깜빡임. 화면 전체를 번쩍이게 하지는 않음 — 일하는 데 방해가 됨. 돌풍이 더 세고, 빗발이 물결처럼 굵어졌다 가늘어지며, 번개가 가장 밝을 때 빗줄기도 번쩍 드러남
 - **벚꽃**과 **낙엽**은 눈과 같은 세 층으로 내리되 빙글빙글 돌고 뒤집히며 떨어짐. 옆으로 선 잎은 누운 잎보다 빨리 떨어짐. 작업 표시줄 위에 제 색들이 섞인 무더기로 쌓임
 - **반딧불이**는 화면 아래쪽 2/3 를 천천히 떠다니며, 마리마다 제 박자로 밝아졌다 머물렀다 사그라듦
+- **유성우**는 흰 머리에 푸른 꼬리를 단 유성이 화면 위쪽 절반을 가로지름. 진짜 유성우처럼 모두 화면 위 바깥의 한 점(복사점)에서 퍼져 나오고, 가끔 꼬리가 긴 불덩이가 섞임. 100% 면 초당 세 개쯤. 처음 고를 때 유성 그림을 그리느라 1초 못 되게 멈춤
 - **고양이**는 위의 어느 것과도 같이 켜거나, **날씨 없음** 으로 혼자 켤 수 있음. 픽셀 고양이가 작업 표시줄 위 — 눈이나 잎 더미가 있으면 그 위 — 를 걸어 다니다 서고, 앉고, Z 를 띄우며 웅크려 자고, 번개가 치면 펄쩍 뛰어 달아남. 비가 오면 종종걸음을 치고 안 잠
 
 ### 쓰는 법
