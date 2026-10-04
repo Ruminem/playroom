@@ -11,6 +11,7 @@
 목록에 없는 캡처 도구·작업 관리자 같은 창은 묻히지 않는다. 목록에 넣은 일반 창은 맨 위로 고정되고,
 빼거나 끝내면 풀린다. 놀이방 오버레이는 이게 떠 있는 동안 스스로 맨 위로 올리지 않는다(overlay.layers_running).
 창은 실행 파일·클래스·제목으로 알아보므로, 한 번 넣은 PIP 는 다음에 뜨는 PIP 에도 그대로 적용된다.
+앱 ID 가 붙은 창(크롬 PWA 등)은 제목 대신 앱 ID 로 알아본다 — 제목이 영상·알림 수마다 바뀌기 때문이다.
 """
 import argparse
 import ctypes
@@ -88,8 +89,43 @@ def exe_name(pid, cache={}):
     return cache[pid]
 
 
+class GUID(ctypes.Structure):
+    _fields_ = [("a", ctypes.c_uint32), ("b", ctypes.c_uint16), ("c", ctypes.c_uint16), ("d", ctypes.c_ubyte * 8)]
+
+
+class PROPKEY(ctypes.Structure):
+    _fields_ = [("fmtid", GUID), ("pid", wintypes.DWORD)]
+
+
+class PROPVARIANT(ctypes.Structure):
+    _fields_ = [("vt", ctypes.c_ushort), ("r1", ctypes.c_ushort), ("r2", ctypes.c_ushort), ("r3", ctypes.c_ushort),
+                ("p", ctypes.c_void_p), ("p2", ctypes.c_void_p)]
+
+
+IID_IPropertyStore = GUID(0x886D8EEB, 0x8CF2, 0x4446, (ctypes.c_ubyte * 8)(0x8D, 0x02, 0xCD, 0xBA, 0x1D, 0xBD, 0xCF, 0x99))
+PKEY_AppUserModel_ID = PROPKEY(GUID(0x9F4C2855, 0x9F79, 0x4B39, (ctypes.c_ubyte * 8)(0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3)), 5)
+ctypes.windll.shell32.SHGetPropertyStoreForWindow.argtypes = (wintypes.HWND, ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_void_p))
+GET_VALUE = ctypes.WINFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p, ctypes.POINTER(PROPKEY), ctypes.POINTER(PROPVARIANT))
+RELEASE = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)
+
+
+def app_id(hwnd):
+    """창에 붙은 AppUserModelID — 크롬 PWA(YouTube 앱 등)는 앱마다 다르고 제목이 바뀌어도 그대로. 없으면 None."""
+    ps = ctypes.c_void_p()
+    if ctypes.windll.shell32.SHGetPropertyStoreForWindow(hwnd, ctypes.byref(IID_IPropertyStore), ctypes.byref(ps)) or not ps:
+        return None
+    vtbl = ctypes.cast(ctypes.cast(ps, ctypes.POINTER(ctypes.c_void_p))[0], ctypes.POINTER(ctypes.c_void_p))
+    pv = PROPVARIANT()
+    try:
+        GET_VALUE(vtbl[5])(ps, ctypes.byref(PKEY_AppUserModel_ID), ctypes.byref(pv))  # IPropertyStore::GetValue
+        return ctypes.wstring_at(pv.p) if pv.vt == 31 and pv.p else None  # VT_LPWSTR
+    finally:
+        ctypes.windll.ole32.PropVariantClear(ctypes.byref(pv))
+        RELEASE(vtbl[2])(ps)
+
+
 def windows():
-    """보이는 최상위 창, 앞에서 뒤 순서. 각 항목은 dict(hwnd, exe, cls, title, topmost)."""
+    """보이는 최상위 창, 앞에서 뒤 순서. 각 항목은 dict(hwnd, exe, cls, title, app, topmost)."""
     me, out = os.getpid(), []
     cloaked, cls, title, rect, pid = ctypes.c_int(), ctypes.create_unicode_buffer(256), \
         ctypes.create_unicode_buffer(256), wintypes.RECT(), wintypes.DWORD()
@@ -104,7 +140,7 @@ def windows():
             if (pid.value != me and title.value and not cloaked.value and cls.value not in SKIP_CLASSES
                     and rect.right > rect.left and rect.bottom > rect.top):
                 out.append({"hwnd": h, "exe": exe_name(pid.value), "cls": cls.value, "title": title.value,
-                            "topmost": bool(user32.GetWindowLongW(h, -20) & 0x8)})  # WS_EX_TOPMOST
+                            "app": app_id(h), "topmost": bool(user32.GetWindowLongW(h, -20) & 0x8)})  # WS_EX_TOPMOST
         h = user32.GetWindow(h, 2)  # GW_HWNDNEXT
     return out
 
@@ -119,7 +155,15 @@ def all_windows():
 
 
 def matches(rule, win):
-    return all(rule.get(k) in (None, win[k]) for k in ("exe", "cls", "title"))
+    return all(rule.get(k) in (None, win.get(k)) for k in ("exe", "cls", "title", "app"))
+
+
+def rule_for(win):
+    """창 목록에서 넣은 창의 규칙. 앱 ID 가 있으면 제목 대신 그걸로 알아봄 — PWA 제목은 영상·알림 수마다 바뀜.
+    일반 크롬 창도 프로필 ID 가 붙어 있어 그 프로필 창 전부가 맞지만, 탭마다 바뀌는 제목으로는 어차피 못 붙잡음."""
+    if win.get("app"):
+        return {"name": win["title"], "exe": win["exe"], "cls": win["cls"], "app": win["app"]}
+    return {"exe": win["exe"], "cls": win["cls"], "title": win["title"]}
 
 
 def rule_name(rule):
@@ -142,7 +186,7 @@ def load_rules():
     try:
         rules = json.loads(SETTINGS.read_text(encoding="utf-8"))["rules"]
         if isinstance(rules, list) and all(isinstance(r, dict) for r in rules):
-            return [{k: r[k] for k in ("name", "exe", "cls", "title") if isinstance(r.get(k), str)} for r in rules]
+            return [{k: r[k] for k in ("name", "exe", "cls", "title", "app") if isinstance(r.get(k), str)} for r in rules]
     except (OSError, ValueError, KeyError, TypeError):
         pass
     return [dict(r) for r in DEFAULT_RULES]
@@ -373,7 +417,7 @@ class Layers:
         i = self.selected(self.open_box)
         if i is not None:
             w = self.candidates[i]
-            self.rules.append({"exe": w["exe"], "cls": w["cls"], "title": w["title"]})
+            self.rules.append(rule_for(w))
             self.changed(len(self.rules) - 1)
 
     def run(self):
@@ -394,6 +438,11 @@ def check():
     w = {"exe": "pythonw.exe", "cls": "TkTopLevel", "title": "usage-hud"}
     assert matches(DEFAULT_RULES[0], w) and not matches(DEFAULT_RULES[1], w)
     assert not matches({"exe": "python.exe", "cls": "TkTopLevel"}, w)
+    pwa = {"exe": "chrome.exe", "cls": "Chrome_WidgetWin_1", "title": "YouTube - (161) YouTube", "app": "Chrome._crx_x"}
+    rule = rule_for(pwa)
+    assert matches(rule, dict(pwa, title="YouTube - 고양이 - YouTube")), "PWA 는 제목이 바뀌어도 맞음"
+    assert not matches(rule, dict(pwa, app="Chrome.UserData")), "같은 크롬이라도 다른 앱이면 안 맞음"
+    assert not matches(rule, dict(w, app=None)) and matches(rule_for(dict(w, app=None)), dict(w, app=None))
     assert windows(), "보이는 창이 하나는 있어야 함"
     print("자체 점검 통과")
 
