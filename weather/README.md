@@ -21,6 +21,16 @@ python weather.py --toggle --kind rain --amount many
 
 `python weather.py --stop` closes it, `python weather.py --check` runs the self-check.
 
+## macOS
+
+The same script runs on a Mac with the system Python 3.9, nothing to install. It reaches AppKit through ctypes ([shared/mac](../shared/mac/)), the snowflake sits in the menu bar, and **Start at login** writes a LaunchAgent to `~/Library/LaunchAgents`. Your choice is remembered in `~/Library/Application Support/playroom/weather.json`.
+
+```bash
+python3 weather.py --toggle
+```
+
+`--toggle` detaches it from the terminal, so closing the terminal keeps it running. It floats over full-screen apps too. The bank and the cat stand on top of the Dock area, as they stand on the taskbar on Windows, so in full screen they hang that high. The animation pauses while the menu is open. On a MacBook (1680×924 pt): empty screen with the cat 2.7%, normal snow with the cat 6–7%, heavy rain with the cat 19%.
+
 ## Cost
 
 30 frames a second. Measured on one PC (2560×1392 work area), share of one CPU core: snow 7–8% (heavy 10%), rain 8–14% depending on the amount, storm 13% (heavy 19%), petals 9% (heavy 10%), leaves 7–8%, fireflies 7%. An empty screen (no weather, no cat) already costs 6.2%, so most of each figure is clearing and pushing the full-screen buffer. The cat on its own is 6.3% — nearly all of that is the same full-screen cost; with heavy snow it adds about 1 point. Hide it from the menu and it stops drawing. The compositor's own share was not measured separately.
@@ -65,6 +75,16 @@ python weather.py --toggle --kind rain --amount many
 ```
 
 `python weather.py --stop` 으로 끄고, `python weather.py --check` 로 자체 점검을 돌림.
+
+### 맥
+
+같은 스크립트가 맥 기본 파이썬 3.9 로 돌고, 깔 것은 없음. ctypes 로 AppKit 을 부르고([shared/mac](../shared/mac/)), 눈송이 아이콘은 메뉴 막대에 뜨며, **로그인 시 실행** 은 `~/Library/LaunchAgents` 에 LaunchAgent 를 씀. 고른 것은 `~/Library/Application Support/playroom/weather.json` 에 남음.
+
+```bash
+python3 weather.py --toggle
+```
+
+`--toggle` 은 터미널과 떼어 띄우므로 터미널을 닫아도 안 꺼짐. 전체 화면 앱 위에도 뜸. 눈더미와 고양이는 윈도우에서 작업 표시줄 위에 서듯 독 자리 위에 서서, 전체 화면에서는 그만큼 떠 있음. 메뉴를 연 동안에는 그림이 멈춤. 맥북(1680×924 pt)에서 빈 화면+고양이 2.7%, 눈 보통+고양이 6–7%, 비 많이+고양이 19%.
 
 ### 비용
 

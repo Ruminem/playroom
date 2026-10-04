@@ -1,3 +1,7 @@
+- 여기까지 됨 (2026-10-04 — weather 맥): weather.py 가 맥에서도 돈다. shared/mac/ 에 같은 이름의 surface·overlay·tray·startup(+ctypes 도우미 cocoa.py)을 두고, 맥이면 weather.py 가 그 폴더를 sys.path 앞에 넣는다. Surface 는 IOSurface 두 벌을 번갈아 레이어에 넘김(CGImage 로 하면 내보내기만 25%, 이쪽 0.4%). 트레이는 NSStatusItem, 메뉴는 열 때마다 menuNeedsUpdate: 로 다시 짬. 시작 실행은 LaunchAgent plist. write_ico 는 OS 를 안 타서 shared/icon.py 로 옮기고 tray.py 가 다시 내보냄(layers·hud·sysmon 은 그대로). 맥북에서 메뉴를 ObjC 경로로 눌러 종류·양·저장을 봤고, --toggle 두 번·두 번 띄우기 막힘·--stop 을 봤다. CPU 빈 화면+고양이 2.7%, 눈 보통+고양이 6–7%, 비 많이+고양이 19%. startup 점검은 변이 둘을 잡음
+- 다음 할 것: 윈도우에서 weather·layers·sysmon·usage-hud 를 한 번씩 띄울 것 — write_ico 를 icon.py 로 옮긴 게 윈도우에서 안 돌려 봤다. 맥에서는 손으로 메뉴 막대 눈송이를 눌러 보고, 오버레이 아래 창이 실제로 클릭되는지 본다(ignoresMouseEvents 만 켰고 직접 눌러 보진 않음)
+- 막힌 것: 없음. 메뉴를 연 동안 그림이 멈추는 건 AppKit 메뉴가 그리는 스레드를 잡기 때문이라 그대로 둠. 전체 화면에서 바닥이 독 높이만큼 뜨는 것도 윈도우의 작업 영역과 같은 동작이라 둠
+
 - 여기까지 됨 (2026-10-04 — usage-hud 맥 메뉴 막대): usage-hud/mac/UsageBar.swift(AppKit 만)가 메뉴 막대에 ♥7일 ⚡5시간 남은 양을 띄우고, 메뉴에 재설정까지 남은 시간·오늘 정가·새로 받기·페이지 열기·로그인 시 실행·끝내기. 값은 5분마다 /usr/bin/python3 usage.py 의 JSON 을 읽는다. 로그인 시 실행은 ~/Library/LaunchAgents plist. 잠금 파일로 하나만 뜬다. --check 는 변이 넷을 잡고, 맥북에서 띄워 메뉴 막대와 열린 메뉴를 찍었다. 빌드 1.8초
 - 다음 할 것: 로그인 시 실행을 켜고 다시 로그인해 뜨는지 볼 것. 안 뜨면 launchd 의 PATH·작업 폴더를 의심하고 `launchctl print gui/$UID/com.ruminem.playroom.usage-bar` 로 본다. HUD 의 픽셀 아이콘을 메뉴 막대에 쓰고 싶으면 NSImage 로 그리면 된다(지금은 ♥⚡ 글자)
 - 막힌 것: 없음

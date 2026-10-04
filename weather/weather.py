@@ -28,6 +28,9 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+MAC = sys.platform == "darwin"
+if MAC:  # 같은 이름의 맥판(surface·overlay·tray·startup)이 앞에 잡히게
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared" / "mac"))
 import overlay
 import startup
 from surface import Surface
@@ -36,7 +39,8 @@ from tray import Tray, write_ico
 
 PID_FILE = Path(tempfile.gettempdir()) / "playroom-weather.pid"
 ICON_FILE = Path(tempfile.gettempdir()) / "playroom-weather.ico"
-SETTINGS = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "playroom" / "weather.json"
+SETTINGS = (Path.home() / "Library" / "Application Support" if MAC else
+            Path(os.environ.get("LOCALAPPDATA", Path.home()))) / "playroom" / "weather.json"
 TRAY_CLASS = "PlayroomWeatherTray"
 SURFACE_CLASS = "PlayroomWeatherSurface"
 
@@ -426,7 +430,7 @@ class Weather:
                 None,
                 ("고양이", PET, self.cat is not None),
                 ("보이기", SHOW, self.visible),
-                ("Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)),
+                ("로그인 시 실행" if MAC else "Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)),
                 None,
                 ("끝내기", EXIT, False)]
 
@@ -826,17 +830,25 @@ def main():
             subprocess.Popen([str(pythonw), str(Path(__file__).resolve()),
                               "--kind", args.kind, "--amount", args.amount], close_fds=True)
             return
+    if args.toggle and MAC:
+        # 터미널을 닫아도 안 꺼지게 떼어서 다시 띄움
+        subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--kind", args.kind, "--amount", args.amount],
+                         start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
+        return
 
-    try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # 배율 높은 화면에서 흐려지지 않게
-    except (AttributeError, OSError):
-        pass
-    ctypes.windll.winmm.timeBeginPeriod(1)  # 기본 타이머 간격(15.6ms)이면 30fps 를 청해도 21fps 에서 멈춤
+    if not MAC:
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)  # 배율 높은 화면에서 흐려지지 않게
+        except (AttributeError, OSError):
+            pass
+        ctypes.windll.winmm.timeBeginPeriod(1)  # 기본 타이머 간격(15.6ms)이면 30fps 를 청해도 21fps 에서 멈춤
     PID_FILE.write_text(str(os.getpid()))
     try:
         Weather(args.kind, args.amount, saved.get("pet", False)).run()
     finally:
-        ctypes.windll.winmm.timeEndPeriod(1)
+        if not MAC:
+            ctypes.windll.winmm.timeEndPeriod(1)
         if overlay.running_pid(PID_FILE) == os.getpid():
             PID_FILE.unlink(missing_ok=True)
 
