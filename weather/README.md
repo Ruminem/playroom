@@ -24,7 +24,7 @@ python weather.py --toggle --kind rain --amount many
 
 30 frames a second. Measured on one PC (2560×1392 work area), share of one CPU core: snow 7–8% (heavy 10%), rain 8–14% depending on the amount, storm 13% (heavy 19%), petals 9% (heavy 10%), leaves 7–8%, fireflies 7%. Fireflies draw almost nothing yet cost 6.5%, so most of each figure is likely clearing and pushing the full-screen buffer (inferred, not measured on its own). Hide it from the menu and it stops drawing. The compositor's own share was not measured separately.
 
-With normal snow the bank settles at about 10px after eight minutes, heavy at about 20px (28px at most).
+With normal snow the bank settles at about 5px after ten minutes, light at about 2px and heavy at about 10px (16px at most), so it barely covers the bottom of the screen.
 
 ## How it works
 
@@ -67,7 +67,7 @@ python weather.py --toggle --kind rain --amount many
 
 1초에 30번 그림. PC 한 대(작업 영역 2560×1392)에서 잰 CPU 한 코어 대비 몫은 눈 7–8%(많이 10%), 비는 양에 따라 8–14%, 뇌우 13%(많이 19%), 벚꽃 9%(많이 10%), 낙엽 7–8%, 반딧불이 7%. 거의 아무것도 안 그리는 반딧불이가 6.5% 라, 몫의 대부분은 화면 전체 버퍼를 비우고 내보내는 데 드는 것으로 봄(따로 재지 않은 추정). 메뉴에서 숨기면 그리기를 멈춤. 화면 합성기(DWM) 쪽 몫은 따로 못 잼.
 
-눈 보통이면 눈더미가 8분쯤 지나 10px 안팎에서 멈추고, 많이는 20px 안팎(최대 28px).
+눈 보통이면 눈더미가 10분쯤 지나 5px 안팎에서 멈추고, 적게는 2px, 많이는 10px 안팎(최대 16px)이라 화면 아래를 거의 안 가림.
 
 ### 어떻게 하나
 
