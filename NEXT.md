@@ -1,3 +1,7 @@
+- 여기까지 됨 (2026-10-05 — weather 180fps 에서 튀는 물방울): 튄 물방울이 바닥 3px 위(h-3)에서 출발하는데 그림(6px)은 h-6 위에서만 그려서, 첫 프레임에 3px 못 오른 것은 지워졌다. 180fps 는 한 프레임 0.5–1.2px 라 전부, 60fps 에서도 7할쯤 사라지던 것. 출발을 h-그림 크기로 옮겼고, 30·60·180fps 에서 첫 프레임에 하나도 안 사라지는지 자체 점검에 넣었다(고치기 전엔 30fps 부터 실패)
+- 다음 할 것: 뇌우 180fps 에서 튀는 게 60fps 때만큼 보이는지 눈으로 보기
+- 막힌 것: 없음
+
 - 여기까지 됨 (2026-10-04 — layers YouTube 앱 항상 위): 넣은 창을 제목까지 똑같아야 맞게 봐서, YouTube 앱 제목이 'YouTube - (161) YouTube' → 'YouTube - (161) <영상> - YouTube' 로 바뀌는 순간 규칙이 안 맞고 맨 위가 풀렸다. 창의 AppUserModelID(SHGetPropertyStoreForWindow)를 읽어 앱 ID 가 있으면 제목 대신 그걸로 알아보게 했다. PWA 는 Chrome._crx_<앱>.UserData.Profile2 처럼 앱마다 다르고, 일반 크롬은 Chrome.UserData.Profile2 라 서로 안 섞인다. 창 읽기 0.45 → 0.65ms(0.5초마다). 사용자 layers.json 의 YouTube 규칙도 앱 ID 로 바꿔 두었고, 다시 띄운 뒤 영상 제목인 채로 맨 위에 붙은 것을 봤다
 - 다음 할 것: 영상을 몇 개 넘겨 봐도 YouTube 앱이 맨 위에 남는지 직접 보기
 - 막힌 것: 없음

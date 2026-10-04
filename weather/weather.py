@@ -26,6 +26,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
@@ -725,7 +726,9 @@ class Weather:
 
     def splash(self, x, li):
         for _ in range(random.randint(1, 3) if li else random.randint(0, 1)):  # 먼 빗줄기는 덜 튐
-            self.splashes.append([x, self.h - 3, random.uniform(-90, 90), random.uniform(-220, -90),
+            # 물방울 그림 밑변이 바닥에 닿는 자리에서 출발. 더 아래서 뜨면 첫 프레임에 그 차이만큼 못 오른 것은
+            # 화면 밖으로 보고 지워서 180fps(한 프레임 0.5–1.2px)에서는 하나도 안 보였음
+            self.splashes.append([x, self.h - self.droplet[0], random.uniform(-90, 90), random.uniform(-220, -90),
                                   random.uniform(0.25, 0.45)])
 
     # ── 돌리기 ──
@@ -838,6 +841,15 @@ class Weather:
 
 
 def check():
+    fake = types.SimpleNamespace(surface=types.SimpleNamespace(pixels=bytearray(40 * 40 * 4)), stride=40 * 4, w=40, h=40,
+                                 drops=[], splashes=[], droplet=place(disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR), 40 * 4))
+    for fps in (30, 60, 180):
+        fake.splashes = []
+        for _ in range(20):
+            Weather.splash(fake, 20, 1)
+        n = len(fake.splashes)
+        Weather.rain(fake, 1 / fps)
+        assert len(fake.splashes) == n > 0, "튄 물방울이 첫 프레임에 사라지면 안 됨 (%dfps)" % fps
     p = Pile(40)
     p.add(20, 2.0)
     vol = PILE_PER_FLAKE * 2.0
