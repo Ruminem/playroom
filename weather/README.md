@@ -2,17 +2,19 @@
 
 **English** · [한국어](#korean)
 
-Snow, rain, a thunderstorm or fireflies over every window — a picture-in-picture video, the app you are typing in, all of it. It is only something to look at: clicks and keys go straight through to whatever is underneath. Windows only, Python standard library only.
+Snow, rain, a thunderstorm, hail, fireflies or fireworks over every window — a picture-in-picture video, the app you are typing in, all of it. It is only something to look at: clicks and keys go straight through to whatever is underneath. Windows only, Python standard library only.
 
 - **Snow** falls in three layers of depth — small dim flakes far away, large soft ones close up — swaying and drifting with a gusting wind. Near flakes pile up on top of the taskbar into a soft bank that slowly melts; far ones disappear behind it
 - **Rain** falls in three depths of even, soft-ended streaks — faint and thin far away, bold up close. Gusts slowly tilt the rain back and forth, and drops landing up front kick up a little crown and a few droplets
 - **Storm** is heavier rain with a lightning bolt every few seconds — a jagged channel with side branches that flashes, goes dark, flashes again and fades. Gusts are stronger, the rain thickens and thins in waves, and the streaks light up while the bolt is brightest. The whole screen does not flash; that would get in the way of work
+- **Hail** is fast white ice pellets in two sizes that bounce up to twice off the taskbar before settling into a bank like snow's, which melts four times faster. A pellet landing right next to the animal now and then startles it
 - **Fireflies** drift slowly around the lower two thirds of the screen, each glowing up, holding and fading on its own rhythm
-- A **cat** can be switched on with any of these, or on its own with **No weather**. A pixel cat walks along the top of the taskbar — on top of the snow bank if there is one — stops, sits, curls up to sleep with a rising Z, and jumps and runs off when lightning strikes. In rain it trots faster and never sleeps
+- **Fireworks**: rockets with a gold trail climb from the bottom and burst a third to half way up into a ring of 60–110 sparks in red, gold, green, blue, purple or white (sometimes two colours mixed). The sparks slow, droop and twinkle out
+- An **animal** — a **cat** or a **bird** — can be switched on with any of these, or on its own with **No weather**. The pixel cat walks along the top of the taskbar — on top of the snow bank if there is one — stops, sits, curls up to sleep with a rising Z, and jumps and runs off when lightning strikes. In rain it trots faster and never sleeps. The sparrow hops, pecks and looks around, flies off the side of the screen now and then and comes back from the other side a few seconds later; lightning or hail sends it off at once
 
 ## Use
 
-Double-click [weather.bat](weather.bat) to start or stop it. A snowflake icon sits in the notification area. Left-click it for a small settings panel above the taskbar: kind buttons (or **No weather**), an amount slider from 0 to 100% that applies when you let go, a **Smoothness** row (30 · 60 · 120 · 180 fps), boxes for the **Cat**, showing it and starting with Windows, and **Exit**. Clicking anywhere else closes it. The right-click menu does the same, with the amount in 10% steps (the old light · normal · heavy are 20 · 50 · 100%). Your choice is remembered in `%LOCALAPPDATA%\playroom\weather.json`, and starting with Windows uses it.
+Double-click [weather.bat](weather.bat) to start or stop it. A snowflake icon sits in the notification area. Left-click it for a small settings panel above the taskbar: kind buttons (or **No weather**), an amount slider from 0 to 100% that applies when you let go, a **Smoothness** row (30 · 60 · 120 · 180 fps), an **Animal** row (none · cat · bird), boxes for showing it and starting with Windows, and **Exit**. Clicking anywhere else closes it. The right-click menu does the same, with the amount in 10% steps (the old light · normal · heavy are 20 · 50 · 100%). Your choice is remembered in `%LOCALAPPDATA%\playroom\weather.json`, and starting with Windows uses it.
 
 ```bash
 python weather.py --toggle --kind rain --amount 80
@@ -34,7 +36,7 @@ python3 weather.py --toggle
 
 ## Cost
 
-60 frames a second by default; **Smoothness** picks 30, 60, 120 or 180 for faster monitors, and the cost grows almost in step with it — at 100% amount snow takes 9 · 16 · 46% of one core at 30 · 60 · 180 fps and rain 13 · 27 · 77%, because every frame clears and pushes the whole screen. With **No weather** and the cat on, only the strip the cat can reach is cleared and pushed (6% instead of 43% at 180 fps), and with the cat off as well it stops drawing (0% instead of 27%). The figures below were measured at 30 fps on one PC (2560×1392 work area), share of one CPU core: snow 7–8% (heavy 10%), rain 8–14% depending on the amount, storm 13% (heavy 19%), fireflies 7%. An empty screen (no weather, no cat) already costs 6.2%, so most of each figure is clearing and pushing the full-screen buffer. The cat on its own is 6.3% — nearly all of that is the same full-screen cost; with heavy snow it adds about 1 point. Hide it from the menu and it stops drawing. The compositor's own share was not measured separately.
+60 frames a second by default; **Smoothness** picks 30, 60, 120 or 180 for faster monitors, and the cost grows almost in step with it — at 100% amount snow takes 9 · 16 · 46% of one core at 30 · 60 · 180 fps and rain 13 · 27 · 77%, because every frame clears and pushes the whole screen. With **No weather** and an animal on, only the strip the animal can reach is cleared and pushed (6% instead of 43% at 180 fps), and with no animal either it stops drawing (0% instead of 27%). The figures below were measured at 30 fps on one PC (2560×1392 work area), share of one CPU core: snow 7–8% (heavy 10%), rain 8–14% depending on the amount, storm 13% (heavy 19%), fireflies 7%. Hail and fireworks were measured only at 180 fps, 100%: drawing takes 0.4 and 0.5 ms a frame (rain 1.7, snow 1.2), so the cost is almost all the full-screen clear and push. An empty screen (no weather, no cat) already costs 6.2%, so most of each figure is clearing and pushing the full-screen buffer. The cat on its own is 6.3% — nearly all of that is the same full-screen cost; with heavy snow it adds about 1 point. Hide it from the menu and it stops drawing. The compositor's own share was not measured separately.
 
 With normal snow the bank settles at about 5px after ten minutes, light at about 2px and heavy at about 10px (16px at most), so it barely covers the bottom of the screen.
 
@@ -44,7 +46,7 @@ With normal snow the bank settles at about 5px after ten minutes, light at about
 - `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST` makes it click-through and non-activating, and topmost is re-asserted every two seconds — the same as [usage-hud](../usage-hud/), and likewise left to [layers](../layers/) when that is running
 - Flakes and streaks are rendered once at start into small sprites. Flakes come in quarter-pixel offsets so slow ones glide instead of stepping a pixel at a time. Each frame clears the buffer and copies sprite rows in with slice assignment; overlapping sprites overwrite rather than blend, but transparent row ends are trimmed so round corners do not punch holes
 - The snow bank is a height per pixel column. A landing flake adds a wide low mound; four times a second, anything steeper than the angle of repose slides down, the surface is smoothed, and it melts in proportion to its height.
-- The cat ([pet.py](pet.py)) is drawn as character grids, scaled ×3 and mirrored for walking left. Its sprites are cut into runs at every transparent gap, so the space between its legs does not erase the snow behind it. It is drawn after the bank and before the falling things, so snow falls in front of it. A small state machine picks walk · stand · sit · sleep with random durations and turns around at the screen edges; a new lightning bolt starts a jump
+- The cat ([pet.py](pet.py)) is drawn as character grids, scaled ×3 and mirrored for walking left. Its sprites are cut into runs at every transparent gap, so the space between its legs does not erase the snow behind it. It is drawn after the bank and before the falling things, so snow falls in front of it. A small state machine picks walk · stand · sit · sleep with random durations and turns around at the screen edges; a new lightning bolt starts a jump. The bird has its own 12×10 grids and stays within the same bottom strip when it flies (60 px up at most), so **No weather** with the bird is as cheap as with the cat. Sprites are clipped at the screen edges so it can fly out
 - A lightning bolt is drawn once when it strikes (16–30 ms): brightness is stamped into one byte plane with a max, then coloured and dimmed for each flicker step with `bytes.translate` tables instead of a Python loop per pixel
 - The timer resolution is raised to 1ms while it runs; at the default 15.6ms a 30fps request stalls at about 21fps
 - The tray icon and the single-instance helpers live in [shared](../shared/)
@@ -57,17 +59,19 @@ The size of the work area is read once at start. After changing resolution or mo
 
 [English](#weather) · **한국어**
 
-PIP 영상이든 지금 타이핑하는 앱이든 모든 창 위로 눈·비·뇌우를 내리거나 반딧불이를 띄움. 보이기만 하고, 클릭과 키 입력은 그대로 아래 창으로 감. 윈도우 전용이고 파이썬 표준 라이브러리만 씀.
+PIP 영상이든 지금 타이핑하는 앱이든 모든 창 위로 눈·비·뇌우·우박을 내리거나 반딧불이·불꽃놀이를 띄움. 보이기만 하고, 클릭과 키 입력은 그대로 아래 창으로 감. 윈도우 전용이고 파이썬 표준 라이브러리만 씀.
 
 - **눈**은 원근 세 층으로 내림 — 멀리 있는 것은 작고 흐리고, 가까이 있는 것은 크고 번짐. 돌풍에 흔들리며 흘러가고, 가까운 눈송이는 작업 표시줄 위에 부드러운 눈더미로 쌓였다가 천천히 녹음. 먼 것은 그 뒤로 사라짐
 - **비**는 양끝만 부드러운 고른 빗줄기가 세 겹 깊이로 내림 — 멀리는 가늘고 흐리게, 가까이는 굵게. 돌풍에 빗줄기가 천천히 기울었다 섰다 하고, 앞쪽 빗방울은 바닥에 닿을 때 작은 ㅅ자 튐과 물방울을 튀김
 - **뇌우**는 더 굵은 비에 몇 초마다 번개가 침. 곁가지가 붙은 지그재그 줄기가 번쩍–꺼짐–번쩍–사그라듦 순으로 깜빡임. 화면 전체를 번쩍이게 하지는 않음 — 일하는 데 방해가 됨. 돌풍이 더 세고, 빗발이 물결처럼 굵어졌다 가늘어지며, 번개가 가장 밝을 때 빗줄기도 번쩍 드러남
+- **우박**은 크고 작은 흰 얼음 알이 빠르게 떨어져 작업 표시줄에서 두 번까지 튄 뒤 눈처럼 쌓이고, 더미는 눈보다 4배 빨리 녹음. 동물 바로 옆에 떨어지면 가끔 놀람
 - **반딧불이**는 화면 아래쪽 2/3 를 천천히 떠다니며, 마리마다 제 박자로 밝아졌다 머물렀다 사그라듦
-- **고양이**는 위의 어느 것과도 같이 켜거나, **날씨 없음** 으로 혼자 켤 수 있음. 픽셀 고양이가 작업 표시줄 위 — 눈이나 잎 더미가 있으면 그 위 — 를 걸어 다니다 서고, 앉고, Z 를 띄우며 웅크려 자고, 번개가 치면 펄쩍 뛰어 달아남. 비가 오면 종종걸음을 치고 안 잠
+- **불꽃놀이**는 금빛 꼬리를 끄는 로켓이 아래에서 올라가 화면 위에서 1/5–1/2 쯤에서 터지며, 빨강·금·초록·파랑·보라·흰색(가끔 두 색 섞임) 불꽃 60–110개가 고리로 퍼짐. 불꽃은 느려지며 처지고 반짝이다 꺼짐
+- **동물**(**고양이** 나 **새**)은 위의 어느 것과도 같이 켜거나, **날씨 없음** 으로 혼자 켤 수 있음. 픽셀 고양이가 작업 표시줄 위 — 쌓인 더미가 있으면 그 위 — 를 걸어 다니다 서고, 앉고, Z 를 띄우며 웅크려 자고, 번개가 치면 펄쩍 뛰어 달아남. 비가 오면 종종걸음을 치고 안 잠. 참새는 콩콩 뛰고 쪼고 두리번거리다 가끔 화면 옆으로 날아 나가서 몇 초 뒤 반대쪽에서 돌아옴. 번개나 우박에는 바로 날아감
 
 ### 쓰는 법
 
-[weather.bat](weather.bat) 을 더블클릭하면 켜지고 다시 누르면 꺼짐. 알림 영역에 눈송이 아이콘이 뜸. 왼쪽 클릭하면 작업 표시줄 위에 작은 설정 창이 떠서 종류 단추(또는 **날씨 없음**), 0–100% 양 막대(손을 떼면 적용됨), **부드러움** 줄(30·60·120·180fps), **고양이**·보이기·윈도우 시작 시 실행 상자와 **끝내기** 가 있음. 다른 데를 누르면 닫힘. 오른쪽 클릭 메뉴로도 같은 걸 하고, 거기서 양은 10% 칸임(예전 적게·보통·많이는 20·50·100%). 고른 것은 `%LOCALAPPDATA%\playroom\weather.json` 에 남고, 윈도우와 같이 켜질 때도 이걸 따름.
+[weather.bat](weather.bat) 을 더블클릭하면 켜지고 다시 누르면 꺼짐. 알림 영역에 눈송이 아이콘이 뜸. 왼쪽 클릭하면 작업 표시줄 위에 작은 설정 창이 떠서 종류 단추(또는 **날씨 없음**), 0–100% 양 막대(손을 떼면 적용됨), **부드러움** 줄(30·60·120·180fps), **동물** 줄(없음·고양이·새), 보이기·윈도우 시작 시 실행 상자와 **끝내기** 가 있음. 다른 데를 누르면 닫힘. 오른쪽 클릭 메뉴로도 같은 걸 하고, 거기서 양은 10% 칸임(예전 적게·보통·많이는 20·50·100%). 고른 것은 `%LOCALAPPDATA%\playroom\weather.json` 에 남고, 윈도우와 같이 켜질 때도 이걸 따름.
 
 ```bash
 python weather.py --toggle --kind rain --amount 80
@@ -89,7 +93,7 @@ python3 weather.py --toggle
 
 ### 비용
 
-기본은 1초에 60번 그림. **부드러움** 에서 주사율 높은 모니터용으로 30·60·120·180 을 고르고, 비용은 거의 그 비율로 늘어남 — 양 100% 에서 눈은 30·60·180fps 에 한 코어의 9·16·46%, 비는 13·27·77% 임. 프레임마다 화면 전체를 비우고 내보내기 때문임. **날씨 없음** 에 고양이만 켜면 고양이가 닿는 맨 아래 띠만 비우고 내보내고(180fps 에서 43% → 6%), 고양이도 끄면 그리기를 멈춤(27% → 0%). 아래는 30fps 일 때 PC 한 대(작업 영역 2560×1392)에서 잰 CPU 한 코어 대비 몫으로, 눈 7–8%(많이 10%), 비는 양에 따라 8–14%, 뇌우 13%(많이 19%), 반딧불이 7%. 아무것도 안 그리는 빈 화면(날씨 없음, 고양이 끔)이 이미 6.2% 라, 몫의 대부분은 화면 전체 버퍼를 비우고 내보내는 데 듦. 고양이만 띄우면 6.3% 로 거의 다 같은 화면 전체 몫이고, 눈 많이에 얹으면 1포인트쯤 더함. 메뉴에서 숨기면 그리기를 멈춤. 화면 합성기(DWM) 쪽 몫은 따로 못 잼.
+기본은 1초에 60번 그림. **부드러움** 에서 주사율 높은 모니터용으로 30·60·120·180 을 고르고, 비용은 거의 그 비율로 늘어남 — 양 100% 에서 눈은 30·60·180fps 에 한 코어의 9·16·46%, 비는 13·27·77% 임. 프레임마다 화면 전체를 비우고 내보내기 때문임. **날씨 없음** 에 동물만 켜면 동물이 닿는 맨 아래 띠만 비우고 내보내고(180fps 에서 43% → 6%), 동물도 끄면 그리기를 멈춤(27% → 0%). 아래는 30fps 일 때 PC 한 대(작업 영역 2560×1392)에서 잰 CPU 한 코어 대비 몫으로, 눈 7–8%(많이 10%), 비는 양에 따라 8–14%, 뇌우 13%(많이 19%), 반딧불이 7%. 우박·불꽃놀이는 180fps 100% 에서만 쟀고 그리기가 프레임당 0.4·0.5ms(비 1.7, 눈 1.2)라 비용은 거의 다 화면 전체를 비우고 내보내는 몫임. 아무것도 안 그리는 빈 화면(날씨 없음, 고양이 끔)이 이미 6.2% 라, 몫의 대부분은 화면 전체 버퍼를 비우고 내보내는 데 듦. 고양이만 띄우면 6.3% 로 거의 다 같은 화면 전체 몫이고, 눈 많이에 얹으면 1포인트쯤 더함. 메뉴에서 숨기면 그리기를 멈춤. 화면 합성기(DWM) 쪽 몫은 따로 못 잼.
 
 눈 보통이면 눈더미가 10분쯤 지나 5px 안팎에서 멈추고, 적게는 2px, 많이는 10px 안팎(최대 16px)이라 화면 아래를 거의 안 가림.
 
@@ -99,7 +103,7 @@ python3 weather.py --toggle
 - `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST` 로 클릭 통과·포커스 안 뺏음, 2초마다 다시 맨 위로 올림 — [usage-hud](../usage-hud/) 와 같고, [layers](../layers/) 가 떠 있으면 마찬가지로 그쪽에 맡김
 - 눈송이와 빗줄기는 시작할 때 작은 그림으로 한 번 그려 둠. 눈송이는 1/4픽셀씩 어긋난 벌을 둬서 느린 것도 1px 씩 덜컥거리지 않고 미끄러짐. 매 프레임 버퍼를 비우고 그림의 행을 슬라이스 대입으로 붙임. 겹친 그림은 섞지 않고 덮어쓰지만, 행 앞뒤의 투명한 부분을 잘라 둬서 둥근 모서리가 밑의 것을 뚫지 않음
 - 눈더미는 픽셀 열마다 높이를 둠. 떨어진 눈송이는 넓고 낮은 둔덕을 보태고, 1초에 네 번 안식각보다 가파른 곳은 흘러내리고, 표면을 매끈하게 펴고, 높이에 비례해 녹음
-- 고양이([pet.py](pet.py))는 글자 판으로 그린 그림을 3배로 키우고, 왼쪽으로 걸을 때는 좌우로 뒤집어 씀. 그림을 투명한 틈마다 끊어 둬서 다리 사이가 뒤의 눈을 지우지 않음. 더미 다음, 내리는 것들 전에 그려서 눈이 고양이 앞으로 내림. 작은 상태 기계가 걷기·서기·앉기·자기를 무작위 길이로 고르고 화면 끝에서 돌아섬. 새 번개가 치면 뛰어오름
+- 고양이([pet.py](pet.py))는 글자 판으로 그린 그림을 3배로 키우고, 왼쪽으로 걸을 때는 좌우로 뒤집어 씀. 그림을 투명한 틈마다 끊어 둬서 다리 사이가 뒤의 눈을 지우지 않음. 더미 다음, 내리는 것들 전에 그려서 눈이 고양이 앞으로 내림. 작은 상태 기계가 걷기·서기·앉기·자기를 무작위 길이로 고르고 화면 끝에서 돌아섬. 새 번개가 치면 뛰어오름. 새는 12×10 판을 따로 쓰고 날 때도 같은 바닥 띠 안(많아야 60px 위)에 머물러서, **날씨 없음** 에 새만 켜도 고양이만큼 쌈. 화면 끝에서 그림을 잘라 찍어서 옆으로 날아 나갈 수 있음
 - 번개는 칠 때 한 번 그림(16–30ms). 밝기를 바이트 판 하나에 최댓값으로 찍은 뒤, 깜빡임 단계마다 색 입히기와 어둡게 하기를 픽셀마다 파이썬을 돌리지 않고 `bytes.translate` 표로 함
 - 도는 동안 타이머 해상도를 1ms 로 올림. 기본값 15.6ms 에서는 30fps 를 청해도 21fps 쯤에서 멈춤
 - 트레이 아이콘과 한 번만 뜨게 하는 코드는 [shared](../shared/) 에 있음

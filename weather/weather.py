@@ -91,10 +91,34 @@ FLY_CORE, FLY_HALO = (246, 255, 184), (172, 236, 70)
 FLY_LEVELS = 8
 FLY_SIZES = ((1.3, 6.0), (2.0, 9.0))  # (빛 알갱이 반지름, 번짐 반지름) — 멀리, 가까이
 
-KINDS = {1: ("snow", "눈"), 2: ("rain", "비"), 3: ("storm", "뇌우"), 6: ("fireflies", "반딧불이"),
-         7: ("none", "날씨 없음")}  # 없음은 고양이만. id 는 설정 파일과 무관해 순서만 바꿔도 됨
+HAIL_SHARE = 0.4   # 양 → 우박 알 수 ('보통' 60개)
+HAIL_SIZES = ((1.2, 0.8, 225), (2.1, 0.9, 245))  # (반지름, 가장자리 흐림, 알파) — 작은 알, 큰 알
+HAIL_COLOR, HAIL_RIM = (250, 252, 255), (186, 212, 238)
+HAIL_SPEED = (820, 1050)  # 떨어지는 빠르기 px/초. 튀어 오른 뒤엔 중력으로 다시 이 빠르기까지
+HAIL_BOUNCES = 2   # 바닥·더미에서 튀는 최대 횟수. 그다음 더미에 보탬
+HAIL_MELT = 4      # 더미가 눈보다 몇 배 빨리 녹나
+HAIL_SCARE = (24, 0.25, 5.0)  # 동물 발에서 이 px 안에 떨어지면 이 확률로 놀람, 한 번 놀라면 이 초 동안은 안 놀람
+
+FW_RATE = 1.3      # 양 100% 에서 초당 쏘아 올리는 수
+FW_BURST_AT = (0.20, 0.55)  # 터지는 높이 (화면 위에서 비율)
+FW_SPARKS = (60, 110)
+FW_LIFE = (1.0, 1.7)
+FW_LEVELS = 6
+FW_GOLD = 1        # 로켓 꼬리 색 (FW_COLORS 번호)
+FW_COLORS = (((255, 222, 212), (255, 62, 52)),    # (알갱이, 번짐) 빨강
+             ((255, 242, 196), (255, 172, 40)),   # 금
+             ((222, 255, 222), (60, 232, 92)),    # 초록
+             ((222, 236, 255), (72, 132, 255)),   # 파랑
+             ((246, 222, 255), (192, 82, 255)),   # 보라
+             ((255, 255, 255), (204, 212, 232)))  # 흰
+
+KINDS = {1: ("snow", "눈"), 2: ("rain", "비"), 3: ("storm", "뇌우"), 4: ("hail", "우박"), 6: ("fireflies", "반딧불이"),
+         5: ("fireworks", "불꽃놀이"), 7: ("none", "날씨 없음")}  # 없음은 동물만. id 는 설정 파일과 무관해 순서만 바꿔도 됨
 KIND_NAMES = tuple(k for k, _ in KINDS.values())
-SHOW, PET, PANEL, AUTOSTART, EXIT = 20, 21, 30, 50, 99
+SHOW, PANEL, AUTOSTART, EXIT = 20, 30, 50, 99
+PETS = {21: "", 22: "cat", 23: "bird"}  # 메뉴 id → 설정 파일의 pet 값
+PET_NAMES = {"": "없음", "cat": "고양이", "bird": "새"}
+PET_CLASS = {"cat": pet.Cat, "bird": pet.Bird}
 RUN_NAME = "PlayroomWeather"  # 시작할 때는 인자 없이 떠서 저장된 종류·양을 따름
 AMOUNTS = {10 + i: p for i, p in enumerate(range(10, 101, 10))}  # 메뉴 id → %. 트레이 메뉴엔 막대를 못 넣어 칸으로
 FULL = 300       # 양 100% 의 눈송이·빗방울 수 (꽃잎·반딧불이는 이 수에 종류별 비율을 곱함)
@@ -206,8 +230,8 @@ def stamp(px, stride, x, y, rows):
         px[off + a:off + e] = data
 
 
-def glow(core_r, halo_r, level, fx, fy):
-    """반딧불 빛: 또렷한 알갱이에 넓고 옅은 번짐. level 은 0..1 밝기."""
+def glow(core_r, halo_r, level, fx, fy, core_color=FLY_CORE, halo_color=FLY_HALO):
+    """반딧불·불꽃 빛: 또렷한 알갱이에 넓고 옅은 번짐. level 은 0..1 밝기."""
     n = int(math.ceil(2 * halo_r)) + 2
     c = n / 2 - 0.5
     rows = []
@@ -217,7 +241,7 @@ def glow(core_r, halo_r, level, fx, fy):
             d = math.hypot(x - c - fx, y - c - fy)
             core = min(1.0, max(0.0, core_r + 0.5 - d))
             halo = 0.6 * math.exp(-(d / (halo_r * 0.6)) ** 2)
-            color = tuple(int(FLY_HALO[i] + (FLY_CORE[i] - FLY_HALO[i]) * core) for i in range(3))
+            color = tuple(int(halo_color[i] + (core_color[i] - halo_color[i]) * core) for i in range(3))
             row += pixel(color, 255 * level * min(1.0, core + halo))
         rows.append(trim(row))
     return n, rows
@@ -377,15 +401,17 @@ def load_settings():
         ok["kind"] = data["kind"]
     if parse_amount(data.get("amount")) is not None:
         ok["amount"] = parse_amount(data["amount"])
-    if isinstance(data.get("pet"), bool):
-        ok["pet"] = data["pet"]
+    if data.get("pet") is True or data.get("pet") in PET_CLASS:  # 예전 파일의 true 는 고양이
+        ok["pet"] = "cat" if data["pet"] is True else data["pet"]
+    elif data.get("pet") in (False, ""):
+        ok["pet"] = ""
     if data.get("fps") in FPS_IDS.values():
         ok["fps"] = data["fps"]
     return ok
 
 
 class Weather:
-    def __init__(self, kind, amount, cat=False, fps=FPS):
+    def __init__(self, kind, amount, animal="", fps=FPS):
         self.kind, self.amount, self.visible, self.fps = kind, amount, True, fps
         # ponytail: 시작할 때의 주 모니터 작업 영역에 고정. 해상도·작업 표시줄이 바뀌면 다시 켜야 함
         l, t, r, b = overlay.work_area()
@@ -402,9 +428,10 @@ class Weather:
         self.snow_pile = pile_column_parts()
         self.pile_zero = bytes(PILE_STRIP * 4)
         self.sprite_cache = {}  # 비·반딧불 그림은 그 종류를 처음 고를 때 그림
-        self.cat_sprites = pet.sprites()
-        self.cat = pet.Cat(self.w) if cat else None  # 종류를 바꿔도 그대로 — 고양이는 날씨와 따로 삶
-        self.bolt_seen = None
+        self.pet_sprites = pet.sprites()
+        self.animal = animal  # "" · "cat" · "bird". 종류를 바꿔도 그대로 — 동물은 날씨와 따로 삶
+        self.pet = PET_CLASS[animal](self.w) if animal else None
+        self.bolt_seen, self.pet_startled = None, 0.0
         self.commands = queue.Queue()  # 트레이 스레드 → 그리는 스레드
         write_ico(ICON_FILE, ICON, ICON_COLORS)
         self.panel = None  # 왼쪽 클릭으로 띄운 설정 창 프로세스
@@ -422,7 +449,7 @@ class Weather:
                 ("양", [("%d%%" % p, cid, p == self.amount) for cid, p in AMOUNTS.items()]),
                 ("부드러움", [("%dfps" % n, cid, n == self.fps) for cid, n in FPS_IDS.items()]),
                 None,
-                ("고양이", PET, self.cat is not None),
+                ("동물", [(PET_NAMES[a], cid, a == self.animal) for cid, a in PETS.items()]),
                 ("보이기", SHOW, self.visible),
                 ("로그인 시 실행" if MAC else "Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)),
                 None,
@@ -442,8 +469,11 @@ class Weather:
             self.fps = FPS_IDS[cid]
             self.save()
             return
-        elif cid == PET:
-            self.cat = None if self.cat else pet.Cat(self.w)
+        elif cid in PETS:
+            if PETS[cid] != self.animal:
+                self.animal = PETS[cid]
+                self.pet = PET_CLASS[self.animal](self.w) if self.animal else None
+                self.full_clear = True  # 새가 떠 있던 자리까지 지움
             self.save()
             return
         elif cid == SHOW:
@@ -462,7 +492,7 @@ class Weather:
     def save(self):
         try:
             SETTINGS.parent.mkdir(parents=True, exist_ok=True)
-            SETTINGS.write_text(json.dumps({"kind": self.kind, "amount": self.amount, "pet": self.cat is not None,
+            SETTINGS.write_text(json.dumps({"kind": self.kind, "amount": self.amount, "pet": self.animal,
                                             "fps": self.fps}), encoding="utf-8")
         except OSError:
             pass  # 못 남겨도 지금 화면은 바뀌었으니 넘어감
@@ -471,7 +501,7 @@ class Weather:
         """그리는 루프가 tk 가 아니라서 창은 따로 띄우고, 누른 것을 한 줄씩 받아 메뉴 명령처럼 처리함."""
         if self.panel and self.panel.poll() is None:
             return  # 이미 떠 있음
-        state = {"kind": self.kind, "amount": self.amount, "pet": self.cat is not None, "show": self.visible,
+        state = {"kind": self.kind, "amount": self.amount, "pet": self.animal, "show": self.visible,
                  "auto": startup.is_on(RUN_NAME, __file__), "fps": self.fps}
         ctypes.windll.user32.AllowSetForegroundWindow(-1)  # 방금 트레이를 누른 건 이 프로세스라 앞으로 올릴 권한을 넘김
         self.panel =subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--panel", json.dumps(state)],
@@ -483,7 +513,7 @@ class Weather:
             word, _, arg = line.partition(" ")
             if word == "amount" and arg.strip().isdigit() and parse_amount(int(arg)) is not None:
                 self.commands.put(("amount", int(arg)))
-            elif word.strip().isdigit() and int(word) in (*KINDS, *FPS_IDS, PET, SHOW, AUTOSTART, EXIT):
+            elif word.strip().isdigit() and int(word) in (*KINDS, *FPS_IDS, *PETS, SHOW, AUTOSTART, EXIT):
                 self.commands.put(int(word))
 
     def poll(self):
@@ -678,6 +708,117 @@ class Weather:
             self.splashes.append([x, self.h - self.droplet[0], random.uniform(-90, 90), random.uniform(-220, -90),
                                   random.uniform(0.25, 0.45)])
 
+    # ── 우박 ──
+    def new_stone(self, top):
+        big = random.random() < 0.35
+        v = random.uniform(*HAIL_SPEED) * (1.1 if big else 1)
+        # [x, y, vx, vy, 끝 빠르기, 크기, 튄 횟수]
+        return [random.uniform(0, self.w), -random.uniform(5, self.h * 0.5) if top else random.uniform(0, self.h),
+                random.uniform(-15, 15), v, v, int(big), 0]
+
+    def hail(self, dt, now):
+        px, stride, w, h, ph = self.surface.pixels, self.stride, self.w, self.h, self.pile.h
+        for s in self.stones:
+            s[3] = min(s[3] + 2200 * dt, s[4])
+            s[0] += s[2] * dt
+            s[1] += s[3] * dt
+            n, rows = self.hail_sprites[s[5]]
+            col = min(max(int(s[0]) + n // 2, 0), w - 1)
+            floor = h - ph[col] - n
+            if s[1] >= floor and s[3] > 0:  # 바닥이나 더미에 닿음
+                if s[6] == 0:
+                    self.scare_pet(col, now)
+                if s[6] < HAIL_BOUNCES and s[3] > 150:
+                    s[1], s[3] = floor, -s[3] * random.uniform(0.18, 0.3)
+                    s[2] += random.uniform(-70, 70)
+                    s[6] += 1
+                else:
+                    self.pile.add(col, HAIL_SIZES[s[5]][0])
+                    s[:] = self.new_stone(True)
+                    continue
+            xi, yi = int(s[0]), int(s[1])
+            if 0 <= yi and 0 <= xi <= w - n:
+                stamp(px, stride, xi, yi, rows)
+
+    def scare_pet(self, col, now):
+        reach, chance, cool = HAIL_SCARE
+        if self.pet and now >= self.pet_startled:
+            a, b = self.pet.feet()
+            if a - reach <= col < b + reach and random.random() < chance:
+                self.pet.startle(now)
+                self.pet_startled = now + cool
+
+    # ── 불꽃놀이 ──
+    def fw_sprites(self):
+        """[색][밝기 단계 1..6]."""
+        if "fireworks" not in self.sprite_cache:
+            self.sprite_cache["fireworks"] = [[place(glow(1.1, 3.6, lv / FW_LEVELS, 0, 0, core, halo), self.stride)
+                                               for lv in range(1, FW_LEVELS + 1)] for core, halo in FW_COLORS]
+        return self.sprite_cache["fireworks"]
+
+    def launch(self, now):
+        rate = FW_RATE * self.amount / 100
+        if rate <= 0:
+            self.next_launch = math.inf
+            return
+        if not self.next_launch < math.inf or now - self.next_launch > 2:  # 양을 올렸거나 숨겼다 돌아옴 — 몰아 쏘지 않게
+            self.next_launch = now + random.uniform(0, 1 / rate)
+        while now >= self.next_launch:
+            top = random.uniform(*FW_BURST_AT) * self.h
+            vy = -math.sqrt(2 * 260 * (self.h - top) + 90 ** 2)  # 터지는 높이에서도 아직 오르는 중이게
+            self.rockets.append([random.uniform(0.1, 0.9) * self.w, float(self.h), random.uniform(-25, 25), vy, top])
+            self.next_launch += random.expovariate(rate)
+
+    def burst(self, x, y):
+        a, b = random.sample(range(len(FW_COLORS)), 2)
+        mixed = random.random() < 0.3
+        v0 = random.uniform(150, 250)
+        for i in range(random.randint(*FW_SPARKS)):
+            ang, v = random.uniform(0, math.tau), v0 * random.uniform(0.78, 1.0)
+            # [x, y, vx, vy, 나이, 수명, 색]
+            self.sparks.append([x, y, math.cos(ang) * v, math.sin(ang) * v, 0.0, random.uniform(*FW_LIFE),
+                                b if mixed and i % 2 else a])
+
+    def fireworks(self, dt, now):
+        px, stride, w, h, sprites = self.surface.pixels, self.stride, self.w, self.h, self.fw
+        self.launch(now)
+        gold = sprites[FW_GOLD]
+        n = gold[0][0]
+        live = []
+        for r in self.rockets:  # [x, y, vx, vy, 터질 높이]
+            r[3] += 260 * dt
+            r[0] += r[2] * dt
+            r[1] += r[3] * dt
+            if r[1] <= r[4]:
+                self.burst(r[0], r[1])
+                continue
+            live.append(r)
+            for k in range(6):  # 머리가 제일 밝고 아래로 꼬리
+                xi, yi = int(r[0] - r[2] * k * 0.012) - n // 2, int(r[1] + k * 5) - n // 2
+                if 0 <= xi <= w - n and 0 <= yi <= h - n:
+                    stamp(px, stride, xi, yi, gold[max(0, FW_LEVELS - 1 - k)][1])
+        self.rockets = live
+        drag = math.exp(-1.7 * dt)
+        live = []
+        for s in self.sparks:
+            s[4] += dt
+            if s[4] >= s[5]:
+                continue
+            live.append(s)
+            s[2] *= drag
+            s[3] = s[3] * drag + 95 * dt
+            s[0] += s[2] * dt
+            s[1] += s[3] * dt
+            k = s[4] / s[5]
+            if k > 0.7 and random.random() < 0.45:  # 사그라들며 반짝임
+                continue
+            lv = FW_LEVELS if k < 0.5 else max(1, round(FW_LEVELS * (1 - k) / 0.5))
+            n, rows = sprites[s[6]][lv - 1]
+            xi, yi = int(s[0]) - n // 2, int(s[1]) - n // 2
+            if 0 <= xi <= w - n and 0 <= yi <= h - n:
+                stamp(px, stride, xi, yi, rows)
+        self.sparks = live
+
     # ── 돌리기 ──
     def reset(self):
         n, kind = count(self.amount), self.kind
@@ -700,16 +841,25 @@ class Weather:
         elif kind == "fireflies":
             self.flies_sprites = self.fly_sprites()
             self.flies = [self.new_fly() for _ in range(round(n * FLY_SHARE))]
+        elif kind == "hail":
+            if "hail" not in self.sprite_cache:
+                self.sprite_cache["hail"] = [place(disc(r, soft, a, HAIL_COLOR, HAIL_RIM), self.stride)
+                                             for r, soft, a in HAIL_SIZES]
+            self.hail_sprites = self.sprite_cache["hail"]
+            self.stones = [self.new_stone(False) for _ in range(round(n * HAIL_SHARE))]
+        elif kind == "fireworks":
+            self.fw = self.fw_sprites()
+        self.rockets, self.sparks, self.next_launch = [], [], math.inf
 
-    # ── 고양이 ──
-    def walk_cat(self, dt, now):
-        cat, rainy = self.cat, self.kind in ("rain", "storm")
+    # ── 동물 ──
+    def walk_pet(self, dt, now):
+        p, rainy = self.pet, self.kind in ("rain", "storm")
         if self.bolt and self.bolt[0] != self.bolt_seen:
             self.bolt_seen = self.bolt[0]
-            cat.startle(now)
-        cat.update(dt, now, rainy)
-        a, b = cat.feet()
-        cat.draw(self.surface.pixels, self.stride, self.h, self.cat_sprites, max(self.pile.h[a:b]), now, rainy)
+            p.startle(now)
+        p.update(dt, now, rainy)
+        a, b = p.feet()
+        p.draw(self.surface.pixels, self.stride, self.h, self.pet_sprites, max(self.pile.h[a:b]), now, rainy)
 
     def frame(self, dt, now):
         kind = self.kind
@@ -718,17 +868,22 @@ class Weather:
         top = 0 if MAC or self.full_clear or kind != "none" else self.h - CAT_BAND
         self.full_clear = False
         self.surface.clear(top) if top else self.surface.clear()
-        piled = kind == "snow"
+        piled = kind in ("snow", "hail")
         if piled:
             if now - self.last_settle >= SETTLE_SEC:
-                self.pile.settle(MELT_PER_SEC * (now - self.last_settle))
+                melt = MELT_PER_SEC * (HAIL_MELT if kind == "hail" else 1)
+                self.pile.settle(melt * (now - self.last_settle))
                 self.last_settle = now
                 self.render_pile()
             self.surface.pixels[(self.h - PILE_STRIP) * self.stride:] = self.strip
-        if self.cat:  # 더미 위, 내리는 것 아래
-            self.walk_cat(dt, now)
-        if piled:
+        if self.pet:  # 더미 위, 내리는 것 아래
+            self.walk_pet(dt, now)
+        if kind == "snow":
             self.snow(dt, now)
+        elif kind == "hail":
+            self.hail(dt, now)
+        elif kind == "fireworks":
+            self.fireworks(dt, now)
         elif kind == "fireflies":
             self.fireflies(dt, now)
         elif kind in ("rain", "storm"):
@@ -747,7 +902,7 @@ class Weather:
         self.last = now
         if not self.visible:
             return False
-        if self.kind == "none" and not self.cat:  # 그릴 게 없으면 한 번 지우고 숨겼을 때처럼 쉼(180fps 에서 29% 를 쓰던 자리)
+        if self.kind == "none" and not self.pet:  # 그릴 게 없으면 한 번 지우고 숨겼을 때처럼 쉼(180fps 에서 29% 를 쓰던 자리)
             if not self.blank:
                 self.surface.clear()
                 self.surface.present()
@@ -793,6 +948,38 @@ def check():
         assert len(fake.crowns) == 20, "ㅅ자 튐도 첫 프레임에 보임 (%dfps)" % fps
     Weather.splash(fake, 20, 0)
     assert len(fake.crowns) == 20, "먼 층은 안 튐"
+    big = lambda **kw: types.SimpleNamespace(surface=types.SimpleNamespace(pixels=bytearray(200 * 200 * 4)),
+                                             stride=800, w=200, h=200, amount=100, **kw)
+    hf = big(pile=Pile(200), pet=pet.Cat(200, random.Random(2)), pet_startled=0.0,
+             hail_sprites=[place(disc(r, s, a, HAIL_COLOR, HAIL_RIM), 800) for r, s, a in HAIL_SIZES])
+    hf.new_stone = lambda top: Weather.new_stone(hf, top)
+    hf.scare_pet = lambda col, now: Weather.scare_pet(hf, col, now)
+    hf.stones = [hf.new_stone(True) for _ in range(30)]
+    most, scares = 0, 0
+    for i in range(180 * 6):
+        before = hf.pet_startled
+        Weather.hail(hf, 1 / 180, i / 180)
+        scares += hf.pet_startled != before
+        most = max(most, *(s[6] for s in hf.stones))
+    assert most == HAIL_BOUNCES and sum(hf.pile.h) > 0, "우박은 두 번까지 튀고 더미에 보탬"
+    hf.stones = [[100, 199, 0, 900, 900, 1, HAIL_BOUNCES]]  # 이미 두 번 튄 알이 아직 빠르게 닿아도
+    Weather.hail(hf, 1 / 180, 99)
+    assert hf.stones[0][6] == 0 and hf.stones[0][1] < 0, "세 번째는 안 튀고 더미로"
+    assert 0 < scares <= 6 / HAIL_SCARE[2] + 1, ("가끔 놀람, 한 번 놀라면 쉼", scares)
+    ff = big(rockets=[], sparks=[], next_launch=math.inf,
+             fw=[[place(glow(1.1, 3.6, lv / FW_LEVELS, 0, 0, c, hc), 800) for lv in range(1, FW_LEVELS + 1)]
+                 for c, hc in FW_COLORS])
+    ff.launch = lambda now: Weather.launch(ff, now)
+    ff.burst = lambda x, y: Weather.burst(ff, x, y)
+    peak = 0
+    for i in range(180 * 20):
+        Weather.fireworks(ff, 1 / 180, i / 180)
+        peak = max(peak, len(ff.sparks))
+    assert peak >= FW_SPARKS[0], "터짐"
+    ff.amount = 0
+    for i in range(180 * 4):  # 떠 있던 로켓이 오르는 1초 남짓 + 불꽃 수명
+        Weather.fireworks(ff, 1 / 180, 20 + i / 180)
+    assert not ff.sparks and not ff.rockets, "불꽃은 수명이 다하면 사라지고 0% 면 더 안 쏨"
     for kind in GUST:
         for phase in (0, 1.3, 4):
             fake.kind, fake.gust_phase = kind, phase
@@ -862,14 +1049,23 @@ def check():
     assert all(parse_amount(a) is None for a in (101, -1, True, "x", [1], None, 2.5))
     assert amount_arg("normal") == 50 and amount_arg("7") == 7
     assert {20, 50, 100} <= set(AMOUNTS.values()), "예전 세 단계가 메뉴 칸에 있음"
-    ids = [*AMOUNTS, *FPS_IDS, SHOW, PET, PANEL, AUTOSTART, EXIT, *KINDS]
+    ids = [*AMOUNTS, *FPS_IDS, SHOW, *PETS, PANEL, AUTOSTART, EXIT, *KINDS]
     assert len(ids) == len(set(ids)), "메뉴 id 가 겹치지 않음"
     assert FPS in FPS_IDS.values()
+    assert set(PETS.values()) == {"", *PET_CLASS} == set(PET_NAMES)
+    global SETTINGS
+    real, SETTINGS = SETTINGS, Path(tempfile.mkdtemp()) / "weather.json"
+    try:
+        for saved, want in ((True, "cat"), (False, ""), ("bird", "bird"), ("", ""), ("dog", None), (1, None)):
+            SETTINGS.write_text(json.dumps({"pet": saved}), encoding="utf-8")
+            assert load_settings().get("pet") == want, (saved, "예전 true 는 고양이, 모르는 값은 버림")
+    finally:
+        SETTINGS = real
     from types import SimpleNamespace
     q = SimpleNamespace(commands=queue.Queue())
     Weather.read_panel(q, SimpleNamespace(stdout=["amount 30\n", "amount x\n", "amount 150\n", "2\n",
-                                                        "43\n", "%d\n" % PET, "77\n", "hi\n"]))
-    assert list(q.commands.queue) == [("amount", 30), 2, 43, PET], "설정 창이 보낸 줄 중 아는 것만"
+                                                        "43\n", "23\n", "77\n", "hi\n"]))
+    assert list(q.commands.queue) == [("amount", 30), 2, 43, 23], "설정 창이 보낸 줄 중 아는 것만"
     print("자체 점검 통과")
 
 
@@ -934,9 +1130,17 @@ def panel(state):
                         command=lambda cid=cid: send(cid)).pack(side="left", padx=px(2))
     ttk.Label(smooth, text="fps").pack(side="left", padx=(px(4), 0))
 
+    animals = ttk.Frame(f)
+    animals.grid(row=5, column=0, columnspan=4, sticky="ew", pady=(0, px(8)))
+    ttk.Label(animals, text="동물").pack(side="left", padx=(0, px(8)))
+    animal = tk.StringVar(value=state["pet"])
+    for cid, a in PETS.items():
+        ttk.Radiobutton(animals, text=PET_NAMES[a], value=a, variable=animal, style="Toolbutton",
+                        command=lambda cid=cid: send(cid)).pack(side="left", padx=px(2))
+
     keep = []  # tk 변수는 파이썬 쪽 참조가 없어지면 체크 표시가 풀림
-    for r, (key, cid, label) in enumerate((("pet", PET, "고양이"), ("show", SHOW, "보이기"),
-                                          ("auto", AUTOSTART, "Windows 시작 시 실행")), start=5):
+    for r, (key, cid, label) in enumerate((("show", SHOW, "보이기"),
+                                          ("auto", AUTOSTART, "Windows 시작 시 실행")), start=6):
         keep.append(tk.BooleanVar(value=state[key]))
         ttk.Checkbutton(f, text=label, variable=keep[-1], command=lambda cid=cid: send(cid)).grid(
             row=r, column=0, columnspan=4, sticky="w", pady=px(1))
@@ -1023,7 +1227,7 @@ def main():
         ctypes.windll.winmm.timeBeginPeriod(1)  # 기본 타이머 간격(15.6ms)이면 30fps 를 청해도 21fps 에서 멈춤
     PID_FILE.write_text(str(os.getpid()))
     try:
-        Weather(args.kind, args.amount, saved.get("pet", False), saved.get("fps", FPS)).run()
+        Weather(args.kind, args.amount, saved.get("pet", ""), saved.get("fps", FPS)).run()
     finally:
         if not MAC:
             ctypes.windll.winmm.timeEndPeriod(1)
