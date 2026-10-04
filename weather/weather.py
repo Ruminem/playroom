@@ -15,6 +15,7 @@
 고른 것은 SETTINGS 에 남는다.
 """
 import argparse
+import bisect
 import ctypes
 import json
 import math
@@ -67,12 +68,13 @@ SLOPE = 0.8        # 이웃 열과의 높이 차가 이보다 크면 흘러내�
 DIFFUSE = 0.12     # 표면을 매끈하게 퍼뜨리는 정도
 MELT_PER_SEC = 0.0045  # 높이에 비례해 녹는 비율. 넣는 양 ÷ 이 값에서 높이가 멈춤 ('보통' 이면 5px 쯤)
 SETTLE_SEC = 0.25
-PUDDLE_DEPTH = 6   # 웅덩이 가운데 최대 깊이 px
-PUDDLE_HALF = (50, 150)  # 웅덩이 그릇 반폭 px
-PUDDLE_GAP = (80, 320)   # 그릇 사이 px
+GROUND_BASE = 6.0  # 비 올 때 바닥에 깔리는 땅의 가운데 높이 px
+GROUND_WAVES = ((300, 2.6), (130, 1.6), (47, 0.7))  # (파장 px, 진폭 px) — 겹쳐서 1–11px 로 울퉁불퉁
+SOIL = ((92, 72, 54), (78, 62, 48), (104, 84, 62), (70, 58, 50))
 PUDDLE_DRY = 0.01  # 부피에 비례해 마르는 비율/초. 멈추는 부피 = 들어오는 양 ÷ 이 값
-PUDDLE_PER_DROP = 0.2  # 빗방울 하나가 보태는 물 px². 바닥 1px 에 '많이' 면 초당 0.25방울쯤 떨어진다고 어림해
-                       # '많이' 는 넘치게(가득 6px), '보통' 은 4px 남짓, '적게' 는 2px 남짓에서 멈추게 고름
+PUDDLE_PER_DROP = 0.08  # 빗방울 하나가 보태는 물 px². 조금 0.05·많이 0.246방울/px/초(잼)에 화면 21–24%·63–67% 가 물 (땅 씨앗 넷)
+RIPPLE_SEC, RIPPLE_FRAMES = 0.35, 6  # 수면에 떨어진 빗방울이 옆으로 벌어지는 물결
+WADE_EVERY = 0.09  # 고양이가 물을 걸을 때 첨벙이는 간격 초
 
 STORM_MULT = 1.5   # 뇌우는 비보다 굵게
 BOLT_EVERY = (5, 14)  # '보통' 일 때 번개 간격 초. 양에 반비례
@@ -352,55 +354,112 @@ class Pile:
             self.h = [v * k if v > 0.01 else 0.0 for v in h]
 
 
+class Basin:
+    """물이 고일 수 있는 이어진 열들 하나. low 는 넘치는 높이(spill)보다 낮은 열의 땅 높이를 오름차순으로,
+    need[i] 는 수면을 low[i] 까지 채우는 부피."""
+    __slots__ = ("cols", "spill", "low", "pre", "need", "cap", "vol", "level", "drawn")
+
+    def __init__(self, g, cols, spill):
+        self.cols, self.spill = cols, spill
+        self.low = sorted(v for v in (g[x] for x in cols) if v < self.spill)
+        self.pre = [0.0]
+        for v in self.low:
+            self.pre.append(self.pre[-1] + v)
+        self.need = [(i + 1) * v - self.pre[i + 1] for i, v in enumerate(self.low)]
+        self.cap = len(self.low) * self.spill - self.pre[-1]
+        self.vol, self.level, self.drawn = 0.0, 0.0, None
+
+    def surface(self):
+        """부피를 채우는 수면. 수면 아래 열이 k 개면 부피 = k·수면 − (그 열들 땅 높이 합)."""
+        k = bisect.bisect_right(self.need, self.vol)
+        return (self.vol + self.pre[k]) / k if k else 0.0
+
+
 class Puddles:
-    """빗물 웅덩이. 바닥 몇 군데에 포물선 그릇을 두고 그릇마다 물 부피 하나만 든다. 수면은 부피에서 바로
-    나와 늘 평평하고, 차오를수록 넓어진다. 열마다 물을 흘려 보내면 비탈의 얇은 물이 몇 분씩 걸려 안 고였음.
-    Pile 과 같은 모양(h · add · settle)이라 그리기는 render_pile 을 같이 쓴다."""
+    """비 올 때의 울퉁불퉁한 땅(g)과 그 위에 고인 물의 깊이(h), 둘 다 바닥에서 위로 px. 열마다 물이 고일
+    수 있는 높이는 min(왼쪽 최고 땅, 오른쪽 최고 땅)이고, 그 높이가 땅보다 높은 이어진 열들이 그릇 하나다.
+    그래서 큰 골짜기 속 작은 둔덕은 가득 차면 잠김. 비탈에 떨어진 비는 내리막을 따라 그 끝 그릇으로 가고,
+    화면 가장자리로 내려가는 비탈의 비는 흘러가 버림. 그릇마다 부피 하나만 들고 수면은 낮은 열부터 채워
+    늘 평평함 — 한 그릇 안의 둔덕이 아직 안 잠겼어도 양쪽 물은 같은 높이(물이 둔덕을 건너 흐른 셈).
+    열마다 물을 흘려 보내면 비탈의 얇은 물이 몇 분씩 걸려야 우묵한 데로 모였음."""
 
     def __init__(self, width, rng=random):
+        waves = [(2 * math.pi / length, amp, rng.uniform(0, 2 * math.pi)) for length, amp in GROUND_WAVES]
+        g = self.g = [GROUND_BASE + sum(a * math.sin(x * k + p) for k, a, p in waves) for x in range(width)]
         self.h = [0.0] * width
-        self.bowls = []  # [가운데, 반폭, 부피]
-        x = rng.uniform(0, PUDDLE_GAP[1])
-        while True:
-            r = rng.uniform(*PUDDLE_HALF)
-            if x + 2 * r > width:
-                break
-            self.bowls.append([x + r, r, 0.0])
-            x += 2 * r + rng.uniform(*PUDDLE_GAP)
-        self.where = [None] * width
-        for b in self.bowls:
-            for i in range(int(b[0] - b[1]) + 1, int(b[0] + b[1])):
-                self.where[i] = b
-
-    @staticmethod
-    def full(b):
-        return 4 / 3 * b[1] * PUDDLE_DEPTH
+        left, right, m = [], [0.0] * width, 0.0
+        for v in g:
+            m = max(m, v)
+            left.append(m)
+        m = 0.0
+        for x in range(width - 1, -1, -1):
+            m = right[x] = max(m, g[x])
+        trap = [min(a, b) for a, b in zip(left, right)]
+        self.basins, where, x = [], [None] * width, 0
+        while x < width:
+            if trap[x] > g[x]:  # 고이는 열이 이어지는 동안은 고일 높이가 같음
+                lo = x
+                while x < width and trap[x] > g[x]:
+                    x += 1
+                b = Basin(g, range(lo, x), trap[lo])
+                self.basins.append(b)
+                for i in b.cols:
+                    where[i] = b
+            else:
+                x += 1
+        for x in range(width - 2, -1, -1):  # 비탈은 내리막 쪽 이웃이 가는 그릇으로
+            if where[x] is None and g[x + 1] < g[x]:
+                where[x] = where[x + 1]
+        for x in range(1, width):
+            if where[x] is None and g[x - 1] < g[x]:
+                where[x] = where[x - 1]
+        self.where = where
 
     def add(self, x, vol):
         b = self.where[x]
-        if b:  # 그릇 밖에 떨어진 물은 흘러가 버림. 넘치는 물도
-            b[2] = min(b[2] + vol, self.full(b))
+        if b:  # 넘치는 물과 가장자리로 내려가는 비탈의 물은 흘러가 버림
+            b.vol = min(b.vol + vol, b.cap)
 
     def settle(self, dry):
-        h, D = self.h, PUDDLE_DEPTH
-        for b in self.bowls:
-            c, r, v = b
-            v = b[2] = v * (1 - dry)
-            # 바닥 높이 D·u² (u = 가운데에서 떨어진 정도 / 반폭) 위로 수면 s 까지 찬 부피 = 4/3·r·s^1.5/√D
-            s = min(D, (0.75 * v * D ** 0.5 / r) ** (2 / 3))
-            for i in range(int(c - r) + 1, int(c + r)):
-                u = (i + 0.5 - c) / r
-                h[i] = max(0.0, s - D * u * u)
+        g, h = self.g, self.h
+        for b in self.basins:
+            b.vol *= 1 - dry
+            s = b.level = b.surface()
+            for x in b.cols:
+                h[x] = max(0.0, s - g[x])
 
 
 def puddle_column_parts():
-    """웅덩이 열 조각: 윗면 한 줄은 하늘이 비친 밝은 선, 그 아래는 밑이 비쳐 보이게 반투명한 물."""
+    """물 열 조각: 윗면 한 줄은 하늘이 비친 밝은 선, 그 아래는 밑이 비쳐 보이게 반투명한 물."""
     shine, top, deep = (215, 228, 245), (120, 145, 180), (78, 98, 132)
     edges = [pixel(shine, 230 * q / 16) for q in range(16)]
     body = pixel(shine, 230) + b"".join(
-        pixel(tuple(int(a + (b - a) * min(1.0, d / PUDDLE_DEPTH)) for a, b in zip(top, deep)),
-              150 + 40 * min(1.0, d / PUDDLE_DEPTH)) for d in range(PILE_STRIP - 1))
+        pixel(tuple(int(a + (b - a) * min(1.0, d / 6)) for a, b in zip(top, deep)), 150 + 40 * min(1.0, d / 6))
+        for d in range(PILE_STRIP - 1))
     return edges, body
+
+
+def water_column(ground, g, s, edges, body):
+    """땅 열 그림 위에 수면 s 까지 물을 덮음. 행 r 은 높이 [PILE_STRIP-1-r, PILE_STRIP-r) px."""
+    col = bytearray(ground)
+    top = int(s)
+    for k in range(round(g), top):  # 땅 윗면에서 수면 아래까지. 맨 위 행이 밝은 선
+        r = (PILE_STRIP - 1 - k) * 4
+        d = (top - 1 - k) * 4
+        col[r:r + 4] = body[d:d + 4]
+    q = int((s - top) * 16)
+    if q and top >= round(g) and top < PILE_STRIP:  # 수면의 소수부 — 투명이면 땅 가장자리를 지우므로 건너뜀
+        r = (PILE_STRIP - 1 - top) * 4
+        col[r:r + 4] = edges[q]
+    return bytes(col)
+
+
+def ripple(k):
+    """수면에 빗방울이 떨어진 자리의 물결 k 번째 장면. 옆에서 본 고리라 양 끝이 밝은 한 줄이 벌어짐."""
+    t = k / RIPPLE_FRAMES
+    hw = 2 + int(t * 9)
+    row = b"".join(pixel(RAIN_COLOR, 230 * (1 - t) * (0.25 + 0.75 * (abs(i) / hw) ** 3)) for i in range(-hw, hw + 1))
+    return 2 * hw + 1, [(0, row)]
 
 
 def pile_column_parts():
@@ -427,6 +486,14 @@ def pile_parts_mixed(palette):
                 col.append(pixel(tuple(int(ch * k) for ch in color), 255))
         bodies.append(b"".join(col[:PILE_STRIP]))
     return edges, bodies
+
+
+def runs(n, width):
+    """열마다 몸통 번호. 3–7열씩 같은 몸통 — 열마다 고르면 세로 줄무늬가 됨."""
+    pick = []
+    while len(pick) < width:
+        pick += [random.randrange(n)] * random.randint(3, 7)
+    return pick
 
 
 def pile_column(v, edges, body, zero):
@@ -467,7 +534,10 @@ class Weather:
                              for layer in RAIN_LAYERS]
         self.droplet = disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR)
         self.snow_pile = pile_column_parts()
-        self.water_pile = puddle_column_parts()
+        self.water_parts = puddle_column_parts()
+        self.soil_parts = pile_parts_mixed(SOIL)
+        self.ripples_sprites = [ripple(k) for k in range(RIPPLE_FRAMES)]
+        self.last_wade = 0.0
         self.pile_zero = bytes(PILE_STRIP * 4)
         self.sprite_cache = {}  # 꽃잎·낙엽·반딧불 그림은 그 종류를 처음 고를 때 그림
         self.cat_sprites = pet.sprites()
@@ -576,6 +646,19 @@ class Weather:
                 last[x] = key
                 strip32[x::w] = memoryview(pile_column(v, self.pile_edges, bodies[pick[x]],
                                                        self.pile_zero)).cast("I")
+
+    def render_puddles(self, everything=False):
+        """땅은 그대로라 수면이 1/16 px 넘게 바뀐 그릇의 열만 다시 그림."""
+        strip32, w, p, ground = self.strip.cast("I"), self.w, self.pile, self.ground_cols
+        edges, body = self.water_parts
+        for b in p.basins:
+            key = int(b.level * 16)
+            if key == b.drawn and not everything:
+                continue
+            b.drawn = key
+            for x in b.cols:
+                col = water_column(ground[x], p.g[x], p.g[x] + p.h[x], edges, body) if p.h[x] > 0.5 else ground[x]
+                strip32[x::w] = memoryview(col).cast("I")
 
     # ── 꽃잎·낙엽 ──
     def leaf_sprites(self, kind):
@@ -689,15 +772,21 @@ class Weather:
         return [random.uniform(-self.h * SLANT, self.w), y, random.uniform(*layer[2]), li, n]
 
     def rain(self, dt):
-        px, stride, w, h, ph = self.surface.pixels, self.stride, self.w, self.h, self.pile.h
+        px, stride, w, h = self.surface.pixels, self.stride, self.w, self.h
+        pg, ph = self.pile.g, self.pile.h
         for d in self.drops:
             d[1] += d[2] * dt
             d[0] += d[2] * SLANT * dt
             x = d[0] + d[4] * SLANT
             col = min(max(int(x), 0), w - 1)
-            if d[1] + d[4] >= h - ph[col]:  # 웅덩이가 있으면 그 수면에서 튐
+            top = pg[col] + ph[col]
+            if d[1] + d[4] >= h - top:  # 땅이나 수면에 닿음
                 self.pile.add(col, PUDDLE_PER_DROP)
-                self.splash(x, d[3], ph[col])
+                if ph[col] > 0.5:  # 물에 떨어지면 물결이 벌어지고 조금만 튐
+                    self.ripples.append([x, h - top - 1, 0.0])
+                    self.splash(x, 0, top)
+                else:
+                    self.splash(x, d[3], top)
                 d[:] = self.new_drop(d[3], True)
                 continue
             sw, rows = self.rain_sprites[d[3]][d[4]]
@@ -716,16 +805,29 @@ class Weather:
                 stamp(px, stride, xi, yi, rows)
                 live.append(s)
         self.splashes = live
+        live = []
+        for r in self.ripples:  # [x, 수면 y, 지난 초]
+            r[2] += dt
+            k = int(r[2] / RIPPLE_SEC * RIPPLE_FRAMES)
+            if k >= RIPPLE_FRAMES:
+                continue
+            sw, rows = self.ripples_sprites[k]
+            xi = int(r[0]) - sw // 2
+            if 0 <= xi and xi + sw <= w:
+                stamp(px, stride, xi, int(r[1]), rows)
+            live.append(r)
+        self.ripples = live
 
-    def splash(self, x, li, depth):
+    def splash(self, x, li, top):
         for _ in range(random.randint(1, 3) if li else random.randint(0, 1)):  # 먼 빗줄기는 덜 튐
-            self.splashes.append([x, self.h - 3 - depth, random.uniform(-90, 90), random.uniform(-220, -90),
+            self.splashes.append([x, self.h - 3 - top, random.uniform(-90, 90), random.uniform(-220, -90),
                                   random.uniform(0.25, 0.45)])
 
     # ── 돌리기 ──
     def reset(self):
         n, kind = COUNT[self.amount], self.kind
         self.flakes, self.drops, self.splashes, self.leaves, self.flies = [], [], [], [], []
+        self.ripples = []
         self.bolt, self.next_bolt = None, time.perf_counter() + random.uniform(2, 5)
         self.pile = Pile(self.w)
         self.strip = memoryview(bytearray(self.stride * PILE_STRIP))
@@ -737,8 +839,13 @@ class Weather:
                            for _ in range(round(n * layer[0]))]
         elif kind in ("rain", "storm"):
             self.pile = Puddles(self.w)
-            self.pile_edges, body = self.water_pile
-            self.pile_bodies = [body]
+            edges, bodies = self.soil_parts
+            g, pick = self.pile.g, runs(len(bodies), self.w)
+            self.ground_cols = [pile_column(g[x], edges, bodies[pick[x]], self.pile_zero) for x in range(self.w)]
+            strip32 = self.strip.cast("I")
+            for x, col in enumerate(self.ground_cols):  # 땅은 한 번만 그리고 뒤로는 그릇 열만 고침
+                strip32[x::self.w] = memoryview(col).cast("I")
+            self.render_puddles(everything=True)
             mult = RAIN_MULT * (STORM_MULT if kind == "storm" else 1)
             self.drops = [self.new_drop(li, False) for li, layer in enumerate(RAIN_LAYERS)
                           for _ in range(round(n * mult * layer[0]))]
@@ -746,9 +853,7 @@ class Weather:
             spec = LEAF_KINDS[kind]
             self.leaves_sprites = self.leaf_sprites(kind)
             self.pile_edges, self.pile_bodies = pile_parts_mixed(spec["palette"])
-            self.pile_pick = []
-            while len(self.pile_pick) < self.w:  # 3–7열씩 같은 몸통 — 열마다 고르면 세로 줄무늬가 됨
-                self.pile_pick += [random.randrange(len(self.pile_bodies))] * random.randint(3, 7)
+            self.pile_pick = runs(len(self.pile_bodies), self.w)
             self.leaves = [self.new_leaf(li, False) for li, layer in enumerate(LEAF_LAYERS)
                            for _ in range(round(n * spec["share"] * layer[0]))]
         elif kind == "fireflies":
@@ -763,8 +868,38 @@ class Weather:
             cat.startle(now)
         cat.update(dt, now, rainy)
         a, b = cat.feet()
-        ground = 0 if rainy else max(self.pile.h[a:b])  # 웅덩이에선 물에 들어가 섬
+        if rainy:  # 땅을 딛고 물에는 잠김. 물 속을 걸으면 발에서 물이 튐
+            p = self.pile
+            ground = max(p.g[a:b])
+            if cat.state in ("walk", "run") and max(p.h[a:b]) > 0.8 and now - self.last_wade >= WADE_EVERY:
+                self.last_wade = now
+                x = random.uniform(a, b)
+                top = p.g[int(x)] + p.h[int(x)]
+                self.ripples.append([x, self.h - top - 1, 0.0])
+                back = -1 if cat.right else 1  # 걷는 반대쪽으로 튐
+                for _ in range(random.randint(2, 3)):
+                    self.splashes.append([x, self.h - 2 - top, back * random.uniform(20, 110),
+                                          random.uniform(-260, -140), random.uniform(0.3, 0.5)])
+        else:
+            ground = max(self.pile.h[a:b])
         cat.draw(self.surface.pixels, self.stride, self.h, self.cat_sprites, ground, now, rainy)
+        if rainy:
+            self.cover_wade(int(cat.x))
+
+    def cover_wade(self, x0):
+        """물에 선 고양이 다리가 물 뒤로 비쳐 보이게, 고양이가 칠한 물 칸에만 물을 한 번 더 섞어 얹음."""
+        p, px, strip, stride = self.pile, self.surface.pixels, self.strip, self.stride
+        base = (self.h - PILE_STRIP) * stride
+        for x in range(max(0, x0), min(self.w, x0 + pet.W)):
+            if p.h[x] <= 0.5:
+                continue
+            for k in range(round(p.g[x]), min(int(p.g[x] + p.h[x]) + 1, PILE_STRIP)):
+                i = (PILE_STRIP - 1 - k) * stride + x * 4
+                water, j = strip[i:i + 4], base + i
+                under = px[j:j + 4]
+                if under != water:  # 띠와 다르면 고양이가 칠한 칸
+                    keep = 255 - water[3]
+                    px[j:j + 4] = bytes(c + d * keep // 255 for c, d in zip(water, under))
 
     def frame(self, dt, now):
         self.surface.clear()
@@ -775,7 +910,7 @@ class Weather:
             if now - self.last_settle >= SETTLE_SEC:
                 self.pile.settle((PUDDLE_DRY if rainy else MELT_PER_SEC) * (now - self.last_settle))
                 self.last_settle = now
-                self.render_pile()
+                self.render_puddles() if rainy else self.render_pile()
             self.surface.pixels[(self.h - PILE_STRIP) * self.stride:] = self.strip
         if self.cat:  # 더미 위, 내리는 것 아래
             self.walk_cat(dt, now)
@@ -866,7 +1001,7 @@ def check():
     assert [round(blink(t, 4), 6) for t in (0, 0.15, 0.5, 1.4, 2, 3.9)] == [0, 0.5, 1, 0.5, 0, 0], "깜빡임 곡선"
     sprites = [disc(3.0, 1.8, 235, SNOW_COLOR, SNOW_RIM, 0.5, 0.25)[1], streak(30, 165, 1.6)[1], petal[1],
                paint(leaf_shape(9, 0.5, 2.0, 0.9, False), (216, 98, 36), 225)[1], glow(1.5, 6.5, 0.6, 0.25, 0.5)[1],
-               levels[0]]
+               levels[0]] + [ripple(k)[1] for k in range(RIPPLE_FRAMES)]
     for rows in sprites + levels[1:]:
         for skip, data in rows:
             assert skip % 4 == 0 and len(data) % 4 == 0
@@ -876,26 +1011,34 @@ def check():
         for skip, data in rows:
             assert not data or (data[3] and data[-1]), "앞뒤 투명 픽셀은 잘려 있어야 함"
     pd = Puddles(2000, random.Random(1))
-    assert len(pd.bowls) >= 3 and all(0 < c - r and c + r < 2000 for c, r, _ in pd.bowls), "그릇이 화면 안에 여럿"
-    assert all(a[0] + a[1] < b[0] - b[1] for a, b in zip(pd.bowls, pd.bowls[1:])), "그릇끼리 안 겹침"
-    b = pd.bowls[0]
-    c = int(b[0])
-    pd.add(c, Puddles.full(b) / 2)
+    assert 0 < min(pd.g) and max(pd.g) < PILE_STRIP - 1, "땅은 띠 안에 들어감"
+    assert len(pd.basins) >= 3, "그릇이 여럿"
+    assert all(a.cols[-1] < b.cols[0] for a, b in zip(pd.basins, pd.basins[1:])), "그릇끼리 안 겹침"
+    dips = [x for x in range(1, 1999) if pd.g[x - 1] > pd.g[x] < pd.g[x + 1]]
+    assert all(pd.where[x] and x in pd.where[x].cols for x in dips), "우묵한 곳은 다 그릇 안"
+    assert all(pd.where[pd.basins[0].cols[0]:pd.basins[-1].cols[-1]]), "그릇 사이 비탈의 비는 다 그릇으로 감"
+    b = max(pd.basins, key=lambda b: b.cap)
+    x = min(b.cols, key=lambda x: pd.g[x])
+    pd.add(x, b.cap / 2)
     pd.settle(0)
-    cols = pd.h[int(b[0] - b[1]):int(b[0] + b[1]) + 1]
-    assert abs(sum(cols) - Puddles.full(b) / 2) < 0.03 * Puddles.full(b), "그린 물 = 담은 부피"
-    assert pd.h[c] == max(cols) and 0 < pd.h[c] < PUDDLE_DEPTH, "가운데가 제일 깊고 넘치지 않음"
-    assert cols[0] == 0 and cols[-1] == 0, "반쯤 차면 그릇 끝까지 안 퍼짐"
-    pd.add(c, 1e6)
+    wet = [x for x in b.cols if pd.h[x] > 0]
+    assert abs(sum(pd.h[x] for x in b.cols) - b.cap / 2) < 1e-6, "그린 물 = 담은 부피"
+    assert all(abs(pd.g[x] + pd.h[x] - b.level) < 1e-9 for x in wet), "수면은 평평함"
+    assert x in wet and all(pd.g[x] >= b.level for x in b.cols if x not in wet), "낮은 데부터 참"
+    assert b.level < b.spill and len(wet) < len(b.low), "반쯤 차면 넘치는 높이 아래"
+    pd.add(x, 1e6)
     pd.settle(0)
-    assert b[2] == Puddles.full(b) and max(pd.h) <= PUDDLE_DEPTH + 1e-9, "가득 차면 넘침"
-    cols = pd.h[int(b[0] - b[1]):int(b[0] + b[1]) + 1]
-    assert abs(max(cols) - PUDDLE_DEPTH) < 0.05 and abs(sum(cols) - b[2]) < 0.03 * b[2], "가득 = 깊이 끝까지 찬 그릇"
-    gap = int(b[0] + b[1]) + 2
-    pd.add(gap, 5.0)
-    assert sum(x[2] for x in pd.bowls[1:]) == 0, "그릇 밖에 떨어진 물은 안 고임"
+    assert b.vol == b.cap and abs(b.level - b.spill) < 1e-9, "가득 차면 넘치는 높이까지"
+    assert max(pd.g[x] + pd.h[x] for x in b.cols if pd.h[x] > 0) <= b.spill + 1e-9, "넘치는 높이 위로는 안 고임"
+    assert b.level <= min(max(pd.g[:b.cols[0]]), max(pd.g[b.cols[-1] + 1:])) + 1e-9, "물은 낮은 쪽 둑을 못 넘음"
+    assert b.level >= max(pd.g[x] for x in b.cols) - 1e-9, "가득 차면 그릇 안 둔덕은 다 잠김"
+    assert sum(o.vol for o in pd.basins if o is not b) == 0, "다른 그릇엔 안 고임"
     pd.settle(0.5)
-    assert abs(b[2] - Puddles.full(b) / 2) < 1e-9, "마르는 양은 부피에 비례"
+    assert abs(b.vol - b.cap / 2) < 1e-9, "마르는 양은 부피에 비례"
+    edges, body = puddle_column_parts()
+    soil_edges, soil_bodies = pile_parts_mixed(SOIL)
+    ground = pile_column(pd.g[x], soil_edges, soil_bodies[0], bytes(PILE_STRIP * 4))
+    assert len(water_column(ground, pd.g[x], pd.g[x] + pd.h[x], edges, body)) == PILE_STRIP * 4, "물 열 길이가 띠 높이"
     print("자체 점검 통과")
 
 
