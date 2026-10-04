@@ -1,3 +1,7 @@
+- 여기까지 됨 (2026-10-04 — usage-hud 맥 메뉴 막대): usage-hud/mac/UsageBar.swift(AppKit 만)가 메뉴 막대에 ♥7일 ⚡5시간 남은 양을 띄우고, 메뉴에 재설정까지 남은 시간·오늘 정가·새로 받기·페이지 열기·로그인 시 실행·끝내기. 값은 5분마다 /usr/bin/python3 usage.py 의 JSON 을 읽는다. 로그인 시 실행은 ~/Library/LaunchAgents plist. 잠금 파일로 하나만 뜬다. --check 는 변이 넷을 잡고, 맥북에서 띄워 메뉴 막대와 열린 메뉴를 찍었다. 빌드 1.8초
+- 다음 할 것: 로그인 시 실행을 켜고 다시 로그인해 뜨는지 볼 것. 안 뜨면 launchd 의 PATH·작업 폴더를 의심하고 `launchctl print gui/$UID/com.ruminem.playroom.usage-bar` 로 본다. HUD 의 픽셀 아이콘을 메뉴 막대에 쓰고 싶으면 NSImage 로 그리면 된다(지금은 ♥⚡ 글자)
+- 막힌 것: 없음
+
 - 여기까지 됨 (2026-10-04 — usage-hud 맥): usage.py 가 맥에서는 Keychain 의 Claude Code-credentials 에서 토큰을 읽는다. 맥북에서 page.py 를 띄워 HP·ST·동전이 다 나오는 것을 찍었다. HUD 는 Win32 그대로라 맥에선 안 돈다. 맥 메뉴 막대 후보를 쟀다 — Swift(AppKit): 의존성 없음, NSStatusItem 최소 예제 swiftc 4.9초·56KB 로 돎, 클릭 통과 떠 있는 창도 같은 API 로 됨. SwiftBar: MIT·활발(9/29 푸시), 플러그인이 usage.py 를 부르면 30줄 남짓이지만 앱을 따로 깔아야 함. PyObjC: MIT 지만 최신판이 Python 3.10 이상이라 맥 기본 3.9.6 에선 brew 파이썬부터 깔아야 함 — 제일 비쌈
 - 다음 할 것: 맥 메뉴 막대를 Swift 로 할지 정할 것. 데이터는 usage.py 의 JSON 출력(첫 줄은 걸린 시간)을 읽어 단가 표를 한 곳에 둔다. 로그인 시 실행은 번들 없는 바이너리면 LaunchAgent plist 가 필요해 보임(안 재 봄)
 - 막힌 것: 없음

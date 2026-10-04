@@ -2,7 +2,7 @@
 
 **English** · [한국어](#korean)
 
-Claude Code subscription limits drawn as a retro game HUD. Python standard library only. The HUD is Windows only; the page and `usage.py` also run on macOS.
+Claude Code subscription limits drawn as a retro game HUD. Python standard library only. The HUD is Windows only; on macOS there is a menu bar item, and the page and `usage.py` run there too.
 
 - **HP** (heart) — what is left of the 7-day limit
 - **ST** (bolt) — what is left of the 5-hour limit
@@ -34,6 +34,16 @@ python page.py
 
 Opens `http://127.0.0.1:8765/` with the same bars and a bar chart of the last seven days. It listens on 127.0.0.1 only. Light by default; the button switches to dark.
 
+## macOS menu bar
+
+```bash
+mac/build.sh && mac/UsageBar
+```
+
+The HUD is Windows only, so on a Mac the same numbers sit in the menu bar instead: `♥12% ⚡95%` — the 7-day limit, then the 5-hour one. A number turns red below 10%, and `LOGIN` means the token has expired. The menu shows the time left until each reset and today's cost, and can refresh now, open the page, start at login or quit.
+
+[mac/UsageBar.swift](mac/UsageBar.swift) is AppKit only and builds with `swiftc` from Xcode or the Command Line Tools in about two seconds. It does not compute anything itself — every five minutes it runs `/usr/bin/python3 usage.py` and reads the JSON, so prices and header checks live in one place. **Start at login** writes `~/Library/LaunchAgents/com.ruminem.playroom.usage-bar.plist`; like the Windows switch, it clears if the folder was moved. `mac/UsageBar --check` runs the self-check.
+
 ## Where the numbers come from
 
 - **Limits**: a one-token Haiku request with the OAuth token the Claude Code CLI saved in `~/.claude/.credentials.json` (on macOS, in the Keychain under `Claude Code-credentials`), reading the `anthropic-ratelimit-unified-*` response headers. Sent at most once every five minutes. These headers are undocumented, so a window whose value looks wrong is left blank rather than drawn wrong
@@ -55,7 +65,7 @@ Opens `http://127.0.0.1:8765/` with the same bars and a bar chart of the last se
 
 [English](#usage-hud) · **한국어**
 
-Claude Code 구독 한도를 레트로 게임 HUD 로 그림. 파이썬 표준 라이브러리만 씀. HUD 는 윈도우 전용이고, 페이지와 `usage.py` 는 맥에서도 돎.
+Claude Code 구독 한도를 레트로 게임 HUD 로 그림. 파이썬 표준 라이브러리만 씀. HUD 는 윈도우 전용이고, 맥에는 메뉴 막대 항목이 있으며 페이지와 `usage.py` 도 맥에서 돎.
 
 - **HP**(하트) — 7일 한도의 남은 양
 - **ST**(번개) — 5시간 한도의 남은 양
@@ -86,6 +96,16 @@ python page.py
 ```
 
 `http://127.0.0.1:8765/` 를 열어 같은 막대와 7일치 일별 막대그래프를 보여 줌. 127.0.0.1 에만 열림. 기본은 밝은 화면이고 단추로 어둡게 바꿈.
+
+### 맥 메뉴 막대
+
+```bash
+mac/build.sh && mac/UsageBar
+```
+
+HUD 는 윈도우 전용이라 맥에서는 같은 값을 메뉴 막대에 띄움: `♥12% ⚡95%` — 앞이 7일 한도, 뒤가 5시간 한도. 10% 아래면 숫자가 빨개지고, `LOGIN` 은 토큰이 만료된 것임. 메뉴에서 재설정까지 남은 시간과 오늘 정가를 보고, 지금 새로 받기·페이지 열기·로그인 시 실행·끝내기를 함.
+
+[mac/UsageBar.swift](mac/UsageBar.swift) 는 AppKit 만 쓰고 Xcode 나 Command Line Tools 의 `swiftc` 로 2초쯤에 묶임. 값을 스스로 계산하지 않음 — 5분마다 `/usr/bin/python3 usage.py` 를 돌려 JSON 을 읽으므로 단가와 헤더 검증은 한 곳에만 있음. **로그인 시 실행** 은 `~/Library/LaunchAgents/com.ruminem.playroom.usage-bar.plist` 를 씀. 윈도우 쪽처럼 폴더를 옮기면 체크가 풀림. `mac/UsageBar --check` 가 자체 점검임.
 
 ### 값이 오는 곳
 
