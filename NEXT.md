@@ -1,3 +1,7 @@
+- 여기까지 됨 (2026-10-04 — weather 웅덩이 · 맥 메뉴 중 그리기): 비·뇌우에 웅덩이가 고인다. Puddles 가 바닥에 포물선 그릇 몇 개를 두고 그릇마다 부피 하나만 들며, 수면은 부피에서 식으로 나온다(4/3·r·s^1.5/√D). '많이' 에서 바닥 1px 에 초당 0.246방울 떨어지는 것을 재어 PUDDLE_PER_DROP 을 골랐다 — 많이 가득 6px, 보통 4px 남짓, 적게 2px 남짓. 자체 점검 넷을 더하고 변이 다섯을 다 잡았다. 맥에서 메뉴를 연 동안에도 이벤트 추적 모드 타이머로 계속 그린다(2.25초에 0 → 66프레임)
+- 다음 할 것: 웅덩이 모양이 마음에 드는지 볼 것. 어두운 바탕에선 웅덩이보다 낮은 둔덕처럼 읽힌다 — 바꾸려면 puddle_column_parts 의 색과 PUDDLE_HALF·PUDDLE_DEPTH. 윈도우에서도 작업 표시줄 위에 고이는지 한 번 띄워 본다(안 돌려 봄)
+- 막힌 것: 없음
+
 - 여기까지 됨 (2026-10-04 — weather 맥): weather.py 가 맥에서도 돈다. shared/mac/ 에 같은 이름의 surface·overlay·tray·startup(+ctypes 도우미 cocoa.py)을 두고, 맥이면 weather.py 가 그 폴더를 sys.path 앞에 넣는다. Surface 는 IOSurface 두 벌을 번갈아 레이어에 넘김(CGImage 로 하면 내보내기만 25%, 이쪽 0.4%). 트레이는 NSStatusItem, 메뉴는 열 때마다 menuNeedsUpdate: 로 다시 짬. 시작 실행은 LaunchAgent plist. write_ico 는 OS 를 안 타서 shared/icon.py 로 옮기고 tray.py 가 다시 내보냄(layers·hud·sysmon 은 그대로). 맥북에서 메뉴를 ObjC 경로로 눌러 종류·양·저장을 봤고, --toggle 두 번·두 번 띄우기 막힘·--stop 을 봤다. CPU 빈 화면+고양이 2.7%, 눈 보통+고양이 6–7%, 비 많이+고양이 19%. startup 점검은 변이 둘을 잡음
 - 다음 할 것: 윈도우에서 weather·layers·sysmon·usage-hud 를 한 번씩 띄울 것 — write_ico 를 icon.py 로 옮긴 게 윈도우에서 안 돌려 봤다. 맥에서는 손으로 메뉴 막대 눈송이를 눌러 보고, 오버레이 아래 창이 실제로 클릭되는지 본다(ignoresMouseEvents 만 켰고 직접 눌러 보진 않음)
 - 막힌 것: 없음. 메뉴를 연 동안 그림이 멈추는 건 AppKit 메뉴가 그리는 스레드를 잡기 때문이라 그대로 둠. 작업 영역은 메뉴 막대만 빼고 독은 안 뺀다 — 빼면 전체 화면에서 독이 숨어 눈더미가 독 높이만큼 떴음. Finder 더블클릭용 weather.command 도 더함
