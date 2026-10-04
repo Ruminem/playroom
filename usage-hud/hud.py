@@ -27,6 +27,8 @@ import webbrowser
 import winreg
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+import overlay
 import usage
 from font import COLORS, ICONS, text_pixels, text_width
 from tray import Tray, write_ico
@@ -64,37 +66,12 @@ LOGIN 이 뜨면 CLI 로그인 토큰이 만료된 것입니다. 터미널에서
 HUD 는 클릭이 통과하므로 이 트레이 메뉴로 숨기거나 끕니다."""
 
 
-# ── 한 번만 뜨게 하기 (cursor-playground 의 cat.py 와 같은 방식) ─────────────
 def running_pid():
-    try:
-        pid = int(PID_FILE.read_text())
-    except (OSError, ValueError):
-        return None
-    k32 = ctypes.windll.kernel32
-    handle = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
-    if not handle:
-        return None
-    code = ctypes.c_ulong()
-    alive = k32.GetExitCodeProcess(handle, ctypes.byref(code)) and code.value == 259  # STILL_ACTIVE
-    k32.CloseHandle(handle)
-    return pid if alive else None
+    return overlay.running_pid(PID_FILE)
 
 
 def stop():
-    """트레이 창에 닫으라고 보내고 기다린다. 그냥 죽이면 트레이에 유령 아이콘이 남는다."""
-    pid = running_pid()
-    if pid is None:
-        return False
-    hwnd = ctypes.windll.user32.FindWindowW(TRAY_CLASS, None)
-    if hwnd:
-        ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
-        for _ in range(30):
-            if running_pid() is None:
-                return True
-            time.sleep(0.1)
-    os.kill(pid, 9)  # 3초 안에 안 끝나면 강제로
-    PID_FILE.unlink(missing_ok=True)
-    return True
+    return overlay.stop(PID_FILE, TRAY_CLASS)
 
 
 def autostart_command():
@@ -156,13 +133,6 @@ def load_settings():
     return ok
 
 
-def work_area():
-    """작업 표시줄을 뺀 주 모니터 영역 (left, top, right, bottom)."""
-    rect = (ctypes.c_long * 4)()
-    ctypes.windll.user32.SystemParametersInfoW(0x30, 0, rect, 0)  # SPI_GETWORKAREA
-    return tuple(rect)
-
-
 def level_color(left):
     return COLORS["good"] if left > 0.5 else COLORS["mid"] if left > 0.2 else COLORS["low"]
 
@@ -177,7 +147,7 @@ class Hud:
         self.canvas.pack()
         self.place()
         self.root.update_idletasks()
-        self.make_click_through()
+        overlay.click_through(self.root)
         self.snap = None
         self.server = None
         self.last_topmost = time.monotonic()
@@ -189,7 +159,7 @@ class Hud:
     def place(self):
         s = self.s
         self.canvas.configure(width=W * s, height=H * s)
-        l, t, r, b = work_area()
+        l, t, r, b = overlay.work_area()
         x = l + MARGIN if "l" in self.corner else r - MARGIN - W * s
         y = t + MARGIN if "t" in self.corner else b - MARGIN - H * s
         self.root.geometry(f"{W * s}x{H * s}+{x}+{y}")
@@ -224,7 +194,7 @@ class Hud:
             self.visible = not self.visible
             self.root.deiconify() if self.visible else self.root.withdraw()
             if self.visible:
-                self.make_click_through()  # 다시 보일 때 확장 스타일이 풀리지 않게
+                overlay.click_through(self.root)  # 다시 보일 때 확장 스타일이 풀리지 않게
         elif cid in CORNERS or cid in SCALES:
             self.corner = CORNERS[cid][0] if cid in CORNERS else self.corner
             self.s = SCALES.get(cid, self.s)
@@ -263,15 +233,6 @@ class Hud:
             except OSError:
                 pass
         webbrowser.open("http://127.0.0.1:%d/" % PAGE_PORT)
-
-    def make_click_through(self):
-        user32 = ctypes.windll.user32
-        hwnd = int(self.root.wm_frame(), 16)
-        # 겹친 창, 클릭 통과, 작업 표시줄에 안 뜸, 포커스 안 뺏음
-        flags = 0x80000 | 0x20 | 0x80 | 0x8000000
-        user32.SetWindowLongW(hwnd, -20, user32.GetWindowLongW(hwnd, -20) | flags)
-        # 겹친 창은 알파를 한 번 정해 줘야 그려진다. 255 = 불투명
-        user32.SetLayeredWindowAttributes(hwnd, 0, 255, 2)
 
     def fetch_loop(self):
         # 네트워크가 최대 usage.TIMEOUT 초 막으므로 그리는 쪽과 떼어 돌린다
