@@ -7,7 +7,7 @@ A hobby playroom. One folder per experiment, each with its own short README.
 ## Contents
 
 - [usage-hud](usage-hud/) — Claude Code subscription limits as a retro game HUD: hearts for the weekly limit, a bolt for the five-hour one, a coin for what today would have cost at API prices. A click-through overlay that stays on top of everything, plus a browser page with the last seven days
-- [weather](weather/) — snow, rain, a thunderstorm, petals, leaves or fireflies over every window, picture-in-picture video included. Clicks go straight through to whatever you are working on; snow piles up on the taskbar and slowly melts
+- [weather](weather/) — snow, rain, a thunderstorm, petals, leaves or fireflies over every window, picture-in-picture video included. Clicks go straight through to whatever you are working on; snow piles up on the taskbar and slowly melts. An optional pixel cat wanders along the taskbar, with or without weather
 - [sysmon](sysmon/) — CPU and memory use in two small lines on the taskbar, just left of the notification icons. Turns orange above 70% and red above 90%
 - [pomodoro](pomodoro/) — a pomodoro timer on the taskbar next to sysmon. Pixel confetti bursts up when a focus session ends, and the break starts on its own
 - [layers](layers/) — decides which always-on-top window goes in front: the overlays here, a picture-in-picture video, any window you add. Without it the overlays take turns jumping in front of each other
@@ -28,7 +28,7 @@ Apache-2.0. See [LICENSE](LICENSE).
 ### 구성
 
 - [usage-hud](usage-hud/) — Claude Code 구독 한도를 레트로 게임 HUD 로 보여 줌. 하트는 7일 한도, 번개는 5시간 한도, 동전은 오늘 쓴 양을 API 정가로 친 값. 모든 창 위에 떠 있되 클릭은 통과시키는 오버레이와, 7일치를 함께 보는 브라우저 페이지
-- [weather](weather/) — PIP 영상까지 포함해 모든 창 위로 눈·비·뇌우·벚꽃잎·낙엽을 내리거나 반딧불이를 띄움. 클릭은 하던 작업으로 그대로 통과하고, 눈은 작업 표시줄 위에 쌓였다가 천천히 녹음
+- [weather](weather/) — PIP 영상까지 포함해 모든 창 위로 눈·비·뇌우·벚꽃잎·낙엽을 내리거나 반딧불이를 띄움. 클릭은 하던 작업으로 그대로 통과하고, 눈은 작업 표시줄 위에 쌓였다가 천천히 녹음. 픽셀 고양이를 켜면 날씨와 같이 또는 혼자 작업 표시줄 위를 돌아다님
 - [sysmon](sysmon/) — 작업 표시줄의 알림 아이콘 바로 왼쪽에 CPU·메모리 사용률을 작은 두 줄로 띄움. 70% 를 넘으면 주황, 90% 를 넘으면 빨강
 - [pomodoro](pomodoro/) — 작업 표시줄의 sysmon 옆에 뜨는 뽀모도로 타이머. 집중이 끝나면 픽셀 색종이가 터지고 휴식이 저절로 이어짐
 - [layers](layers/) — 맨 위에 뜨는 창들 중 무엇이 앞에 올지 정함. 여기 오버레이들, PIP 영상, 직접 넣은 아무 창이나. 없으면 오버레이들이 서로 번갈아 앞으로 튀어나옴

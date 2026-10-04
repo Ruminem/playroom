@@ -10,7 +10,8 @@
 작업 영역(작업 표시줄 뺀 주 모니터) 전체를 덮는 픽셀 알파 창(shared/surface.py)에 30fps 로 그린다.
 눈은 원근 세 층으로 바람에 흔들리며 내리고 작업 표시줄 위에 쌓였다 천천히 녹는다. 꽃잎·낙엽도 같은 층과
 더미를 쓰되 빙글빙글 돌며 팔랑인다. 비는 기운 빗줄기로 내리고 바닥에서 튀며, 뇌우는 거기에 번개를 더한다.
-반딧불이는 화면 아래쪽을 떠다니며 깜빡인다. 트레이의 눈송이 메뉴에서 종류·양·숨기기·끝내기를 하고,
+반딧불이는 화면 아래쪽을 떠다니며 깜빡인다. 고양이(pet.py)를 켜면 바닥이나 쌓인 더미 위를 돌아다닌다.
+트레이의 눈송이 메뉴에서 종류·양·고양이·숨기기·끝내기를 하고,
 고른 것은 SETTINGS 에 남는다.
 """
 import argparse
@@ -30,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 import overlay
 import startup
 from surface import Surface
+import pet
 from tray import Tray, write_ico
 
 PID_FILE = Path(tempfile.gettempdir()) / "playroom-weather.pid"
@@ -87,9 +89,9 @@ FLY_LEVELS = 8
 FLY_SIZES = ((1.3, 6.0), (2.0, 9.0))  # (빛 알갱이 반지름, 번짐 반지름) — 멀리, 가까이
 
 KINDS = {1: ("snow", "눈"), 2: ("rain", "비"), 3: ("storm", "뇌우"), 4: ("petals", "벚꽃"),
-         5: ("leaves", "낙엽"), 6: ("fireflies", "반딧불이")}
+         5: ("leaves", "낙엽"), 6: ("fireflies", "반딧불이"), 7: ("none", "날씨 없음")}  # 없음은 고양이만
 KIND_NAMES = tuple(k for k, _ in KINDS.values())
-SHOW, AUTOSTART, EXIT = 20, 50, 99
+SHOW, PET, AUTOSTART, EXIT = 20, 21, 50, 99
 RUN_NAME = "PlayroomWeather"  # 시작할 때는 인자 없이 떠서 저장된 종류·양을 따름
 AMOUNTS = {10: ("few", "적게", 60), 11: ("normal", "보통", 150), 12: ("many", "많이", 300)}
 COUNT = {key: n for key, _, n in AMOUNTS.values()}
@@ -384,11 +386,13 @@ def load_settings():
         ok["kind"] = data["kind"]
     if data.get("amount") in COUNT:
         ok["amount"] = data["amount"]
+    if isinstance(data.get("pet"), bool):
+        ok["pet"] = data["pet"]
     return ok
 
 
 class Weather:
-    def __init__(self, kind, amount):
+    def __init__(self, kind, amount, cat=False):
         self.kind, self.amount, self.visible = kind, amount, True
         # ponytail: 시작할 때의 주 모니터 작업 영역에 고정. 해상도·작업 표시줄이 바뀌면 다시 켜야 함
         l, t, r, b = overlay.work_area()
@@ -404,6 +408,9 @@ class Weather:
         self.snow_pile = pile_column_parts()
         self.pile_zero = bytes(PILE_STRIP * 4)
         self.sprite_cache = {}  # 꽃잎·낙엽·반딧불 그림은 그 종류를 처음 고를 때 그림
+        self.cat_sprites = pet.sprites()
+        self.cat = pet.Cat(self.w) if cat else None  # 종류를 바꿔도 그대로 — 고양이는 날씨와 따로 삶
+        self.bolt_seen = None
         self.commands = queue.Queue()  # 트레이 스레드 → 그리는 스레드
         write_ico(ICON_FILE, ICON, ICON_COLORS)
         self.tray = Tray(TRAY_CLASS, ICON_FILE, "날씨", self.menu, self.commands.put)
@@ -417,6 +424,7 @@ class Weather:
                 None,
                 ("양", [(label, cid, key == self.amount) for cid, (key, label, _) in AMOUNTS.items()]),
                 None,
+                ("고양이", PET, self.cat is not None),
                 ("보이기", SHOW, self.visible),
                 ("Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)),
                 None,
@@ -427,6 +435,10 @@ class Weather:
             self.kind = KINDS[cid][0]
         elif cid in AMOUNTS:
             self.amount = AMOUNTS[cid][0]
+        elif cid == PET:
+            self.cat = None if self.cat else pet.Cat(self.w)
+            self.save()
+            return
         elif cid == SHOW:
             self.visible = not self.visible
             self.surface.show(self.visible)
@@ -438,9 +450,13 @@ class Weather:
             self.tray.close()  # 트레이가 닫히면 None 이 와서 poll 이 끝냄
             return
         self.reset()
+        self.save()
+
+    def save(self):
         try:
             SETTINGS.parent.mkdir(parents=True, exist_ok=True)
-            SETTINGS.write_text(json.dumps({"kind": self.kind, "amount": self.amount}), encoding="utf-8")
+            SETTINGS.write_text(json.dumps({"kind": self.kind, "amount": self.amount, "pet": self.cat is not None}),
+                                encoding="utf-8")
         except OSError:
             pass  # 못 남겨도 지금 화면은 바뀌었으니 넘어감
 
@@ -667,23 +683,37 @@ class Weather:
                 self.pile_pick += [random.randrange(len(self.pile_bodies))] * random.randint(3, 7)
             self.leaves = [self.new_leaf(li, False) for li, layer in enumerate(LEAF_LAYERS)
                            for _ in range(round(n * spec["share"] * layer[0]))]
-        else:
+        elif kind == "fireflies":
             self.flies_sprites = self.fly_sprites()
             self.flies = [self.new_fly() for _ in range(round(n * FLY_SHARE))]
+
+    # ── 고양이 ──
+    def walk_cat(self, dt, now):
+        cat, rainy = self.cat, self.kind in ("rain", "storm")
+        if self.bolt and self.bolt[0] != self.bolt_seen:
+            self.bolt_seen = self.bolt[0]
+            cat.startle(now)
+        cat.update(dt, now, rainy)
+        a, b = cat.feet()
+        cat.draw(self.surface.pixels, self.stride, self.h, self.cat_sprites, max(self.pile.h[a:b]), now, rainy)
 
     def frame(self, dt, now):
         self.surface.clear()
         kind = self.kind
-        if kind == "snow" or kind in LEAF_KINDS:
+        piled = kind == "snow" or kind in LEAF_KINDS
+        if piled:
             if now - self.last_settle >= SETTLE_SEC:
                 self.pile.settle(MELT_PER_SEC * (now - self.last_settle))
                 self.last_settle = now
                 self.render_pile()
             self.surface.pixels[(self.h - PILE_STRIP) * self.stride:] = self.strip
+        if self.cat:  # 더미 위, 내리는 것 아래
+            self.walk_cat(dt, now)
+        if piled:
             self.snow(dt, now) if kind == "snow" else self.flutter(dt, now)
         elif kind == "fireflies":
             self.fireflies(dt, now)
-        else:
+        elif kind in ("rain", "storm"):
             self.rain(dt)
             if kind == "storm":
                 self.lightning(now)
@@ -804,7 +834,7 @@ def main():
     ctypes.windll.winmm.timeBeginPeriod(1)  # 기본 타이머 간격(15.6ms)이면 30fps 를 청해도 21fps 에서 멈춤
     PID_FILE.write_text(str(os.getpid()))
     try:
-        Weather(args.kind, args.amount).run()
+        Weather(args.kind, args.amount, saved.get("pet", False)).run()
     finally:
         ctypes.windll.winmm.timeEndPeriod(1)
         if overlay.running_pid(PID_FILE) == os.getpid():
