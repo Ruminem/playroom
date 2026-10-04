@@ -7,8 +7,8 @@ A hobby playroom. One folder per experiment, each with its own short README.
 ## Contents
 
 - [usage-hud](usage-hud/) — Claude Code subscription limits as a retro game HUD: hearts for the weekly limit, a bolt for the five-hour one, a coin for what today would have cost at API prices. A click-through overlay that stays on top of everything, plus a browser page with the last seven days
-- [weather](weather/) — pixel snow or rain falling over every window, picture-in-picture video included. Clicks go straight through to whatever you are working on; snow piles up on the taskbar and slowly melts
-- [shared](shared/) — the tray icon, single-instance and click-through helpers both overlays use
+- [weather](weather/) — snow or rain falling over every window, picture-in-picture video included. Clicks go straight through to whatever you are working on; snow piles up on the taskbar and slowly melts
+- [shared](shared/) — the tray icon, single-instance and work-area helpers both overlays use
 
 ## License
 
@@ -25,8 +25,8 @@ Apache-2.0. See [LICENSE](LICENSE).
 ### 구성
 
 - [usage-hud](usage-hud/) — Claude Code 구독 한도를 레트로 게임 HUD 로 보여 줌. 하트는 7일 한도, 번개는 5시간 한도, 동전은 오늘 쓴 양을 API 정가로 친 값. 모든 창 위에 떠 있되 클릭은 통과시키는 오버레이와, 7일치를 함께 보는 브라우저 페이지
-- [weather](weather/) — PIP 영상까지 포함해 모든 창 위로 픽셀 눈이나 비를 내림. 클릭은 하던 작업으로 그대로 통과하고, 눈은 작업 표시줄 위에 쌓였다가 천천히 녹음
-- [shared](shared/) — 두 오버레이가 같이 쓰는 트레이 아이콘, 한 번만 뜨게 하기, 클릭 통과 코드
+- [weather](weather/) — PIP 영상까지 포함해 모든 창 위로 눈이나 비를 내림. 클릭은 하던 작업으로 그대로 통과하고, 눈은 작업 표시줄 위에 쌓였다가 천천히 녹음
+- [shared](shared/) — 두 오버레이가 같이 쓰는 트레이 아이콘, 한 번만 뜨게 하기, 작업 영역 코드
 
 ### 라이선스
 

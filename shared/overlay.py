@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""놀이방의 맨 위 오버레이들이 같이 쓰는 것: 한 번만 뜨게 하기, 작업 영역, 클릭 통과.
+"""놀이방의 맨 위 오버레이들이 같이 쓰는 것: 한 번만 뜨게 하기, 작업 영역, tk 창 클릭 통과.
 
 각 폴더의 스크립트는 sys.path 에 이 폴더를 넣고 import 한다.
 """
@@ -54,7 +54,5 @@ def click_through(root):
     hwnd = int(root.wm_frame(), 16)
     flags = 0x80000 | 0x20 | 0x80 | 0x8000000  # LAYERED | TRANSPARENT | TOOLWINDOW | NOACTIVATE
     user32.SetWindowLongW(hwnd, -20, user32.GetWindowLongW(hwnd, -20) | flags)
-    # 겹친 창은 알파를 한 번 정해 줘야 그려진다. 색 키 창은 tk 가 이미 정해 두었고,
-    # 여기서 알파만 다시 정하면 색 키가 지워져 화면이 통째로 가려진다
-    if not root.attributes("-transparentcolor"):
-        user32.SetLayeredWindowAttributes(hwnd, 0, 255, 2)  # LWA_ALPHA, 불투명
+    # 겹친 창은 알파를 한 번 정해 줘야 그려진다. 색 키(-transparentcolor) 창에 부르면 색 키가 지워진다
+    user32.SetLayeredWindowAttributes(hwnd, 0, 255, 2)  # LWA_ALPHA, 불투명
