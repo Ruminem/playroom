@@ -2,7 +2,7 @@
 
 **English** · [한국어](#korean)
 
-Claude Code subscription limits drawn as a retro game HUD. Windows only, Python standard library only.
+Claude Code subscription limits drawn as a retro game HUD. Python standard library only. The HUD is Windows only; the page and `usage.py` also run on macOS.
 
 - **HP** (heart) — what is left of the 7-day limit
 - **ST** (bolt) — what is left of the 5-hour limit
@@ -36,8 +36,8 @@ Opens `http://127.0.0.1:8765/` with the same bars and a bar chart of the last se
 
 ## Where the numbers come from
 
-- **Limits**: a one-token Haiku request with the OAuth token the Claude Code CLI saved in `~/.claude/.credentials.json`, reading the `anthropic-ratelimit-unified-*` response headers. Sent at most once every five minutes. These headers are undocumented, so a window whose value looks wrong is left blank rather than drawn wrong
-- **LOGIN**: the token has expired. The desktop app keeps its own login and does not refresh that file, so on days you only use the app it goes stale. Opening `claude` in a terminal once refreshes it
+- **Limits**: a one-token Haiku request with the OAuth token the Claude Code CLI saved in `~/.claude/.credentials.json` (on macOS, in the Keychain under `Claude Code-credentials`), reading the `anthropic-ratelimit-unified-*` response headers. Sent at most once every five minutes. These headers are undocumented, so a window whose value looks wrong is left blank rather than drawn wrong
+- **LOGIN**: the token has expired. The desktop app keeps its own login and does not refresh it, so on days you only use the app it goes stale. Opening `claude` in a terminal once refreshes it
 - **Coin**: `usage` of every assistant line in `~/.claude/projects/**/*.jsonl`, counted once per request and priced per model. Sessions run in the cloud are not on this PC and are not counted
 
 `python usage.py --check` runs the self-check.
@@ -55,7 +55,7 @@ Opens `http://127.0.0.1:8765/` with the same bars and a bar chart of the last se
 
 [English](#usage-hud) · **한국어**
 
-Claude Code 구독 한도를 레트로 게임 HUD 로 그림. 윈도우 전용이고 파이썬 표준 라이브러리만 씀.
+Claude Code 구독 한도를 레트로 게임 HUD 로 그림. 파이썬 표준 라이브러리만 씀. HUD 는 윈도우 전용이고, 페이지와 `usage.py` 는 맥에서도 돎.
 
 - **HP**(하트) — 7일 한도의 남은 양
 - **ST**(번개) — 5시간 한도의 남은 양
@@ -89,8 +89,8 @@ python page.py
 
 ### 값이 오는 곳
 
-- **한도**: Claude Code CLI 가 `~/.claude/.credentials.json` 에 둔 OAuth 토큰으로 Haiku 1토큰 요청을 보내 응답 헤더 `anthropic-ratelimit-unified-*` 에서 읽음. 5분에 한 번만 보냄. 문서에 없는 헤더라 값이 이상한 창은 틀리게 그리지 않고 비워 둠
-- **LOGIN**: 토큰이 만료된 것. 데스크톱 앱은 로그인을 따로 들고 그 파일을 안 고쳐서, 앱만 쓴 날은 낡음. 터미널에서 `claude` 를 한 번 열면 새로 고쳐짐
+- **한도**: Claude Code CLI 가 `~/.claude/.credentials.json`(맥은 Keychain 의 `Claude Code-credentials`)에 둔 OAuth 토큰으로 Haiku 1토큰 요청을 보내 응답 헤더 `anthropic-ratelimit-unified-*` 에서 읽음. 5분에 한 번만 보냄. 문서에 없는 헤더라 값이 이상한 창은 틀리게 그리지 않고 비워 둠
+- **LOGIN**: 토큰이 만료된 것. 데스크톱 앱은 로그인을 따로 들고 그 자리를 안 고쳐서, 앱만 쓴 날은 낡음. 터미널에서 `claude` 를 한 번 열면 새로 고쳐짐
 - **동전**: `~/.claude/projects/**/*.jsonl` 의 assistant 줄 `usage` 를 요청마다 한 번씩 세어 모델별 단가를 곱함. 클라우드에서 돈 세션은 이 PC 에 없어 안 셈
 
 `python usage.py --check` 가 자체 점검을 돌림.

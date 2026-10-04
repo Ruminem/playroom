@@ -9,7 +9,8 @@
 이름이나 스케일이 바뀌면 조용히 틀린 값이 된다 — 그래서 의심스러운 창은 None 으로 뺀다.
 요청 하나가 구독 한도에 1토큰씩 잡히므로 LIMIT_EVERY 초에 한 번만 받는다.
 
-데스크톱 앱은 인증을 따로 들고 `~/.claude/.credentials.json` 을 안 고친다. 앱만 쓴 날은
+토큰은 윈도우·리눅스면 `~/.claude/.credentials.json`, 맥이면 Keychain 의
+`Claude Code-credentials` 에 있다. 데스크톱 앱은 인증을 따로 들고 그 자리를 안 고친다. 앱만 쓴 날은
 토큰이 만료돼 있어 `expired` 가 된다. 터미널에서 `claude` 를 한 번 열면 풀린다.
 
 정가는 `~/.claude/projects/**/*.jsonl` 의 assistant 줄 `usage` 에 단가를 곱한 값이다.
@@ -51,9 +52,22 @@ WINDOWS = (("5h", "5h", 5 * 3600), ("7d", "7d", 7 * 86400))
 
 # ── 한도 ────────────────────────────────────────────────────────────────
 def oauth_token():
+    """CLI 가 로그인해 둔 토큰. 윈도우·리눅스는 파일, 맥은 Keychain 에 있다."""
     try:
-        return json.loads(CREDENTIALS.read_text(encoding="utf-8"))["claudeAiOauth"]["accessToken"]
-    except (OSError, ValueError, KeyError, TypeError):
+        raw = CREDENTIALS.read_text(encoding="utf-8")
+    except OSError:
+        if sys.platform != "darwin":
+            return None
+        import subprocess
+        try:
+            raw = subprocess.run(
+                ["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+                capture_output=True, text=True, timeout=TIMEOUT).stdout
+        except (OSError, subprocess.SubprocessError):
+            return None
+    try:
+        return json.loads(raw)["claudeAiOauth"]["accessToken"]
+    except (ValueError, KeyError, TypeError):
         return None
 
 
