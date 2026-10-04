@@ -15,7 +15,7 @@ Double-click [sysmon.bat](sysmon.bat) to start or stop it. A small bar-chart ico
 
 ## macOS
 
-The same script runs on a Mac with the system Python 3.9, nothing to install. There is no taskbar, so the reading goes into its own menu bar item instead: one line of text, `CPU 17%  MEM 62%`, in the menu bar's own text colour (orange above 70%, red above 90%), or the pixel box with CPU and memory side by side in one row, 16.5 pt tall (stacked as on Windows, the pixel font would be only 5 pt). Click it for the same menu as on Windows; **Start at login** writes a LaunchAgent to `~/Library/LaunchAgents`, and settings live in `~/Library/Application Support/playroom/sysmon.json`.
+The same script runs on a Mac with the system Python 3.9, nothing to install. There is no taskbar, so the reading goes into its own menu bar item instead: one line of text, `CPU 17%  MEM 62%`, in the menu bar's own text colour (orange above 70%, red above 90%), or the pixel box with CPU and memory side by side in one row, as tall as the menu bar (22 pt) so the pixel font is a little larger than the system text (stacked as on Windows, it would be only 5 pt). Click it for the same menu as on Windows; **Start at login** writes a LaunchAgent to `~/Library/LaunchAgents`, and settings live in `~/Library/Application Support/playroom/sysmon.json`.
 
 Double-click [sysmon.command](sysmon.command) in Finder to start or stop it; the Terminal window it opens closes itself. From a terminal:
 
@@ -28,7 +28,7 @@ python3 sysmon.py --toggle
 - CPU is the share of non-idle ticks from `host_statistics` (`HOST_CPU_LOAD_INFO`) a second apart
 - Memory is Activity Monitor's *Memory Used*: app memory (anonymous pages minus purgeable) + wired + compressed, out of `hw.memsize`. File cache is left out, otherwise a Mac always looks nearly full. The self-check compares it with `vm_stat`
 - Percentages are padded with figure spaces to the width of `100%`, so the icons next to it do not shift as the numbers change
-- On a MacBook with a notch, menu bar items that do not fit beside the notch are hidden by macOS. If it does not show up, quit something else in the menu bar or pick the narrower pixel theme
+- On a MacBook with a notch, menu bar items that do not fit beside the notch are hidden by macOS. If it does not show up, quit something else in the menu bar or switch to the text theme, which is narrower than the pixel box (about 205 pt against 340 pt with memory shown both ways)
 
 ## Cost
 
@@ -62,7 +62,7 @@ It wakes ten times a second to handle messages and measures once a second. Measu
 
 ### 맥
 
-같은 스크립트가 맥 기본 파이썬 3.9 로 돌고, 깔 것은 없음. 작업 표시줄이 없으므로 메뉴 막대에 제 칸을 하나 두고 거기에 띄움. 글자 테마는 `CPU 17%  MEM 62%` 한 줄이고 메뉴 막대 글자색을 따름(70% 를 넘으면 주황, 90% 를 넘으면 빨강). 픽셀 테마는 CPU 와 메모리를 한 줄로 나란히 둔 16.5pt 높이의 상자임(윈도우처럼 위아래로 쌓으면 픽셀 글자가 5pt 밖에 안 됨). 누르면 윈도우와 같은 메뉴가 뜨고, **로그인 시 실행** 은 `~/Library/LaunchAgents` 에 LaunchAgent 를 씀. 설정은 `~/Library/Application Support/playroom/sysmon.json` 에 남음.
+같은 스크립트가 맥 기본 파이썬 3.9 로 돌고, 깔 것은 없음. 작업 표시줄이 없으므로 메뉴 막대에 제 칸을 하나 두고 거기에 띄움. 글자 테마는 `CPU 17%  MEM 62%` 한 줄이고 메뉴 막대 글자색을 따름(70% 를 넘으면 주황, 90% 를 넘으면 빨강). 픽셀 테마는 CPU 와 메모리를 한 줄로 나란히 둔 상자이고, 메뉴 막대 높이(22pt)를 꽉 채워 픽셀 글자가 시스템 글자보다 살짝 큼(윈도우처럼 위아래로 쌓으면 5pt 밖에 안 됨). 누르면 윈도우와 같은 메뉴가 뜨고, **로그인 시 실행** 은 `~/Library/LaunchAgents` 에 LaunchAgent 를 씀. 설정은 `~/Library/Application Support/playroom/sysmon.json` 에 남음.
 
 Finder 에서 [sysmon.command](sysmon.command) 를 더블클릭하면 켜지고 다시 누르면 꺼짐. 그때 열리는 터미널 창은 저절로 닫힘. 터미널에서는 이렇게 함.
 
@@ -75,7 +75,7 @@ python3 sysmon.py --toggle
 - CPU 는 1초 간격으로 읽은 `host_statistics`(`HOST_CPU_LOAD_INFO`) 틱에서 쉬지 않은 틱의 비율임
 - 메모리는 활동 모니터의 *사용한 메모리* 와 같은 셈임. 앱 메모리(익명 쪽 − 지울 수 있는 쪽) + 와이어드 + 압축을 `hw.memsize` 로 나눔. 파일 캐시는 뺌 — 넣으면 맥은 늘 거의 꽉 차 보임. 자체 점검이 `vm_stat` 과 견줌
 - 퍼센트는 자릿수 너비 빈칸으로 `100%` 너비에 맞춰서, 숫자가 바뀌어도 옆 아이콘이 안 밀림
-- 노치가 있는 맥북은 노치 옆에 다 안 들어가는 메뉴 막대 칸을 macOS 가 숨김. 안 보이면 메뉴 막대의 다른 것을 끄거나 폭이 좁은 픽셀 테마를 고름
+- 노치가 있는 맥북은 노치 옆에 다 안 들어가는 메뉴 막대 칸을 macOS 가 숨김. 안 보이면 메뉴 막대의 다른 것을 끄거나 픽셀 상자보다 좁은 글자 테마로 바꿈(메모리 '둘 다' 에서 약 205pt 대 340pt)
 
 ### 비용
 

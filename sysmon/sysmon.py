@@ -183,6 +183,9 @@ def use_theme(theme):
     """픽셀 팔레트를 COLORS 에 깔고 PIX 를 다시 만듦. 글자 테마는 이 색들을 안 씀"""
     use_palette(theme)
     PIX.update({k: tuple(int(v[i:i + 2], 16) for i in (1, 3, 5)) for k, v in COLORS.items()})
+    if MAC:  # 22pt 메뉴 막대에선 보조 글(dim)과 꺼진 칸(slot)이 바탕에 묻혀 글자색 쪽으로 당김. 윈도우는 상자가 커서 그대로
+        mix = lambda a, b, t: tuple(round(x + (y - x) * t) for x, y in zip(a, b))
+        PIX["dim"], PIX["slot"] = mix(PIX["dim"], PIX["text"], 0.5), mix(PIX["slot"], PIX["text"], 0.25)
 
 
 def level_color(p):
@@ -231,8 +234,8 @@ def pixel_scale(bar_h):
 
 def mac_pixel_scale(backing):
     """맥 메뉴 막대(22pt)에서 칸 하나의 화면 픽셀 수. 위아래로 쌓은 19칸은 칸당 1pt 라 글자가 5pt 로 너무 작아,
-    나란히 둔 11칸을 칸당 1.5pt(레티나 3px)로 그림. 1배 화면은 1.5px 를 못 찍으니 2px(22pt, 막대에 꽉 참)"""
-    return max(1, int(backing * 1.5 + 0.5))
+    나란히 둔 11칸을 칸당 2pt 로 막대에 꽉 차게 그림. 1.5pt(글자 7.5pt)도 시스템 글자보다 작아 안 읽혔음"""
+    return backing * 2
 
 
 def paint_pixel(surface, rows, s, across=False):
@@ -504,7 +507,13 @@ def check():
         bar = cocoa.send(cocoa.send(cocoa.cls("NSStatusBar"), "systemStatusBar"), "thickness", restype=ctypes.c_double)
         for backing in (1, 2, 3):  # 칸 하나가 메뉴 막대에서 차지하는 pt 로 상자 높이를 셈
             pt = pixel_size(pixel_rows(1, "pct", 1, 1.0, 16.0), across=True)[1] * mac_pixel_scale(backing) / backing
-            assert 16 <= pt <= bar, ("픽셀 상자가 메뉴 막대 높이 안에, 너무 작지 않게", backing, pt, bar)
+            assert 20 <= pt <= bar, ("픽셀 상자가 메뉴 막대 높이 안에, 너무 작지 않게", backing, pt, bar)
+        for theme in PALETTES:  # 흐린 두 색이 팔레트 값보다 바탕에서 멀어짐 (글자색만큼은 아님)
+            use_theme(theme)
+            far = lambda c: sum(abs(a - b) for a, b in zip(c, PIX["bg"]))
+            for key in ("dim", "slot"):
+                raw = tuple(int(COLORS[key][i:i + 2], 16) for i in (1, 3, 5))
+                assert far(raw) < far(PIX[key]) < far(PIX["text"]), (theme, key)
         rows = pixel_rows(100, "pct", 100, 16.0, 16.0)
         assert pixel_size(rows, True)[0] == pixel_size(rows)[0] + row_width(rows[1]) + ROW_GAP, "나란히 둔 폭"
     else:
