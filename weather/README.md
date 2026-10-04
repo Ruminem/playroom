@@ -13,7 +13,7 @@ Snow, rain, a thunderstorm, cherry blossom petals, autumn leaves or fireflies ov
 
 ## Use
 
-Double-click [weather.bat](weather.bat) to start or stop it. A snowflake icon sits in the notification area; its menu picks the kind (or **No weather**), sets the amount in 10% steps up to 100% (the old light · normal · heavy are 20 · 50 · 100%), turns the **Cat** on or off, hides it, starts it with Windows and exits. Your choice is remembered in `%LOCALAPPDATA%\playroom\weather.json`, and starting with Windows uses it.
+Double-click [weather.bat](weather.bat) to start or stop it. A snowflake icon sits in the notification area. Left-click it for a small settings panel above the taskbar: kind buttons (or **No weather**), an amount slider from 0 to 100% that applies when you let go, boxes for the **Cat**, showing it and starting with Windows, and **Exit**. Clicking anywhere else closes it. The right-click menu does the same, with the amount in 10% steps (the old light · normal · heavy are 20 · 50 · 100%). Your choice is remembered in `%LOCALAPPDATA%\playroom\weather.json`, and starting with Windows uses it.
 
 ```bash
 python weather.py --toggle --kind rain --amount 80
@@ -70,7 +70,7 @@ PIP 영상이든 지금 타이핑하는 앱이든 모든 창 위로 눈·비·�
 
 ### 쓰는 법
 
-[weather.bat](weather.bat) 을 더블클릭하면 켜지고 다시 누르면 꺼짐. 알림 영역에 눈송이 아이콘이 뜨고, 그 메뉴에서 종류(또는 **날씨 없음**)를 고르고, 양을 10% 칸으로 100% 까지 정하고(예전 적게·보통·많이는 20·50·100%), **고양이** 를 켜고 끄고, 숨기고, 윈도우 시작 시 실행을 켜고, 끝냄. 고른 것은 `%LOCALAPPDATA%\playroom\weather.json` 에 남고, 윈도우와 같이 켜질 때도 이걸 따름.
+[weather.bat](weather.bat) 을 더블클릭하면 켜지고 다시 누르면 꺼짐. 알림 영역에 눈송이 아이콘이 뜸. 왼쪽 클릭하면 작업 표시줄 위에 작은 설정 창이 떠서 종류 단추(또는 **날씨 없음**), 0–100% 양 막대(손을 떼면 적용됨), **고양이**·보이기·윈도우 시작 시 실행 상자와 **끝내기** 가 있음. 다른 데를 누르면 닫힘. 오른쪽 클릭 메뉴로도 같은 걸 하고, 거기서 양은 10% 칸임(예전 적게·보통·많이는 20·50·100%). 고른 것은 `%LOCALAPPDATA%\playroom\weather.json` 에 남고, 윈도우와 같이 켜질 때도 이걸 따름.
 
 ```bash
 python weather.py --toggle --kind rain --amount 80

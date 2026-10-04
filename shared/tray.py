@@ -69,9 +69,10 @@ shell32.Shell_NotifyIconW.argtypes = (wintypes.DWORD, ctypes.POINTER(NOTIFYICOND
 class Tray:
     """menu() 는 메뉴를 열 때마다 불린다. 항목: (글, id, 체크?) · (글, [하위 항목]) · None(구분선)."""
 
-    def __init__(self, class_name, icon_path, tip, menu, on_command):
+    def __init__(self, class_name, icon_path, tip, menu, on_command, on_left=None):
+        """on_left 를 주면 왼쪽 클릭은 메뉴 대신 그걸 부름(트레이 스레드에서)."""
         self.class_name, self.icon_path, self.tip = class_name, str(icon_path), tip
-        self.menu, self.on_command = menu, on_command
+        self.menu, self.on_command, self.on_left = menu, on_command, on_left
         self.hwnd = None
         self.ready = threading.Event()
         threading.Thread(target=self._run, daemon=True).start()
@@ -117,6 +118,9 @@ class Tray:
         self.on_command(None)
 
     def _wndproc(self, hwnd, msg, wparam, lparam):
+        if msg == WM_TRAY and lparam == WM_LBUTTONUP and self.on_left:
+            self.on_left()  # 왼쪽은 따로 띄우는 창, 오른쪽은 그대로 메뉴
+            return 0
         if msg == WM_TRAY and lparam in (WM_LBUTTONUP, WM_RBUTTONUP):
             self._popup()
             return 0

@@ -24,6 +24,7 @@ import random
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -95,7 +96,7 @@ FLY_SIZES = ((1.3, 6.0), (2.0, 9.0))  # (빛 알갱이 반지름, 번짐 반지�
 KINDS = {1: ("snow", "눈"), 2: ("rain", "비"), 3: ("storm", "뇌우"), 4: ("petals", "벚꽃"),
          5: ("leaves", "낙엽"), 6: ("fireflies", "반딧불이"), 7: ("none", "날씨 없음")}  # 없음은 고양이만
 KIND_NAMES = tuple(k for k, _ in KINDS.values())
-SHOW, PET, AUTOSTART, EXIT = 20, 21, 50, 99
+SHOW, PET, PANEL, AUTOSTART, EXIT = 20, 21, 30, 50, 99
 RUN_NAME = "PlayroomWeather"  # 시작할 때는 인자 없이 떠서 저장된 종류·양을 따름
 AMOUNTS = {10 + i: p for i, p in enumerate(range(10, 101, 10))}  # 메뉴 id → %. 트레이 메뉴엔 막대를 못 넣어 칸으로
 FULL = 300       # 양 100% 의 눈송이·빗방울 수 (꽃잎·반딧불이는 이 수에 종류별 비율을 곱함)
@@ -435,7 +436,10 @@ class Weather:
         self.bolt_seen = None
         self.commands = queue.Queue()  # 트레이 스레드 → 그리는 스레드
         write_ico(ICON_FILE, ICON, ICON_COLORS)
-        self.tray = Tray(TRAY_CLASS, ICON_FILE, "날씨", self.menu, self.commands.put)
+        self.panel = None  # 왼쪽 클릭으로 띄운 설정 창 프로세스
+        # 맥은 메뉴 막대를 누르면 메뉴가 뜨는 게 기본이라 메뉴만
+        left = {} if MAC else {"on_left": lambda: self.commands.put(PANEL)}
+        self.tray = Tray(TRAY_CLASS, ICON_FILE, "날씨", self.menu, self.commands.put, **left)
         self.last = self.last_settle = self.last_topmost = time.perf_counter()
         self.reset()
         self.surface.show(True)
@@ -453,7 +457,12 @@ class Weather:
                 ("끝내기", EXIT, False)]
 
     def handle(self, cid):
-        if cid in KINDS:
+        if isinstance(cid, tuple):  # 설정 창의 양 막대에서 손을 뗀 값
+            self.amount = cid[1]
+        elif cid == PANEL:
+            self.open_panel()
+            return
+        elif cid in KINDS:
             self.kind = KINDS[cid][0]
         elif cid in AMOUNTS:
             self.amount = AMOUNTS[cid]
@@ -481,6 +490,25 @@ class Weather:
                                 encoding="utf-8")
         except OSError:
             pass  # 못 남겨도 지금 화면은 바뀌었으니 넘어감
+
+    def open_panel(self):
+        """그리는 루프가 tk 가 아니라서 창은 따로 띄우고, 누른 것을 한 줄씩 받아 메뉴 명령처럼 처리함."""
+        if self.panel and self.panel.poll() is None:
+            return  # 이미 떠 있음
+        state = {"kind": self.kind, "amount": self.amount, "pet": self.cat is not None, "show": self.visible,
+                 "auto": startup.is_on(RUN_NAME, __file__)}
+        ctypes.windll.user32.AllowSetForegroundWindow(-1)  # 방금 트레이를 누른 건 이 프로세스라 앞으로 올릴 권한을 넘김
+        self.panel =subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--panel", json.dumps(state)],
+                                      stdout=subprocess.PIPE, text=True, encoding="utf-8")
+        threading.Thread(target=self.read_panel, args=(self.panel,), daemon=True).start()
+
+    def read_panel(self, proc):
+        for line in proc.stdout:
+            word, _, arg = line.partition(" ")
+            if word == "amount" and arg.strip().isdigit() and parse_amount(int(arg)) is not None:
+                self.commands.put(("amount", int(arg)))
+            elif word.strip().isdigit() and int(word) in (*KINDS, PET, SHOW, AUTOSTART, EXIT):
+                self.commands.put(int(word))
 
     def poll(self):
         """트레이에서 온 명령을 처리. None 이면 트레이가 닫힌 것. 끝내야 하면 True."""
@@ -832,8 +860,108 @@ def check():
     assert all(parse_amount(a) is None for a in (101, -1, True, "x", [1], None, 2.5))
     assert amount_arg("normal") == 50 and amount_arg("7") == 7
     assert {20, 50, 100} <= set(AMOUNTS.values()), "예전 세 단계가 메뉴 칸에 있음"
-    assert not set(AMOUNTS) & {SHOW, PET, AUTOSTART, EXIT, *KINDS}, "메뉴 id 가 겹치지 않음"
+    assert not set(AMOUNTS) & {SHOW, PET, PANEL, AUTOSTART, EXIT, *KINDS}, "메뉴 id 가 겹치지 않음"
+    from types import SimpleNamespace
+    q = SimpleNamespace(commands=queue.Queue())
+    Weather.read_panel(q, SimpleNamespace(stdout=["amount 30\n", "amount x\n", "amount 150\n", "2\n",
+                                                        "%d\n" % PET, "77\n", "hi\n"]))
+    assert list(q.commands.queue) == [("amount", 30), 2, PET], "설정 창이 보낸 줄 중 아는 것만"
     print("자체 점검 통과")
+
+
+def panel(state):
+    """트레이 왼쪽 클릭이 띄우는 설정 창. 누른 것을 한 줄씩 찍고(read_panel 이 받음), 바깥을 누르거나 Esc 면 닫힘."""
+    import tkinter as tk
+    from tkinter import ttk
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except (AttributeError, OSError):
+        pass
+    root = tk.Tk()
+    root.title("날씨 설정")
+    root.overrideredirect(True)
+    root.attributes("-topmost", True)
+    root.configure(bg="#c8c8c8")  # 1px 테두리로 보임
+    px = lambda n: round(n * float(root.tk.call("tk", "scaling")) * 0.75)  # 96dpi 기준 px → 지금 화면 px
+    style = ttk.Style(root)
+    style.configure(".", background="white", font=("Segoe UI", 10))
+    style.configure("Title.TLabel", font=("Segoe UI Semibold", 11))
+    style.configure("Toolbutton", padding=(px(10), px(4)))
+    f = ttk.Frame(root, padding=px(14))
+    f.pack(padx=1, pady=1)
+
+    def send(*words):
+        try:
+            print(*words, flush=True)
+        except OSError:  # weather 가 먼저 꺼짐
+            root.destroy()
+
+    ttk.Label(f, text="날씨", style="Title.TLabel").grid(row=0, column=0, columnspan=4, sticky="w")
+    kind = tk.StringVar(value=state["kind"])
+    for i, (cid, (key, label)) in enumerate(KINDS.items()):
+        ttk.Radiobutton(f, text=label, value=key, variable=kind, style="Toolbutton",
+                        command=lambda cid=cid: send(cid)).grid(row=1 + i // 4, column=i % 4, sticky="ew",
+                                                                padx=px(2), pady=px(2))
+
+    row = ttk.Frame(f)
+    row.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(px(12), px(6)))
+    ttk.Label(row, text="양").pack(side="left")
+    val = tk.DoubleVar(value=state["amount"])
+    pct = ttk.Label(row, width=5, anchor="e", text="%d%%" % state["amount"])
+    show = lambda *_: pct.configure(text="%d%%" % round(val.get()))
+    scale = ttk.Scale(row, from_=0, to=100, variable=val, command=show)
+    pct.pack(side="right")
+    scale.pack(side="left", fill="x", expand=True, padx=(px(10), px(4)))
+
+    def jump(e):  # 볼륨 막대처럼 누른 자리로 바로 감 (ttk 기본은 한 칸씩)
+        val.set(max(0.0, min(100.0, e.x / max(1, scale.winfo_width()) * 100)))
+        show()
+
+    scale.bind("<Button-1>", jump, add="+")
+    scale.bind("<ButtonRelease-1>", lambda _: send("amount", round(val.get())))  # 끄는 동안 매번 다시 뿌리지 않게
+    scale.bind("<KeyRelease>", lambda _: send("amount", round(val.get())))
+
+    keep = []  # tk 변수는 파이썬 쪽 참조가 없어지면 체크 표시가 풀림
+    for r, (key, cid, label) in enumerate((("pet", PET, "고양이"), ("show", SHOW, "보이기"),
+                                          ("auto", AUTOSTART, "Windows 시작 시 실행")), start=4):
+        keep.append(tk.BooleanVar(value=state[key]))
+        ttk.Checkbutton(f, text=label, variable=keep[-1], command=lambda cid=cid: send(cid)).grid(
+            row=r, column=0, columnspan=4, sticky="w", pady=px(1))
+    ttk.Button(f, text="끝내기", command=lambda: (send(EXIT), root.destroy())).grid(
+        row=7, column=3, sticky="e", pady=(px(10), 0))
+
+    f.columnconfigure((0, 1, 2, 3), uniform="kind")
+    root.bind("<Escape>", lambda _: root.destroy())
+    u = ctypes.windll.user32
+
+    # 바깥을 누르면 닫음. 앞에 왔던 창이면 앞자리를 잃는 것으로 알고, 못 왔으면(FocusOut 도 안 옴) 창 밖에서
+    # 단추가 새로 눌리는 순간을 봄. GetAsyncKeyState 의 '눌린 적 있음' 비트는 다른 프로그램이 지워 버려 안 씀.
+    # 트레이를 누른 단추가 아직 눌려 있을 수 있어 눌림에서 시작. 막대를 끌다 밖으로 나가는 건 새로 누른 게 아님
+    was = {"front": False, "down": True}
+
+    def outside():
+        pid = ctypes.c_ulong()  # tk 의 바깥 창 핸들을 집기가 까다로워 앞 창이 이 프로세스 것인지로 봄
+        u.GetWindowThreadProcessId(u.GetForegroundWindow(), ctypes.byref(pid))
+        front = pid.value == os.getpid()
+        down = bool(u.GetAsyncKeyState(1) & 0x8000 or u.GetAsyncKeyState(2) & 0x8000)
+        x, y = root.winfo_pointerxy()
+        x0, y0 = root.winfo_rootx(), root.winfo_rooty()
+        out = not (x0 <= x < x0 + root.winfo_width() and y0 <= y < y0 + root.winfo_height())
+        if was["front"] and not front or down and not was["down"] and out:
+            root.destroy()
+            return
+        was["front"] |= front
+        was["down"] = down
+        root.after(50, outside)
+
+    root.update_idletasks()
+    w, h = root.winfo_reqwidth(), root.winfo_reqheight()
+    l, t, r, b = overlay.work_area()
+    x, _ = root.winfo_pointerxy()  # 트레이를 누른 자리 위, 작업 표시줄 바로 위
+    root.geometry("+%d+%d" % (max(l, min(x - w // 2, r - w - px(12))), b - h - px(12)))
+    root.focus_force()  # Esc 가 먹게. weather 가 AllowSetForegroundWindow 로 허락해 둠
+    root.after(50, outside)
+    root.mainloop()
 
 
 def main():
@@ -844,10 +972,14 @@ def main():
     saved = load_settings()  # 안 주면 트레이 메뉴에서 마지막으로 고른 값
     ap.add_argument("--kind", default=saved.get("kind", "snow"), choices=KIND_NAMES)
     ap.add_argument("--amount", default=saved.get("amount", 50), type=amount_arg, help="0–100 (기본 50)")
+    ap.add_argument("--panel", help=argparse.SUPPRESS)  # 트레이 왼쪽 클릭의 설정 창. 지금 상태 JSON
     args = ap.parse_args()
 
     if args.check:
         check()
+        return
+    if args.panel:
+        panel(json.loads(args.panel))
         return
     if args.stop:
         print("날씨를 치움" if overlay.stop(PID_FILE, TRAY_CLASS) else "떠 있는 날씨가 없음")
