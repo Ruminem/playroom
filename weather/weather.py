@@ -7,7 +7,7 @@
   python weather.py --kind rain --amount many
   python weather.py --check     자체 점검
 
-작업 영역(작업 표시줄 뺀 주 모니터) 전체를 덮는 픽셀 알파 창(surface.py)에 30fps 로 그린다.
+작업 영역(작업 표시줄 뺀 주 모니터) 전체를 덮는 픽셀 알파 창(shared/surface.py)에 30fps 로 그린다.
 눈은 원근 세 층으로 바람에 흔들리며 내리고 작업 표시줄 위에 쌓였다 천천히 녹는다. 비는 기운
 빗줄기로 내리고 바닥에서 튄다. 트레이의 눈송이 메뉴에서 눈·비·양·숨기기·끝내기를 하고,
 고른 것은 SETTINGS 에 남는다.

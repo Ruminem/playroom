@@ -88,6 +88,10 @@ class Surface:
         user32.UpdateLayeredWindow(self.hwnd, None, ctypes.byref(self._pos), ctypes.byref(self._size), self.hdc,
                                    ctypes.byref(self._src), 0, ctypes.byref(self._blend), 2)  # ULW_ALPHA
 
+    def move(self, left, top):
+        """다음 present() 부터 이 자리에 그림."""
+        self._pos = wintypes.POINT(left, top)
+
     def show(self, on):
         user32.ShowWindow(self.hwnd, 4 if on else 0)  # SW_SHOWNOACTIVATE · SW_HIDE
 
