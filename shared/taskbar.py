@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""작업 표시줄 위에 글자를 얹는 오버레이(sysmon·pomodoro)가 같이 쓰는 것.
+"""작업 표시줄 위에 글자를 얹는 오버레이(sysmon)가 쓰는 것.
 
 자리 찾기, 전체 화면 앱 알아보기, GDI 회색조 글자를 알파로 바꿔 줄마다 색 입히기.
 """
