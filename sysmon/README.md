@@ -2,7 +2,7 @@
 
 **English** · [한국어](#korean)
 
-CPU and memory use in two small lines on the taskbar, right next to the notification icons. White normally, orange above 70%, red above 90%. Windows only, Python standard library only.
+CPU and memory use in two small lines on the taskbar, right next to the notification icons. White normally, orange above 70%, red above 90%. Windows and macOS (in the menu bar there), Python standard library only.
 
 ## Use
 
@@ -12,6 +12,23 @@ Double-click [sysmon.bat](sysmon.bat) to start or stop it. A small bar-chart ico
 - **Pixel** — the [usage-hud](../usage-hud/) look: a dark box with a chip and a memory-stick icon, an 8-cell bar per line and pixel-font numbers. Bars are green, orange above 70%, red above 90%. It comes in the same six palettes as usage-hud (classic, Game Boy, neon, amber terminal, deep sea, paper), picked separately. Put usage-hud on the taskbar too and the two sit side by side
 
 `python sysmon.py --stop` closes it, `python sysmon.py --check` runs the self-check.
+
+## macOS
+
+The same script runs on a Mac with the system Python 3.9, nothing to install. There is no taskbar, so the reading goes into its own menu bar item instead: one line of text, `CPU 17%  MEM 62%`, in the menu bar's own text colour (orange above 70%, red above 90%), or the pixel box at 19 pt tall. Click it for the same menu as on Windows; **Start at login** writes a LaunchAgent to `~/Library/LaunchAgents`, and settings live in `~/Library/Application Support/playroom/sysmon.json`.
+
+Double-click [sysmon.command](sysmon.command) in Finder to start or stop it; the Terminal window it opens closes itself. From a terminal:
+
+```bash
+python3 sysmon.py --toggle
+```
+
+`--toggle` detaches it from the terminal. It keeps updating while its menu is open. On a MacBook: 0.2 s of CPU over 30 s (0.7% of one core), 50 MB of memory.
+
+- CPU is the share of non-idle ticks from `host_statistics` (`HOST_CPU_LOAD_INFO`) a second apart
+- Memory is Activity Monitor's *Memory Used*: app memory (anonymous pages minus purgeable) + wired + compressed, out of `hw.memsize`. File cache is left out, otherwise a Mac always looks nearly full. The self-check compares it with `vm_stat`
+- Percentages are padded with figure spaces to the width of `100%`, so the icons next to it do not shift as the numbers change
+- On a MacBook with a notch, menu bar items that do not fit beside the notch are hidden by macOS. If it does not show up, quit something else in the menu bar or pick the narrower pixel theme
 
 ## Cost
 
@@ -32,7 +49,7 @@ It wakes ten times a second to handle messages and measures once a second. Measu
 
 [English](#sysmon) · **한국어**
 
-작업 표시줄의 알림 아이콘 바로 옆에 CPU·메모리 사용률을 작은 두 줄로 띄움. 평소엔 흰색, 70% 를 넘으면 주황, 90% 를 넘으면 빨강. 윈도우 전용이고 파이썬 표준 라이브러리만 씀.
+작업 표시줄의 알림 아이콘 바로 옆에 CPU·메모리 사용률을 작은 두 줄로 띄움. 평소엔 흰색, 70% 를 넘으면 주황, 90% 를 넘으면 빨강. 윈도우와 맥(맥은 메뉴 막대)에서 돌고 파이썬 표준 라이브러리만 씀.
 
 ### 쓰는 법
 
@@ -42,6 +59,23 @@ It wakes ten times a second to handle messages and measures once a second. Measu
 - **픽셀** — [usage-hud](../usage-hud/) 모양. 어두운 상자 안에 칩·메모리 막대 아이콘, 줄마다 8칸 막대, 픽셀 글꼴 숫자가 들어감. 막대는 초록이고 70% 를 넘으면 주황, 90% 를 넘으면 빨강. usage-hud 와 같은 팔레트 여섯(클래식·게임보이·네온·앰버 단말기·심해·종이) 중 하나를 따로 고름. usage-hud 도 작업 표시줄에 두면 둘이 나란히 붙음
 
 `python sysmon.py --stop` 으로 끄고, `python sysmon.py --check` 로 자체 점검을 돌림.
+
+### 맥
+
+같은 스크립트가 맥 기본 파이썬 3.9 로 돌고, 깔 것은 없음. 작업 표시줄이 없으므로 메뉴 막대에 제 칸을 하나 두고 거기에 띄움. 글자 테마는 `CPU 17%  MEM 62%` 한 줄이고 메뉴 막대 글자색을 따름(70% 를 넘으면 주황, 90% 를 넘으면 빨강). 픽셀 테마는 19pt 높이의 상자임. 누르면 윈도우와 같은 메뉴가 뜨고, **로그인 시 실행** 은 `~/Library/LaunchAgents` 에 LaunchAgent 를 씀. 설정은 `~/Library/Application Support/playroom/sysmon.json` 에 남음.
+
+Finder 에서 [sysmon.command](sysmon.command) 를 더블클릭하면 켜지고 다시 누르면 꺼짐. 그때 열리는 터미널 창은 저절로 닫힘. 터미널에서는 이렇게 함.
+
+```bash
+python3 sysmon.py --toggle
+```
+
+`--toggle` 은 터미널과 떼어 띄움. 메뉴를 연 동안에도 숫자가 바뀜. 맥북에서 잰 값: 30초에 CPU 0.2초(한 코어의 0.7%), 메모리 50MB.
+
+- CPU 는 1초 간격으로 읽은 `host_statistics`(`HOST_CPU_LOAD_INFO`) 틱에서 쉬지 않은 틱의 비율임
+- 메모리는 활동 모니터의 *사용한 메모리* 와 같은 셈임. 앱 메모리(익명 쪽 − 지울 수 있는 쪽) + 와이어드 + 압축을 `hw.memsize` 로 나눔. 파일 캐시는 뺌 — 넣으면 맥은 늘 거의 꽉 차 보임. 자체 점검이 `vm_stat` 과 견줌
+- 퍼센트는 자릿수 너비 빈칸으로 `100%` 너비에 맞춰서, 숫자가 바뀌어도 옆 아이콘이 안 밀림
+- 노치가 있는 맥북은 노치 옆에 다 안 들어가는 메뉴 막대 칸을 macOS 가 숨김. 안 보이면 메뉴 막대의 다른 것을 끄거나 폭이 좁은 픽셀 테마를 고름
 
 ### 비용
 
