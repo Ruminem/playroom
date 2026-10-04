@@ -96,6 +96,7 @@ HAIL_SPEED = (820, 1050)  # 떨어지는 빠르기 px/초. 튀어 오른 뒤엔 
 HAIL_BOUNCES = 2   # 바닥·더미에서 튀는 최대 횟수. 그다음 더미에 보탬
 HAIL_MELT = 4      # 더미가 눈보다 몇 배 빨리 녹나
 HAIL_SCARE = (24, 0.25, 5.0)  # 동물 발에서 이 px 안에 떨어지면 이 확률로 놀람, 한 번 놀라면 이 초 동안은 안 놀람
+BANG_NEAR = 700  # 불꽃이 이 px 안에서 터지면 동물이 멈춰 서서 봄
 
 FW_RATE = 1.3      # 양 100% 에서 초당 쏘아 올리는 수
 FW_BURST_AT = (0.20, 0.55)  # 터지는 높이 (화면 위에서 비율)
@@ -433,6 +434,7 @@ class Weather:
         # 이름 → 동물, PET_CLASS 순. 종류를 바꿔도 그대로 — 동물은 날씨와 따로 삶
         self.pets = {a: PET_CLASS[a](self.w) for a in PET_CLASS if a in (animals or ())}
         self.bolt_seen, self.pet_startled = None, {}  # 이름 → 우박에 다시 놀랄 수 있는 시각
+        self.bangs = []  # 이번 프레임에 터진 불꽃의 x — 동물들이 돌아봄
         self.commands = queue.Queue()  # 트레이 스레드 → 그리는 스레드
         write_ico(ICON_FILE, ICON, ICON_COLORS)
         self.panel = None  # 왼쪽 클릭으로 띄운 설정 창 프로세스
@@ -771,6 +773,8 @@ class Weather:
             self.next_launch += random.expovariate(rate)
 
     def burst(self, x, y):
+        if self.pets:  # 동물이 없으면 react 가 안 돌아서 비우는 쪽이 없음
+            self.bangs.append(x)
         a, b = random.sample(range(len(FW_COLORS)), 2)
         mixed = random.random() < 0.3
         v0 = random.uniform(150, 250)
@@ -853,15 +857,27 @@ class Weather:
         self.rockets, self.sparks, self.next_launch = [], [], math.inf
 
     # ── 동물 ──
-    def walk_pet(self, dt, now):
-        rainy, snowy = self.kind in ("rain", "storm"), self.kind in ("snow", "hail")
+    def react(self, now):
+        """날씨에서 일어난 일을 동물들에게 알림 — 번개, 가까이 터진 불꽃, 낮게 나는 반딧불이."""
         bolt = self.bolt and self.bolt[0] != self.bolt_seen
         if bolt:
             self.bolt_seen = self.bolt[0]
+        low = [(f[0], self.h - f[1]) for f in self.flies] if self.kind == "fireflies" else []  # 높이는 동물이 거름
         for p in self.pets.values():
+            p.kind, p.snowy = self.kind, self.kind in ("snow", "hail")
             if bolt:
                 p.startle(now)
-            p.snowy = snowy
+            for x in self.bangs:
+                if abs(x - p.x) < BANG_NEAR:
+                    p.watch(now, x)
+            if low:
+                p.chase(now, low)
+        self.bangs = []
+
+    def walk_pet(self, dt, now):
+        rainy = self.kind in ("rain", "storm")
+        self.react(now)
+        for p in self.pets.values():
             p.update(dt, now, rainy)
             a, b = p.feet()
             p.draw(self.surface.pixels, self.stride, self.h, self.pet_sprites, max(self.pile.h[a:b]), now, rainy)
@@ -973,7 +989,7 @@ def check():
     Weather.hail(hf, 1 / 180, 99)
     assert hf.stones[0][6] == 0 and hf.stones[0][1] < 0, "세 번째는 안 튀고 더미로"
     assert all(0 < n <= 6 / HAIL_SCARE[2] + 1 for n in scares.values()), ("동물마다 가끔 놀라고 따로 쉼", scares)
-    ff = big(rockets=[], sparks=[], next_launch=math.inf,
+    ff = big(rockets=[], sparks=[], next_launch=math.inf, pets={}, bangs=[],
              fw=[[place(glow(1.1, 3.6, lv / FW_LEVELS, 0, 0, c, hc), 800) for lv in range(1, FW_LEVELS + 1)]
                  for c, hc in FW_COLORS])
     ff.launch = lambda now: Weather.launch(ff, now)
@@ -987,6 +1003,23 @@ def check():
     for i in range(180 * 4):  # 떠 있던 로켓이 오르는 1초 남짓 + 불꽃 수명
         Weather.fireworks(ff, 1 / 180, 20 + i / 180)
     assert not ff.sparks and not ff.rockets, "불꽃은 수명이 다하면 사라지고 0% 면 더 안 쏨"
+    assert not ff.bangs, "동물이 없으면 터진 자리를 쌓아 두지 않음"
+    # 불꽃이 가까이 터지면 서서 그쪽을 봄, 멀면 하던 걸 함. 낮게 나는 반딧불이는 쫓음
+    cat, dog = pet.Cat(2000, random.Random(3)), pet.Dog(2000, random.Random(3))
+    cat.x, dog.x = 100, 1500
+    for a in (cat, dog):
+        a.go("walk", 0.0)
+        a.right = False
+    rf = big(pets={"cat": cat, "dog": dog}, bangs=[], sparks=[], bolt=None, bolt_seen=None, kind="fireworks", flies=[])
+    rf.burst = lambda x, y: Weather.burst(rf, x, y)
+    rf.burst(600, 50)
+    Weather.react(rf, 0.0)
+    assert cat.state == "stand" and cat.right and cat.mood[0] == "!", "가까운 불꽃 쪽을 봄"
+    assert dog.state == "walk" and not dog.mood and not rf.bangs, "먼 불꽃은 모름, 알린 건 비움"
+    rf.kind, rf.flies = "fireflies", [[cat.x + 140, 200 - 40], [cat.x + 140, 200 - 150]]
+    cat.go("walk", 0.0)
+    Weather.react(rf, cat.calm)
+    assert cat.state == "hop" and cat.pounce and cat.kind == "fireflies", "낮은 반딧불이로 폴짝"
     for kind in GUST:
         for phase in (0, 1.3, 4):
             fake.kind, fake.gust_phase = kind, phase
