@@ -31,7 +31,7 @@ Double-click [weather.command](weather.command) in Finder to start or stop it; t
 python3 weather.py --toggle
 ```
 
-`--toggle` detaches it from the terminal, so closing the terminal keeps it running. It floats over full-screen apps too. The bank and the cat stand on top of the Dock area, as they stand on the taskbar on Windows, so in full screen they hang that high. The animation pauses while the menu is open. On a MacBook (1680×924 pt): empty screen with the cat 2.7%, normal snow with the cat 6–7%, heavy rain with the cat 19%.
+`--toggle` detaches it from the terminal, so closing the terminal keeps it running. It floats over full-screen apps too. Snow piles along the very bottom of the screen; when the Dock is showing it settles on top of the Dock. The animation pauses while the menu is open. On a MacBook (1680×924 pt): empty screen with the cat 2.7%, normal snow with the cat 6–7%, heavy rain with the cat 19%.
 
 ## Cost
 
@@ -88,7 +88,7 @@ Finder 에서 [weather.command](weather.command) 를 더블클릭하면 켜지�
 python3 weather.py --toggle
 ```
 
-`--toggle` 은 터미널과 떼어 띄우므로 터미널을 닫아도 안 꺼짐. 전체 화면 앱 위에도 뜸. 눈더미와 고양이는 윈도우에서 작업 표시줄 위에 서듯 독 자리 위에 서서, 전체 화면에서는 그만큼 떠 있음. 메뉴를 연 동안에는 그림이 멈춤. 맥북(1680×924 pt)에서 빈 화면+고양이 2.7%, 눈 보통+고양이 6–7%, 비 많이+고양이 19%.
+`--toggle` 은 터미널과 떼어 띄우므로 터미널을 닫아도 안 꺼짐. 전체 화면 앱 위에도 뜸. 눈은 화면 맨 아래에 쌓이고, 독이 보일 때는 독 위에 쌓임. 메뉴를 연 동안에는 그림이 멈춤. 맥북(1680×924 pt)에서 빈 화면+고양이 2.7%, 눈 보통+고양이 6–7%, 비 많이+고양이 19%.
 
 ### 비용
 

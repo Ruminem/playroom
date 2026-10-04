@@ -37,7 +37,9 @@ def stop(pid_file, tray_class=None):
 
 
 def work_area():
-    """메뉴 막대와 독을 뺀 주 화면 영역 (left, top, right, bottom). 윈도우판처럼 왼쪽 위가 원점, 단위는 pt."""
+    """메뉴 막대만 뺀 주 화면 영역 (left, top, right, bottom). 윈도우판처럼 왼쪽 위가 원점, 단위는 pt.
+    독은 빼지 않는다 — 전체 화면에선 독이 숨어서, 빼면 눈더미가 독 높이만큼 허공에 뜬다. 독이 보이면
+    오버레이가 독보다 위 수준이라 그 위에 쌓인다."""
     frame, vis = main_screen()
-    left, top = int(vis.o.x), int(frame.s.h - vis.o.y - vis.s.h)
-    return left, top, left + int(vis.s.w), top + int(vis.s.h)
+    top = int(frame.s.h - vis.o.y - vis.s.h)
+    return 0, top, int(frame.s.w), int(frame.s.h)
