@@ -25,6 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 import overlay
 import startup
+import taskbar
 from surface import Surface
 from tray import Tray, write_ico
 
@@ -52,23 +53,7 @@ ICON = (".......",
         ".y.g.g.",
         ".y.g.g.")
 
-user32, gdi32, kernel32 = ctypes.windll.user32, ctypes.windll.gdi32, ctypes.windll.kernel32
-user32.FindWindowW.restype = wintypes.HWND
-user32.FindWindowExW.restype = wintypes.HWND
-user32.FindWindowExW.argtypes = (wintypes.HWND, wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR)
-user32.GetWindowRect.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.RECT))
-user32.DrawTextW.argtypes = (wintypes.HDC, wintypes.LPCWSTR, ctypes.c_int, ctypes.POINTER(wintypes.RECT),
-                             wintypes.UINT)
-gdi32.CreateFontW.restype = wintypes.HFONT
-user32.GetDC.restype = wintypes.HDC
-user32.GetDC.argtypes = (wintypes.HWND,)
-user32.ReleaseDC.argtypes = (wintypes.HWND, wintypes.HDC)
-gdi32.SelectObject.restype = wintypes.HGDIOBJ
-gdi32.GetTextExtentPoint32W.argtypes = (wintypes.HDC, wintypes.LPCWSTR, ctypes.c_int, ctypes.POINTER(wintypes.SIZE))
-gdi32.DeleteObject.argtypes = (wintypes.HGDIOBJ,)
-gdi32.SetTextColor.argtypes = (wintypes.HDC, wintypes.DWORD)
-gdi32.SetBkMode.argtypes = (wintypes.HDC, ctypes.c_int)
-
+kernel32 = ctypes.windll.kernel32
 
 class MEMORYSTATUSEX(ctypes.Structure):
     _fields_ = [("dwLength", wintypes.DWORD), ("dwMemoryLoad", wintypes.DWORD),
@@ -117,63 +102,24 @@ def load_mode():
     return mode if mode in MEM_KEYS else "pct"
 
 
-def text_width(font, texts):
-    """이 글꼴로 그린 가장 긴 줄의 너비 px."""
-    dc = user32.GetDC(None)
-    old = gdi32.SelectObject(dc, font)
-    size, widest = wintypes.SIZE(), 0
-    for t in texts:
-        gdi32.GetTextExtentPoint32W(dc, t, len(t), ctypes.byref(size))
-        widest = max(widest, size.cx)
-    gdi32.SelectObject(dc, old)
-    user32.ReleaseDC(None, dc)
-    return widest
-
-
 def level_color(p):
     return RED if p > HOT else ORANGE if p > WARN else WHITE
 
 
-def fullscreen_app():
-    """전체 화면 앱(영상·게임·발표)이 앞에 있으면 True. 그때는 작업 표시줄도 사라짐."""
-    state = ctypes.c_int()
-    if ctypes.windll.shell32.SHQueryUserNotificationState(ctypes.byref(state)) != 0:
-        return False
-    return state.value in (2, 3, 4)  # QUNS_BUSY · RUNNING_D3D_FULL_SCREEN · PRESENTATION_MODE
-
-
-def taskbar_spot():
-    """(알림 영역 왼쪽 끝 x, 작업 표시줄 위 y, 높이). 못 찾으면 None.
-    ponytail: 아래쪽 작업 표시줄만 셈. 자동 숨기기·세로 작업 표시줄은 안 따짐"""
-    bar = user32.FindWindowW("Shell_TrayWnd", None)
-    notify = user32.FindWindowExW(bar, None, "TrayNotifyWnd", None) if bar else None
-    if not notify:
-        return None
-    b, n = wintypes.RECT(), wintypes.RECT()
-    user32.GetWindowRect(bar, ctypes.byref(b))
-    user32.GetWindowRect(notify, ctypes.byref(n))
-    return n.left, b.top, b.bottom - b.top
-
-
 class Monitor:
     def __init__(self):
-        spot = taskbar_spot()
-        x, top, self.bar_h = spot or (overlay.work_area()[2], overlay.work_area()[3], 48)
-        h = self.bar_h
-        # ANTIALIASED_QUALITY: 회색조라 R=G=B=덮인 정도. ClearType 이면 색 번짐이 남음
-        font = gdi32.CreateFontW(-round(h * 0.36), 0, 0, 0, 600, 0, 0, 0, 1, 0, 0, 4, 0, "Segoe UI")
+        spot = taskbar.spot()
+        x, top, h = spot or (overlay.work_area()[2], overlay.work_area()[3], 48)
+        font = taskbar.font(h)
         # 창은 가장 긴 모양에 맞춰 한 번 잡고 글자는 오른쪽에 붙임 — 모양을 바꿔도 창을 다시 안 만듦.
         # 남는 왼쪽은 투명하고 클릭이 통과함
         total = memory()[2]
-        widest = text_width(font, ["CPU 100%"] + [mem_text(k, 100, total, total) for k in MEM_KEYS])
+        widest = taskbar.text_width(font, ["CPU 100%"] + [mem_text(k, 100, total, total) for k in MEM_KEYS])
         self.w, self.h = widest + round(h * 0.2), h
         self.line = round(h * 0.44)
         self.mode = load_mode()
         self.surface = Surface(x - GAP - self.w, top, self.w, self.h, SURFACE_CLASS)
-        hdc = self.surface.hdc
-        gdi32.SelectObject(hdc, font)
-        gdi32.SetTextColor(hdc, 0xFFFFFF)
-        gdi32.SetBkMode(hdc, 1)  # TRANSPARENT
+        taskbar.prepare(self.surface, font)
         self.commands = queue.Queue()
         write_ico(ICON_FILE, ICON, ICON_COLORS)
         self.tray = Tray(TRAY_CLASS, ICON_FILE, "CPU·메모리", self.menu, self.commands.put)
@@ -186,41 +132,25 @@ class Monitor:
                 None,
                 ("끝내기", EXIT, False)]
 
-    def render(self, lines):
-        """글자를 흰색으로 그린 뒤, 밝기(초록 칸)를 알파로 삼아 줄마다 색을 입힌다."""
-        s, w = self.surface, self.w
-        s.clear()
-        top = (self.h - 2 * self.line) // 2
-        for i, (text, _) in enumerate(lines):
-            r = wintypes.RECT(0, top + i * self.line, w - 2, top + (i + 1) * self.line)
-            user32.DrawTextW(s.hdc, text, -1, ctypes.byref(r), 0x2 | 0x20)  # DT_RIGHT | DT_SINGLELINE
-        gdi32.GdiFlush()
-        px = s.pixels
-        for i, (_, (cr, cg, cb)) in enumerate(lines):
-            for o in range((top + i * self.line) * w * 4, (top + (i + 1) * self.line) * w * 4, 4):
-                a = px[o + 1]
-                if a:
-                    px[o:o + 4] = bytes((cb * a // 255, cg * a // 255, cr * a // 255, a))
-
     def update(self):
         cur = cpu_times()
         cpu, self.prev = cpu_percent(self.prev, cur), cur
         mem, used, total = memory()
         self.tray.set_tip("CPU %d%%\n메모리 %.1f / %.1f GB (%d%%)" % (cpu, used, total, mem))
-        show = not fullscreen_app()
+        show = not taskbar.fullscreen_app()
         if show != self.shown:
             self.shown = show
             self.surface.show(show)
         if not show:
             return
-        spot = taskbar_spot()
+        spot = taskbar.spot()
         if spot and spot[:2] != self.where:  # 트레이 아이콘이 늘거나 줄면 따라감
             self.where = spot[:2]
             self.surface.move(spot[0] - GAP - self.w, spot[1])
         lines = [("CPU %d%%" % cpu, level_color(cpu)), (mem_text(self.mode, mem, used, total), level_color(mem))]
         if lines != self.last_lines:
             self.last_lines = lines
-            self.render(lines)
+            taskbar.paint_lines(self.surface, lines, self.line)
         self.surface.present()
         self.surface.topmost()  # 작업 표시줄을 누르면 그쪽이 앞으로 오므로 1초마다 다시 올라옴
 
@@ -270,9 +200,8 @@ def check():
     assert mem_text("gb", 22, 14.24, 63.9) == "MEM 14.2/63.9G"
     assert mem_text("both", 22, 14.24, 63.9) == "MEM 14.2/63.9G 22%"
     assert set(MEM_KEYS) == {"pct", "gb", "both"} and len(MEM_MODES) == 3, "메뉴 id 가 겹치지 않음"
-    font = gdi32.CreateFontW(-17, 0, 0, 0, 600, 0, 0, 0, 1, 0, 0, 4, 0, "Segoe UI")
-    assert text_width(font, ["MEM 14.2/63.9G"]) > text_width(font, ["MEM 22%"]) > 0, "긴 글이 더 넓음"
-    gdi32.DeleteObject(font)
+    font = taskbar.font(48)
+    assert taskbar.text_width(font, ["MEM 14.2/63.9G"]) > taskbar.text_width(font, ["MEM 22%"]) > 0, "긴 글이 더 넓음"
     print("자체 점검 통과")
 
 

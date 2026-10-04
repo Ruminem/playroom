@@ -13,7 +13,7 @@ Double-click [layers.bat](layers.bat) to start or stop it. A stacked-squares ico
 
 The tray menu can also start it with Windows, the same way as [usage-hud](../usage-hud/#hud).
 
-The default order is usage-hud › sysmon › weather. Changes apply at once and are kept in `%LOCALAPPDATA%\playroom\layers.json`. A window is recognised by its program, class and title, so a picture-in-picture video added once stays ranked the next time one opens.
+The default order is usage-hud › sysmon › pomodoro (timer, then confetti) › weather. Changes apply at once and are kept in `%LOCALAPPDATA%\playroom\layers.json`. A window is recognised by its program, class and title, so a picture-in-picture video added once stays ranked the next time one opens.
 
 `python layers.py --stop` closes it, `python layers.py --check` runs the self-check.
 
@@ -46,7 +46,7 @@ Twice a second it walks the window list. Measured on one PC: 0.03 s of CPU over 
 
 트레이 메뉴에서 윈도우 시작 시 실행도 켤 수 있음. [usage-hud](../usage-hud/#hud-1) 와 같은 방식임.
 
-기본 순서는 usage-hud › sysmon › weather 임. 바꾸면 바로 적용되고 `%LOCALAPPDATA%\playroom\layers.json` 에 남음. 창은 프로그램·클래스·제목으로 알아보므로, 한 번 넣은 PIP 영상은 다음에 뜨는 PIP 에도 그대로 적용됨.
+기본 순서는 usage-hud › sysmon › pomodoro(타이머, 색종이) › weather 임. 바꾸면 바로 적용되고 `%LOCALAPPDATA%\playroom\layers.json` 에 남음. 창은 프로그램·클래스·제목으로 알아보므로, 한 번 넣은 PIP 영상은 다음에 뜨는 PIP 에도 그대로 적용됨.
 
 `python layers.py --stop` 으로 끄고, `python layers.py --check` 로 자체 점검을 돌림.
 

@@ -39,6 +39,8 @@ ENFORCE_MS = 500
 # 값이 없는 칸은 아무것이나 맞음. HUD 는 python/pythonw 어느 쪽으로 떠도 맞게 exe 를 비움
 DEFAULT_RULES = [{"name": "usage-hud", "cls": "TkTopLevel", "title": "usage-hud"},
                  {"name": "sysmon", "cls": "PlayroomSysmonSurface"},
+                 {"name": "pomodoro", "cls": "PlayroomPomodoroSurface"},
+                 {"name": "pomodoro 색종이", "cls": "PlayroomPomodoroBurst"},
                  {"name": "weather (눈·비)", "cls": "PlayroomWeatherSurface"}]
 SKIP_CLASSES = {"Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Progman", "WorkerW", "ThumbnailDeviceHelperWnd"}
 
