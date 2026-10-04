@@ -25,6 +25,8 @@ python weather.py --toggle --kind rain --amount many
 
 The same script runs on a Mac with the system Python 3.9, nothing to install. It reaches AppKit through ctypes ([shared/mac](../shared/mac/)), the snowflake sits in the menu bar, and **Start at login** writes a LaunchAgent to `~/Library/LaunchAgents`. Your choice is remembered in `~/Library/Application Support/playroom/weather.json`.
 
+Double-click [weather.command](weather.command) in Finder to start or stop it; the Terminal window it opens closes itself. From a terminal:
+
 ```bash
 python3 weather.py --toggle
 ```
@@ -79,6 +81,8 @@ python weather.py --toggle --kind rain --amount many
 ### 맥
 
 같은 스크립트가 맥 기본 파이썬 3.9 로 돌고, 깔 것은 없음. ctypes 로 AppKit 을 부르고([shared/mac](../shared/mac/)), 눈송이 아이콘은 메뉴 막대에 뜨며, **로그인 시 실행** 은 `~/Library/LaunchAgents` 에 LaunchAgent 를 씀. 고른 것은 `~/Library/Application Support/playroom/weather.json` 에 남음.
+
+Finder 에서 [weather.command](weather.command) 를 더블클릭하면 켜지고 다시 누르면 꺼짐. 그때 열리는 터미널 창은 저절로 닫힘. 터미널에서는 이렇게 함.
 
 ```bash
 python3 weather.py --toggle
