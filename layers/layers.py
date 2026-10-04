@@ -21,6 +21,8 @@ import subprocess
 import sys
 import tempfile
 import tkinter as tk
+import tkinter.font as tkfont
+from tkinter import ttk
 from ctypes import wintypes
 from pathlib import Path
 
@@ -40,6 +42,9 @@ ENFORCE_MS = 500
 DEFAULT_RULES = [{"name": "usage-hud", "cls": "TkTopLevel", "title": "usage-hud"},
                  {"name": "sysmon", "cls": "PlayroomSysmonSurface"},
                  {"name": "weather (눈·비)", "cls": "PlayroomWeatherSurface"}]
+UI_FONT = "Malgun Gothic"
+MUTED = "#6b7080"
+DOTS = {"on": "#3fa34d", "off": "#c4c8d0", "pin": "#f2a60c", "none": None}  # 순서 창의 점 색. None 은 빈칸 (줄 맞춤용)
 SKIP_CLASSES = {"Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Progman", "WorkerW", "ThumbnailDeviceHelperWnd"}
 
 ICON_COLORS = {"b": "#5b6ee1", "y": "#feae34", "g": "#63c74d"}
@@ -148,6 +153,18 @@ def save_rules(rules):
     SETTINGS.write_text(json.dumps({"rules": rules}, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+def dot(master, color, size):
+    """size×size 투명 그림 가운데 동그라미. color 가 None 이면 빈 그림."""
+    img = tk.PhotoImage(master=master, width=size, height=size)
+    if color:
+        r, c = size * 0.3, (size - 1) / 2
+        for y in range(size):
+            half = (r * r - (y - c) ** 2) ** 0.5 if abs(y - c) <= r else -1
+            if half >= 0.5:
+                img.put(color, to=(round(c - half + 0.5), y, round(c + half + 0.5), y + 1))
+    return img
+
+
 class Layers:
     def __init__(self):
         self.rules = load_rules()
@@ -223,25 +240,82 @@ class Layers:
             return
         self.win = w = tk.Toplevel(self.root)
         w.title("창 순서 — layers")
+        w.iconbitmap(str(ICON_FILE))
         w.protocol("WM_DELETE_WINDOW", self.close_window)
-        pad = {"padx": 10, "pady": 4}
-        tk.Label(w, text="순서 — 위에 있을수록 앞에 뜸 (● 지금 떠 있음)", anchor="w").pack(fill="x", **pad)
-        self.order_box = tk.Listbox(w, height=8, width=60, exportselection=False)
-        self.order_box.pack(fill="both", expand=True, padx=10)
-        row = tk.Frame(w)
-        row.pack(fill="x", **pad)
-        for text, cmd in (("위로", lambda: self.move(-1)), ("아래로", lambda: self.move(1)), ("빼기", self.remove)):
-            tk.Button(row, text=text, width=8, command=cmd).pack(side="left", padx=(0, 6))
-        tk.Label(w, text="지금 열린 창 (★ 원래 맨 위) — 두 번 누르거나 '추가'로 순서 맨 아래에 넣음",
-                 anchor="w").pack(fill="x", padx=10, pady=(12, 4))
-        self.open_box = tk.Listbox(w, height=10, width=60, exportselection=False)
-        self.open_box.pack(fill="both", expand=True, padx=10)
+        px = lambda n: round(n * float(w.tk.call("tk", "scaling")) * 0.75)  # 96dpi 기준 px → 지금 화면 px
+        font = tkfont.Font(w, family=UI_FONT, size=10)
+        style = ttk.Style(w)
+        style.configure(".", font=font)
+        style.configure("Treeview", rowheight=round(font.metrics("linespace") * 1.8))
+        style.configure("Treeview.Heading", font=(UI_FONT, 9), foreground=MUTED)
+        style.configure("Title.TLabel", font=(UI_FONT, 12, "bold"))
+        style.configure("Hint.TLabel", foreground=MUTED)
+        style.configure("TButton", padding=(px(10), px(3)))
+        self.dots = {k: dot(w, c, px(14)) for k, c in DOTS.items()}
+
+        f = ttk.Frame(w, padding=px(16))
+        f.pack(fill="both", expand=True)
+        f.columnconfigure(0, weight=1)
+
+        def section(row, title, hint, legend):
+            ttk.Label(f, text=title, style="Title.TLabel").grid(row=row, column=0, columnspan=2, sticky="w")
+            line = ttk.Frame(f)
+            line.grid(row=row + 1, column=0, columnspan=2, sticky="w", pady=(px(2), px(8)))
+            ttk.Label(line, text=hint, style="Hint.TLabel").pack(side="left")
+            for key, text in legend:
+                ttk.Label(line, text=text, image=self.dots[key], compound="left",
+                          style="Hint.TLabel").pack(side="left", padx=(px(12), 0))
+
+        def table(row, columns, height):
+            box = ttk.Frame(f)
+            box.grid(row=row, column=0, sticky="nsew")
+            f.rowconfigure(row, weight=1)
+            tree = ttk.Treeview(box, columns=[c for c, _, _ in columns], height=height, selectmode="browse")
+            bar = ttk.Scrollbar(box, orient="vertical", command=tree.yview)
+            def scrolled(lo, hi):  # 다 보이면 스크롤바를 숨김
+                bar.set(lo, hi)
+                if float(lo) <= 0 and float(hi) >= 1:
+                    bar.pack_forget()
+                elif not bar.winfo_ismapped():
+                    bar.pack(side="left", fill="y")
+            tree.configure(yscrollcommand=scrolled)
+            tree.pack(side="left", fill="both", expand=True)
+            tree.column("#0", width=px(54), minwidth=px(54), stretch=False)
+            for c, text, width in columns:
+                tree.heading(c, text=text, anchor="w")
+                tree.column(c, width=px(width), minwidth=px(60), stretch=c != "exe")
+            return tree
+
+        def buttons(row, specs):
+            col = ttk.Frame(f)
+            col.grid(row=row, column=1, sticky="n", padx=(px(10), 0))
+            out = []
+            for text, cmd in specs:
+                b = ttk.Button(col, text=text, command=cmd)
+                b.pack(fill="x", pady=(0, px(6)))
+                out.append(b)
+            return out
+
+        section(0, "앞에 띄울 순서", "위에 있을수록 앞에 뜸", (("on", "지금 떠 있음"), ("off", "안 떠 있음")))
+        self.order_box = table(2, (("name", "창", 260), ("exe", "프로그램", 140)), 6)
+        self.order_box.heading("#0", text="순위", anchor="w")
+        self.order_buttons = buttons(2, (("▲  위로", lambda: self.move(-1)), ("▼  아래로", lambda: self.move(1)),
+                                         ("빼기", self.remove)))
+        ttk.Separator(f).grid(row=3, column=0, columnspan=2, sticky="ew", pady=px(16))
+        section(4, "지금 열린 창", "두 번 누르면 순서 맨 아래에 넣음", (("pin", "원래 맨 위"),))
+        self.open_box = table(6, (("name", "창 제목", 260), ("exe", "프로그램", 140)), 8)
+        self.add_button, _ = buttons(6, (("＋  추가", self.add), ("새로 고침", self.refresh)))
+
+        self.order_box.bind("<<TreeviewSelect>>", lambda e: self.sync_buttons())
+        self.open_box.bind("<<TreeviewSelect>>", lambda e: self.sync_buttons())
+        self.order_box.bind("<Delete>", lambda e: self.remove())
+        self.order_box.bind("<Alt-Up>", lambda e: self.move(-1))
+        self.order_box.bind("<Alt-Down>", lambda e: self.move(1))
         self.open_box.bind("<Double-Button-1>", lambda e: self.add())
-        row = tk.Frame(w)
-        row.pack(fill="x", padx=10, pady=(4, 10))
-        tk.Button(row, text="추가", width=8, command=self.add).pack(side="left", padx=(0, 6))
-        tk.Button(row, text="새로 고침", width=8, command=self.refresh).pack(side="left")
+        self.open_box.bind("<Return>", lambda e: self.add())
         self.refresh()
+        w.update_idletasks()
+        w.minsize(w.winfo_width(), w.winfo_height() * 2 // 3)
 
     def close_window(self):
         self.win.destroy()
@@ -250,39 +324,54 @@ class Layers:
     def refresh(self, select=None):
         wins = windows()
         self.candidates = [w for w in wins if not any(matches(r, w) for r in self.rules)]
-        self.order_box.delete(0, "end")
-        for r in self.rules:
+        self.order_box.delete(*self.order_box.get_children())
+        for i, r in enumerate(self.rules):
             here = any(matches(r, w) for w in wins)
-            extra = "  (%s)" % r["exe"] if r.get("exe") else ""
-            self.order_box.insert("end", ("● " if here else "○ ") + rule_name(r) + extra)
+            self.order_box.insert("", "end", iid=str(i), text=" %d" % (i + 1), image=self.dots["on" if here else "off"],
+                                  values=(rule_name(r), r.get("exe") or "놀이방"))
         if select is not None:
-            self.order_box.selection_set(select)
-        self.open_box.delete(0, "end")
-        for w in self.candidates:
-            self.open_box.insert("end", ("★ " if w["topmost"] else "   ") + "%s  (%s)" % (w["title"], w["exe"]))
+            self.order_box.selection_set(str(select))
+            self.order_box.see(str(select))
+        self.open_box.delete(*self.open_box.get_children())
+        for i, w in enumerate(self.candidates):
+            self.open_box.insert("", "end", iid=str(i), image=self.dots["pin" if w["topmost"] else "none"],
+                                 values=(w["title"], w["exe"]))
+        self.sync_buttons()
+
+    def sync_buttons(self):
+        i = self.selected(self.order_box)
+        up, down, rm = self.order_buttons
+        up.state(["!disabled"] if i is not None and i > 0 else ["disabled"])
+        down.state(["!disabled"] if i is not None and i < len(self.rules) - 1 else ["disabled"])
+        rm.state(["!disabled"] if i is not None else ["disabled"])
+        self.add_button.state(["!disabled"] if self.selected(self.open_box) is not None else ["disabled"])
+
+    @staticmethod
+    def selected(tree):
+        sel = tree.selection()
+        return int(sel[0]) if sel else None
 
     def changed(self, select=None):
         save_rules(self.rules)
         self.refresh(select)
 
     def move(self, d):
-        sel = self.order_box.curselection()
-        if not sel or not 0 <= sel[0] + d < len(self.rules):
+        i = self.selected(self.order_box)
+        if i is None or not 0 <= i + d < len(self.rules):
             return
-        i = sel[0]
         self.rules[i], self.rules[i + d] = self.rules[i + d], self.rules[i]
         self.changed(i + d)
 
     def remove(self):
-        sel = self.order_box.curselection()
-        if sel:
-            del self.rules[sel[0]]
+        i = self.selected(self.order_box)
+        if i is not None:
+            del self.rules[i]
             self.changed()
 
     def add(self):
-        sel = self.open_box.curselection()
-        if sel:
-            w = self.candidates[sel[0]]
+        i = self.selected(self.open_box)
+        if i is not None:
+            w = self.candidates[i]
             self.rules.append({"exe": w["exe"], "cls": w["cls"], "title": w["title"]})
             self.changed(len(self.rules) - 1)
 
