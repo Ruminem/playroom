@@ -1,3 +1,7 @@
+- 여기까지 됨 (2026-10-04 — 맥 로그인 시 실행 끊김): 재부팅 뒤 weather 가 끊긴 것은 LaunchAgent 에 ProcessType 이 없어 launchd 가 daemon 으로 띄웠기 때문이다. 같은 그리기를 재 보니 터미널 30.1fps·간격 95% 34ms, daemon 24.6fps·103ms, Interactive 30.1fps·36ms. shared/mac/startup.py 가 ProcessType Interactive 를 쓰고, 옛 판 plist 는 꺼진 것으로 봐서 메뉴에서 다시 켜면 새로 쓴다. 이 맥의 weather plist 는 새로 써서 다시 올렸다. sysmon 은 로그인 시 실행을 안 켜 둬서 재부팅 뒤 안 떴던 것
+- 다음 할 것: 맥에서 sysmon 메뉴의 로그인 시 실행 켜기. UsageBar 의 plist 도 daemon 으로 뜨지만 그림을 안 움직여 그대로 둠
+- 막힌 것: 없음
+
 - 여기까지 됨 (2026-10-04 — sysmon 맥): sysmon.py 가 맥에서도 돈다. 메뉴 막대에 제 칸(MacMonitor)을 두고 글자 한 줄 `CPU 17%  MEM 62%` 이나 픽셀 상자(2배로 찍어 19pt)를 넣는다. CPU 는 host_statistics 틱, 메모리는 활동 모니터식(익명 − 지울 수 있는 것 + 와이어드 + 압축) / hw.memsize 이고 --check 가 vm_stat 과 칸마다 견준다(변이 7개 다 걸림). 30초에 CPU 0.2초, 50MB. 글자 색은 넣는 순간의 외관으로 굳어서(단추가 막대에 들어가기 전엔 VibrantLight → 빨강이 어둡게 나옴) 외관 이름도 바뀜 판단에 넣었다
 - 다음 할 것: 윈도우에서 sysmon --check 와 띄우기. 가져오기·측정을 if MAC 갈래로 나눴고 Monitor.run 의 트레이 확인도 바꿨는데 윈도우에선 안 돌려 봤다. 맥에서는 활동 모니터의 '사용한 메모리' 와 같은 숫자인지, 메뉴를 열어 테마를 바꿔 보기
 - 막힌 것: 없음. 노치 옆 자리가 모자라면 macOS 가 칸을 숨긴다 — 시험 중 칸 셋을 더 띄우니 하나만 보였다

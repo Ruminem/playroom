@@ -24,11 +24,17 @@ def command(script):
     return [sys.executable, str(Path(script).resolve())]
 
 
+def agent(name, script):
+    # ProcessType 이 없으면 launchd 가 daemon 으로 띄워 CPU·타이머를 깎는다. weather 가 30fps 를 청해도 프레임 간격
+    # 95% 가 103ms 로 끊겼고, Interactive 면 터미널에서 띄운 것과 같은 36ms 였다(2026-10-04 맥북, 재부팅 직후)
+    return {"Label": label(name), "ProgramArguments": command(script), "RunAtLoad": True, "ProcessType": "Interactive"}
+
+
 def is_on(name, script):
-    """plist 가 지금 이 파이썬·스크립트를 가리키면 True. 저장소 폴더를 옮겼으면 False — 다시 켜면 새 경로로 씀."""
+    """plist 가 지금 쓸 내용과 같으면 True. 저장소 폴더를 옮겼거나 옛 판으로 쓴 것이면 False — 다시 켜면 새로 씀."""
     try:
         with open(plist_path(name), "rb") as f:
-            return plistlib.load(f).get("ProgramArguments") == command(script)
+            return plistlib.load(f) == agent(name, script)
     except (OSError, plistlib.InvalidFileException):
         return False
 
@@ -38,7 +44,7 @@ def set(name, script, on):
     if on:
         AGENTS.mkdir(parents=True, exist_ok=True)
         with open(path, "wb") as f:
-            plistlib.dump({"Label": label(name), "ProgramArguments": command(script), "RunAtLoad": True}, f)
+            plistlib.dump(agent(name, script), f)
     else:
         path.unlink(missing_ok=True)
 
@@ -61,6 +67,12 @@ def check():
         with open(plist_path(name), "rb") as f:
             d = plistlib.load(f)
         assert d["Label"] == label(name) and d["RunAtLoad"] is True, "launchd 가 읽을 키"
+        assert d["ProcessType"] == "Interactive", "daemon 으로 뜨면 프레임이 끊김"
+        d.pop("ProcessType")
+        with open(plist_path(name), "wb") as f:  # ProcessType 없던 옛 판
+            plistlib.dump(d, f)
+        assert not is_on(name, me), "옛 판은 꺼진 것으로 봐서 다시 켜면 새로 씀"
+        toggle(name, me)
         set(name, Path(me).with_name("moved.py"), True)  # 저장소를 옮긴 흉내
         assert not is_on(name, me), "옛 경로면 꺼진 것으로 봄"
         toggle(name, me)
