@@ -148,6 +148,52 @@ jobs:
           if ($null -eq $sec) { Show-Windows launcher; throw "launcher.exe 창이 30초 안에 안 뜸" }
           "launcher.exe 창 {0:N1}초" -f $sec
           Get-Process launcher | Stop-Process
+      # 새로 받은 exe 를 띄우면 떠 있는 옛 버전 exe 가 꺼지고 새것이 이어 뜨는지. 옛것은 버전 붙은 이름으로 복사해 흉내 냄 —
+      # dist 에 두면 드라이브·릴리스에 같이 올라가므로 RUNNER_TEMP 에 둠
+      - name: 옛 exe 갈아 끼우기
+        run: |
+          Add-Type -Namespace U -Name W -MemberDefinition @'
+          [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string n);
+          public static bool HasClass(string c) { return FindWindow(c, null) != IntPtr.Zero; }
+          public static bool HasTitle(string t) { return FindWindow(null, t) != IntPtr.Zero; }
+          '@
+          function Wait-Window([scriptblock]$found) {
+            $t = [Diagnostics.Stopwatch]::StartNew()
+            while ($t.Elapsed.TotalSeconds -lt 30) {
+              if (& $found) { return $t.Elapsed.TotalSeconds }
+              Start-Sleep 1
+            }
+            return $null
+          }
+          $oldExe = Join-Path $env:RUNNER_TEMP 'weather-0.0.1.exe'
+          Copy-Item dist/weather.exe $oldExe
+          $old = Start-Process $oldExe -PassThru; $null = $old.Handle
+          if ($null -eq (Wait-Window { [U.W]::HasClass('PlayroomWeatherTray') })) { throw "옛 weather 트레이가 안 뜸" }
+          $new = Start-Process dist/weather.exe -PassThru; $null = $new.Handle
+          if (-not $old.WaitForExit(20000)) { throw "새 weather.exe 를 띄워도 옛 exe 가 안 꺼짐" }
+          if ($null -eq (Wait-Window { [U.W]::HasClass('PlayroomWeatherTray') })) { throw "갈아 끼운 뒤 트레이가 안 뜸" }
+          if ($new.HasExited) { throw "새 weather.exe 가 죽음 (종료 코드 $($new.ExitCode))" }
+          # PID 파일은 onefile 의 자식 프로세스를 가리킴 — 그 실행 파일이 exe 자신이어야 옛것을 알아봄
+          $img = (Get-Process -Id ([int](Get-Content (Join-Path $env:TEMP 'playroom-weather.pid')))).Path
+          "PID 파일의 프로세스: $img"
+          if ($img -ne (Resolve-Path dist/weather.exe).Path) { throw "떠 있는 weather 의 실행 파일이 새 exe 가 아님" }
+          $again = Start-Process dist/weather.exe -PassThru; $null = $again.Handle
+          if (-not $again.WaitForExit(30000)) { throw "같은 exe 를 다시 띄우면 그냥 끝나야 함" }
+          if ($new.HasExited) { throw "같은 exe 를 다시 띄웠더니 떠 있던 것이 꺼짐" }
+          "weather 갈아 끼우기 됨"
+          $s = Start-Process dist/weather.exe -ArgumentList '--stop' -PassThru
+          if (-not $s.WaitForExit(15000)) { throw "weather.exe --stop 이 안 끝남" }
+          if (-not $new.WaitForExit(10000)) { throw "weather.exe 가 --stop 으로 안 꺼짐" }
+
+          $oldExe = Join-Path $env:RUNNER_TEMP 'launcher-0.0.1.exe'
+          Copy-Item dist/launcher.exe $oldExe
+          $old = Start-Process $oldExe -PassThru; $null = $old.Handle
+          if ($null -eq (Wait-Window { [U.W]::HasTitle('playroom') })) { throw "옛 launcher 창이 안 뜸" }
+          $new = Start-Process dist/launcher.exe -PassThru; $null = $new.Handle
+          if (-not $old.WaitForExit(30000)) { throw "새 launcher.exe 를 띄워도 옛 창이 안 닫힘" }
+          if ($new.HasExited) { throw "새 launcher.exe 가 죽음 (종료 코드 $($new.ExitCode))" }
+          "launcher 갈아 끼우기 됨"
+          Get-Process launcher | Stop-Process
       - name: 드라이브에 올리기
         env:
           RCLONE_CONFIG_GDRIVE_TYPE: drive

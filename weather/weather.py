@@ -2352,9 +2352,11 @@ def main():
     if args.stop:
         print("날씨를 치움" if overlay.stop(PID_FILE, TRAY_CLASS) else "떠 있는 날씨가 없음")
         return
-    if overlay.running_pid(PID_FILE) is not None:
+    if MAC and overlay.running_pid(PID_FILE) is not None:  # 맥은 소스로만 돌아 갈아 끼울 exe 가 없음
         if args.toggle:
             overlay.stop(PID_FILE, TRAY_CLASS)
+        return
+    if not MAC and overlay.already_running(PID_FILE, TRAY_CLASS, __file__, args.toggle):
         return
     if args.toggle and Path(sys.executable).name.lower() == "python.exe":
         # weather.bat 에서 콘솔 창이 남지 않게 pythonw 로 다시 띄움
@@ -2376,6 +2378,7 @@ def main():
         except (AttributeError, OSError):
             pass
         ctypes.windll.winmm.timeBeginPeriod(1)  # 기본 타이머 간격(15.6ms)이면 30fps 를 청해도 21fps 에서 멈춤
+        startup.follow(RUN_NAME, __file__)
     PID_FILE.write_text(str(os.getpid()))
     try:
         Weather(args.kind, args.amount, saved.get("pet", []), saved.get("fps", FPS), saved).run()

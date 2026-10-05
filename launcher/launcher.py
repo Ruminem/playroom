@@ -13,6 +13,7 @@ import sys
 import tempfile
 import threading
 import tkinter as tk
+import winreg
 from pathlib import Path
 from tkinter import messagebox
 
@@ -126,6 +127,18 @@ def uninstall(t):
         t.link.parent.rmdir()  # 비었을 때만 지워짐
     except OSError:
         pass
+
+
+def close_old():
+    """새로 받은 런처 exe 를 띄우면 떠 있는 다른 런처 exe 의 창을 닫음. 같은 파일이거나 소스(pythonw)로 뜬 런처는 그대로."""
+    if not frozen():
+        return
+    user32, hwnd = ctypes.windll.user32, 0
+    while hwnd := user32.FindWindowExW(None, hwnd, "TkTopLevel", "playroom"):
+        pid = ctypes.c_ulong()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if overlay.replaces(overlay.exe_of(pid.value), sys.executable, __file__):
+            user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
 
 
 BG, CARD, LINE, TEXT, MUTED = "#ffffff", "#f5f6f8", "#e4e6eb", "#1f2329", "#6b7080"
@@ -275,6 +288,8 @@ def check():
         assert getattr(mod, "TRAY_CLASS", overlay.LAYERS_TRAY) == t.tray, (t.name, "트레이 창")
         src = t.script.read_text(encoding="utf-8")
         assert (f'overlay.on_top("{t.name}")' in src) == t.pick_top, (t.name, "항상 위를 읽는 이름")
+        assert "overlay.already_running(PID_FILE" in src and "startup.follow(RUN_NAME, __file__)" in src, \
+            (t.name, "새로 받은 exe 가 옛 exe 를 갈아 끼우고 시작 시 실행도 따라감")
 
     tmp = Path(tempfile.mkdtemp())
     real = overlay.LAUNCHER_FILE
@@ -330,7 +345,61 @@ def check():
         assert startup.beside("x/none.py", rel).name == "none.exe", "없으면 버전 없는 이름 (띄우다 실패가 보임)"
     finally:
         overlay.LAUNCHER_FILE = real
+    check_takeover(tmp)
     print("자체 점검 통과")
+
+
+def check_takeover(tmp):
+    """새로 받은 exe 가 떠 있는 옛 exe 를 갈아 끼우는 판정과 시작 시 실행 따라가기. 진짜 Run 키는 안 건드림."""
+    assert Path(overlay.exe_of(os.getpid())).samefile(sys.executable), "떠 있는 프로세스의 실행 파일 경로"
+    new, w = r"C:\b\weather-0.1.3.exe", "weather.py"
+    assert overlay.replaces(r"C:\a\weather-0.1.2.exe", new, w), "다른 폴더의 옛 버전은 갈아 끼움"
+    assert overlay.replaces(r"C:\b\weather.exe", new, w), "버전 없는 이름도 같은 도구"
+    assert overlay.replaces(r"C:\b\weather-0.1.3 (1).exe", new, w), "두 번 받아 붙은 이름도 같은 도구"
+    assert not overlay.replaces(r"c:\B\Weather-0.1.3.EXE", new, w), "같은 파일(대소문자만 다름)은 그대로 — 지금처럼 그냥 끝남"
+    for other in (r"C:\py\pythonw.exe", r"C:\x\chrome.exe", r"C:\b\weatherx-0.1.0.exe", None):
+        assert not overlay.replaces(other, new, w), ("소스로 뜬 것·PID 를 다시 쓴 남의 프로세스는 안 건드림", other)
+
+    pid = tmp / "self.pid"
+    assert not overlay.already_running(pid, "PlayroomNoSuchTray", w, False), "안 떠 있으면 뜸"
+    pid.write_text(str(os.getpid()))
+    sys.frozen = True  # 릴리스 exe 흉내. 떠 있는 쪽(나)이 pythonw 라 갈아 끼우지 않으므로 나를 끄지 않음
+    try:
+        assert overlay.already_running(pid, "PlayroomNoSuchTray", w, False), "떠 있는 게 소스면 그냥 끝남"
+    finally:
+        del sys.frozen
+
+    # 시작 시 실행 따라가기: Run 키 자리를 시험용 키로 돌려서 씀
+    fake, real_key, real_exe = r"Software\PlayroomSelfCheck\Run", startup.RUN_KEY, sys.executable
+    rel = tmp / "follow"
+    rel.mkdir()
+    (rel / "weather-0.1.4.exe").touch()
+    hkcu = winreg.HKEY_CURRENT_USER
+    startup.RUN_KEY, sys.executable, sys.frozen = fake, str(rel / "weather-0.1.4.exe"), True
+    try:
+        mine = f'"{rel / "weather-0.1.4.exe"}"'
+        cases = (('"C:\\old\\weather-0.1.3.exe"', mine, "옛 exe 를 가리키면 지금 것으로"),
+                 (f'"{real_exe}" "C:\\dev\\playroom\\weather\\weather.py"', None, "소스를 가리키면 그대로"),
+                 ('"C:\\x\\chrome.exe"', None, "남의 exe 면 그대로"))
+        for old, want, why in cases:
+            with winreg.CreateKey(hkcu, fake) as k:
+                winreg.SetValueEx(k, "W", 0, winreg.REG_SZ, old)
+            startup.follow("W", w)
+            with winreg.OpenKey(hkcu, fake) as k:
+                assert winreg.QueryValueEx(k, "W")[0] == (want or old), why
+        with winreg.CreateKey(hkcu, fake) as k:
+            winreg.DeleteValue(k, "W")
+        startup.follow("W", w)
+        with winreg.OpenKey(hkcu, fake) as k:
+            assert winreg.QueryInfoKey(k)[1] == 0, "등록이 없으면 새로 만들지 않음"
+    finally:
+        startup.RUN_KEY, sys.executable = real_key, real_exe
+        del sys.frozen
+        for key in (fake, r"Software\PlayroomSelfCheck"):
+            try:
+                winreg.DeleteKey(hkcu, key)
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":
@@ -340,4 +409,5 @@ if __name__ == "__main__":
         ctypes.windll.shcore.SetProcessDpiAwareness(2)  # 배율 높은 화면에서 흐려지지 않게
         # 작업 표시줄이 pythonw 로 묶어 파이썬 아이콘을 띄우지 않고 창 아이콘을 쓰게
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Ruminem.playroom.launcher")
+        close_old()
         Launcher().root.mainloop()

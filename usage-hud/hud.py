@@ -353,9 +353,7 @@ def main():
     if args.stop:
         print("HUD 를 치움" if stop() else "떠 있는 HUD 가 없음")
         return
-    if running_pid() is not None:
-        if args.toggle:
-            stop()
+    if overlay.already_running(PID_FILE, TRAY_CLASS, __file__, args.toggle):
         return
     if args.toggle and Path(sys.executable).name.lower() == "python.exe":
         # hud.bat 에서 콘솔 창이 남지 않게 pythonw 로 다시 띄움
@@ -372,6 +370,7 @@ def main():
         ctypes.windll.shcore.SetProcessDpiAwareness(2)  # 배율 높은 화면에서 흐려지지 않게
     except (AttributeError, OSError):
         pass
+    startup.follow(RUN_NAME, __file__)
     PID_FILE.write_text(str(os.getpid()))
     try:
         Hud(args.scale, args.corner, saved.get("theme", "classic")).run()

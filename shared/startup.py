@@ -6,6 +6,7 @@
 
   python startup.py    자체 점검 (시험용 이름으로 실제 레지스트리를 켰다 끄고 지움)
 """
+import re
 import sys
 import winreg
 from pathlib import Path
@@ -30,6 +31,30 @@ def beside(script, here=None):
             return None
     found = [(v, p) for p in here.glob(f"{stem}-*.exe") if (v := version(p))]
     return max(found)[1] if found else exact
+
+
+def release_exe(path, script):
+    """path 가 이 도구의 릴리스 exe 이름인지 — hud.exe · hud-0.1.2.exe · 두 번 받아 붙은 'hud-0.1.2 (1).exe'.
+    pythonw.exe 나 남의 exe 는 아님."""
+    stem = re.escape(Path(script).stem)
+    return bool(re.fullmatch(stem + r"(-[0-9.]+)?( \(\d+\))?\.exe", Path(path).name, re.IGNORECASE))
+
+
+def follow(name, script):
+    """릴리스 exe 가 뜰 때 부름. 시작 시 실행이 같은 도구의 다른 exe(옛 버전)를 가리키면 지금 것으로 고쳐 씀 —
+    안 고치면 다음 로그인에 옛 버전이 뜨고, 옛 파일을 지우면 아무것도 안 뜸. 등록이 없거나 소스(pythonw)를
+    가리키면 그대로 두고, 설정 앱에서 꺼 둔 표식(StartupApproved)도 안 건드림."""
+    if not getattr(sys, "frozen", False):
+        return
+    new = command(script)
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE) as k:
+            old = winreg.QueryValueEx(k, name)[0].strip()
+            path = old[1:-1] if len(old) > 2 and old[0] == old[-1] == '"' and old.count('"') == 2 else ""
+            if old != new and release_exe(path, script) and Path(new.strip('"')).exists():
+                winreg.SetValueEx(k, name, 0, winreg.REG_SZ, new)
+    except OSError:
+        pass  # 등록 없음 · 못 씀: 시작 시 실행이 옛것을 가리키는 채로 남을 뿐
 
 
 def command(script):

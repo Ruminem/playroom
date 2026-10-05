@@ -6,9 +6,12 @@
 import ctypes
 import json
 import os
+import sys
 import tempfile
 import time
 from pathlib import Path
+
+import startup
 
 LAYERS_TRAY = "PlayroomLayersTray"
 LAUNCHER_FILE = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "playroom" / "launcher.json"
@@ -58,6 +61,42 @@ def stop(pid_file, tray_class):
             time.sleep(0.1)
     os.kill(pid, 9)  # 3초 안에 안 끝나면 강제로
     pid_file.unlink(missing_ok=True)
+    return True
+
+
+def exe_of(pid):
+    """그 프로세스의 실행 파일 전체 경로. 못 열면 None."""
+    k32 = ctypes.windll.kernel32
+    handle = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return None
+    buf = ctypes.create_unicode_buffer(32768)
+    size = ctypes.c_ulong(len(buf))
+    ok = k32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size))
+    k32.CloseHandle(handle)
+    return buf.value if ok else None
+
+
+def replaces(running, me, script):
+    """새로 띄운 릴리스 exe(me)가 떠 있는 쪽(running 경로)을 갈아 끼우는지: 같은 도구의 exe 인데 다른 파일이면.
+    소스(pythonw)로 뜬 것은 안 건드리고, PID 가 남의 프로세스로 재사용됐으면 그걸 죽이지 않게 이름도 봄."""
+    if not running or not startup.release_exe(running, script):
+        return False
+    return os.path.normcase(os.path.abspath(running)) != os.path.normcase(os.path.abspath(me))
+
+
+def already_running(pid_file, tray_class, script, toggle):
+    """True 면 부른 쪽은 그냥 끝남. --toggle 은 떠 있는 것을 끄기만 하고, 그냥 실행은 떠 있으면 아무것도 안 함 —
+    다만 새로 받은 릴리스 exe 를 실행하면 떠 있는 옛 exe 를 끄고 이어서 뜸(False)."""
+    pid = running_pid(pid_file)
+    if pid is None:
+        return False
+    if toggle:
+        stop(pid_file, tray_class)
+        return True
+    if getattr(sys, "frozen", False) and replaces(exe_of(pid), sys.executable, script):
+        stop(pid_file, tray_class)
+        return False
     return True
 
 
