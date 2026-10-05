@@ -2413,7 +2413,7 @@ def check():
     cat.go("sleep", t0)
     d.frame(1 / 60, t0 - 1 / 60)  # reset 뒤 첫 프레임은 통째로
     d.frame(1 / 60, t0)
-    band_top = dh - pet.BAND - rise
+    band_top = 0 if MAC else dh - pet.BAND - rise  # 맥은 버퍼 둘을 번갈아 써서 늘 통째로
     assert ms["tops"][-1] == band_top, "평소엔 바닥 띠만 지움"
     d.aim()
     assert ms["catch"] == [], "커서가 동물 밖이면 클릭은 아래 창으로"
@@ -2456,7 +2456,7 @@ def check():
     assert ms["catch"][-1] is False and not bird.held, "끄면 동물 위여도 클릭은 아래 창으로, 안 집힘"
     d.handle(DRAG)
     d.press(True)
-    assert bird.held and d.drag, "다시 켜면 집힘"
+    assert bool(bird.held) == d.drag == (not MAC), "다시 켜면 집힘 (맥은 집기가 없어 안 켜짐)"
     d.handle(DRAG)
     assert not bird.held, "끄면 들던 동물을 놓음"
     if not MAC:  # 창을 안 만들고 Surface 의 마우스 갈래만: user32 를 흉내로 바꿔 끼움
