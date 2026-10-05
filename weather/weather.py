@@ -12,8 +12,8 @@
 그 사이 틈은 화면 맨 아래. 눈은 원근 세 층으로 바람에 흔들리며 내리고 그 바닥 위에 쌓였다 천천히 녹는다.
 비는 세 겹 깊이의 빗줄기가 돌풍에 기울며 내리고 바닥에서 튀며, 뇌우는 거기에 번개와 빗발의 물결을 더한다.
 반딧불이는 화면 아래쪽을 떠다니며 깜빡인다. 어항은 화면을 옅은 물빛으로 덮고 빛줄기·거품·물고기·모래·해초를 그린다. 고양이(pet.py)를 켜면 바닥이나 쌓인 더미 위를 돌아다닌다.
-트레이의 눈송이 메뉴에서 종류·양·고양이·숨기기·끝내기를 하고(양은 10% 칸으로 0–100%),
-고른 것은 SETTINGS 에 남는다.
+트레이의 눈송이 메뉴에서 종류·양·고양이·숨기기·끝내기를 하고(양은 10% 칸으로 0–100%), 왼쪽 클릭 설정 창에서는
+어항의 물고기·거품·빛줄기 수도 막대로 고른다. 고른 것은 SETTINGS 에 남는다.
 """
 import argparse
 import ctypes
@@ -312,6 +312,9 @@ RUN_NAME = "PlayroomWeather"  # 시작할 때는 인자 없이 떠서 저장된 
 AMOUNTS = {10 + i: p for i, p in enumerate(range(10, 101, 10))}  # 메뉴 id → %. 트레이 메뉴엔 막대를 못 넣어 칸으로
 FULL = 300       # 양 100% 의 눈송이·빗방울 수 (꽃잎·반딧불이는 이 수에 종류별 비율을 곱함)
 OLD_AMOUNTS = {"few": 20, "normal": 50, "many": 100}  # 예전 세 단계. 설정 파일·--amount 에서 아직 읽음
+# 어항 막대: 설정 파일 키 → 설정 창 이름. 0–100% 이고 50% 가 FISH_N · 거품 30개 · RAY_COUNT, 100% 면 두 배.
+# 어항에서 양은 물빛 진하기만 정함
+TANK = {"fish": "물고기", "bubbles": "거품", "rays": "빛줄기"}
 
 
 def count(amount):
@@ -750,12 +753,16 @@ def load_settings():
         ok["pet"] = [a for a in PET_CLASS if a in p]  # 모르는 이름·겹친 이름은 버림
     if data.get("fps") in FPS_IDS.values():
         ok["fps"] = data["fps"]
+    for k in TANK:
+        if parse_amount(data.get(k)) is not None:
+            ok[k] = parse_amount(data[k])
     return ok
 
 
 class Weather:
-    def __init__(self, kind, amount, animals=(), fps=FPS):
+    def __init__(self, kind, amount, animals=(), fps=FPS, tank=None):
         self.kind, self.amount, self.visible, self.fps = kind, amount, True, fps
+        self.tank = {k: (tank or {}).get(k, 50) for k in TANK}  # 어항 막대 %. 어항이 아닐 때 바꿔도 남겨 둠
         # ponytail: 시작할 때의 주 모니터 작업 영역에 고정. 해상도·작업 표시줄이 바뀌면 다시 켜야 함
         l, t, r, b = overlay.work_area()
         spot = None if MAC else taskbar.spot()
@@ -852,8 +859,15 @@ class Weather:
                 ("끝내기", EXIT, False)]
 
     def handle(self, cid):
-        if isinstance(cid, tuple):  # 설정 창의 양 막대에서 손을 뗀 값
-            self.amount = cid[1]
+        if isinstance(cid, tuple):  # 설정 창의 막대에서 손을 뗀 값 — 양이나 어항 막대
+            key, value = cid
+            if key not in TANK:
+                self.amount = value
+            else:
+                self.tank[key] = value
+                if self.kind != "aquarium":  # 다시 깔면 쌓인 눈이 날아감. 어항을 고를 때 씀
+                    self.save()
+                    return
         elif cid == PANEL:
             self.open_panel()
             return
@@ -888,7 +902,7 @@ class Weather:
         try:
             SETTINGS.parent.mkdir(parents=True, exist_ok=True)
             SETTINGS.write_text(json.dumps({"kind": self.kind, "amount": self.amount, "pet": list(self.pets),
-                                            "fps": self.fps}), encoding="utf-8")
+                                            "fps": self.fps, **self.tank}), encoding="utf-8")
         except OSError:
             pass  # 못 남겨도 지금 화면은 바뀌었으니 넘어감
 
@@ -897,7 +911,7 @@ class Weather:
         if self.panel and self.panel.poll() is None:
             return  # 이미 떠 있음
         state = {"kind": self.kind, "amount": self.amount, "pet": list(self.pets), "show": self.visible,
-                 "auto": startup.is_on(RUN_NAME, __file__), "fps": self.fps}
+                 "auto": startup.is_on(RUN_NAME, __file__), "fps": self.fps, "tank": self.tank}
         ctypes.windll.user32.AllowSetForegroundWindow(-1)  # 방금 트레이를 누른 건 이 프로세스라 앞으로 올릴 권한을 넘김
         me = [] if getattr(sys, "frozen", False) else [str(Path(__file__).resolve())]  # 릴리스 exe 는 스크립트 없이 자기 자신
         self.panel = subprocess.Popen([sys.executable, *me, "--panel", json.dumps(state)],
@@ -907,8 +921,8 @@ class Weather:
     def read_panel(self, proc):
         for line in proc.stdout:
             word, _, arg = line.partition(" ")
-            if word == "amount" and arg.strip().isdigit() and parse_amount(int(arg)) is not None:
-                self.commands.put(("amount", int(arg)))
+            if word in ("amount", *TANK) and arg.strip().isdigit() and parse_amount(int(arg)) is not None:
+                self.commands.put((word, int(arg)))
             elif word.strip().isdigit() and int(word) in (*KINDS, *FPS_IDS, *PETS, SHOW, AUTOSTART, EXIT):
                 self.commands.put(int(word))
 
@@ -1276,16 +1290,16 @@ class Weather:
         self.pile.h = list(self.sand)  # 모래는 안 녹는 더미 — 동물이 그 위를 걷고 거품이 거기서 나옴
         self.sand_base = None  # 다음 프레임에 모래 띠를 그림
         self.vents = [x for x, *_ in random.sample(aq["weeds"], min(3, len(aq["weeds"])))]  # 거품 줄기가 나오는 해초 밑
-        n = count(self.amount)
+        n = count(self.tank["bubbles"])  # 막대 50% 가 예전 양 50% 의 거품 수
         self.flakes = [self.new_bubble(li, False) for li, layer in enumerate(BUBBLE_LAYERS)
                        for _ in range(round(n * BUBBLE_SHARE * layer[0]))]
-        reach = int(h * RAY_REACH)
+        reach, rays = int(h * RAY_REACH), round(RAY_COUNT * self.tank["rays"] / 50)
         lo, hi = RAY_WIDTHS[-1], w - RAY_WIDTHS[-1] - (RAY_SLANT + RAY_SWAY) * reach  # 퍼진 아래 끝까지 화면 안
         # [위 끝 가운데 x, 모양, 위상, 빠르기]
-        self.rays_at = [] if hi <= lo else [[lo + (i + random.uniform(0.15, 0.85)) * (hi - lo) / RAY_COUNT,
+        self.rays_at = [] if hi <= lo else [[lo + (i + random.uniform(0.15, 0.85)) * (hi - lo) / rays,
                                              random.randrange(len(RAY_WIDTHS)), random.uniform(0, math.tau),
-                                             random.uniform(0.08, 0.16)] for i in range(RAY_COUNT)]
-        self.fish = [self.new_fish() for _ in range(FISH_N)]
+                                             random.uniform(0.08, 0.16)] for i in range(rays)]
+        self.fish = [self.new_fish() for _ in range(round(FISH_N * self.tank["fish"] / 50))]
         cw = aq["crab_size"][0]
         # 게 [x, 1 오른쪽 · -1 왼쪽, 지금 짓이 끝나는 시각, 걷는 중, 화면 y] · 해파리 [x, y, 오르내리는 px/초, 다음에
         # 오므릴 시각, 오므린 시각, 위상, 가려는 높이] · 상자 [열리는 시각, 다음 거품 시각]. 시각은 첫 프레임에 정함
@@ -1901,10 +1915,11 @@ def check():
     a.w, a.h, a.stride, a.rise, a.amount, a.kind, a.strip_h = aw, ah, aw * 4, rise, 50, "aquarium", PILE_STRIP + rise
     a.base, a.snow_pile, a.sprite_cache, a.aq_tint = [0] * 200 + [rise] * 200, pile_column_parts(PILE_STRIP + rise), {}, None
     a.next_base, a.full_clear, a.pets, a.on_top, a.last_settle = None, False, {}, False, 0
-    a.goal, a.fall, a.crumble = a.base, None, crumble(aw)
+    a.goal, a.fall, a.crumble, a.tank = a.base, None, crumble(aw), {k: 50 for k in TANK}
     a.surface = types.SimpleNamespace(pixels=bytearray(aw * ah * 4), clear=lambda top=0: None, present=lambda top=0: None)
     a.surface.fill = lambda src: a.surface.pixels.__setitem__(slice(None), src)
     a.reset()
+    assert (len(a.fish), len(a.flakes), len(a.rays_at)) == (FISH_N, 30, RAY_COUNT), "어항 막대 50% 면 예전 수 그대로"
     a.flakes, a.crab = [], []  # 해초 뿌리 밑을 거품·게가 가리지 않게
     a.frame(1 / 60, 0.0)
     px, st = a.surface.pixels, a.stride
@@ -2026,6 +2041,21 @@ def check():
     datas = [d for band in a.jelly_sprites for fr in band for _, _, d in fr]
     assert all(d[i + c] <= d[i + 3] for d in datas for i in range(0, len(d), 4) for c in range(3)), "해파리는 premultiplied"
     assert any(d[i + 3] < 255 for d in datas for i in range(0, len(d), 4)), "해파리는 비침"
+    # 어항 막대: 0% 면 없고 100% 면 두 배. 양은 물빛만 — 거품 수와 무관
+    a.amount, a.tank = 100, {"fish": 0, "bubbles": 100, "rays": 100}
+    a.reset()
+    reach = int(ah * RAY_REACH)
+    assert (len(a.fish), len(a.flakes), len(a.rays_at)) == (0, 60, 2 * RAY_COUNT), \
+        ("막대 0·100% 면 없음·두 배, 양과 무관", len(a.fish), len(a.flakes), len(a.rays_at))
+    assert all(RAY_WIDTHS[-1] <= x0 and x0 + (RAY_SLANT + RAY_SWAY) * reach + RAY_WIDTHS[-1] <= aw for x0, *_ in a.rays_at), \
+        "빛줄기가 두 배여도 퍼진 아래 끝까지 화면 안"
+    a.tank = {"fish": 100, "bubbles": 0, "rays": 0}
+    a.reset()
+    assert (len(a.fish), len(a.flakes), a.rays_at) == (2 * FISH_N, 0, []), "물고기 두 배, 거품·빛줄기 없음"
+    a.fish, a.jelly = [], []  # 물고기·해파리는 화면 위 10% 아래로만 — 20 행은 그래도 비지만 다른 배치에서도 확실히
+    a.frame(1 / 60, 300.0)
+    assert all(at(x, 20) == water_rows(ah, 100)[20] for x in range(aw)), "빛줄기 0% 면 위쪽이 물빛만"
+    a.amount, a.tank = 50, {k: 50 for k in TANK}
 
     # 전체 화면 앱이 작업 표시줄을 가리면 틀이 사라짐 — 바닥이 무너지듯 떨어지고, 다시 나타나면 바로 솟음
     up, land = [0] * 100 + [rise] * 300, math.sqrt(2 * rise / SINK_G)
@@ -2092,6 +2122,12 @@ def check():
                             (["penguin", "cat", "fox", "cat", [1]], ["cat", "penguin"])):
             SETTINGS.write_text(json.dumps({"pet": saved}), encoding="utf-8")
             assert load_settings().get("pet") == want, (saved, "예전 true 는 고양이, 모르는 이름은 버림")
+        SETTINGS.write_text(json.dumps({"fish": 0, "bubbles": 150, "rays": "x"}), encoding="utf-8")
+        assert load_settings() == {"fish": 0}, "어항 막대는 0–100 만"
+        Weather.save(types.SimpleNamespace(kind="aquarium", amount=40, pets={"cat": None}, fps=60,
+                                           tank={"fish": 10, "bubbles": 0, "rays": 90}))
+        assert load_settings() == {"kind": "aquarium", "amount": 40, "pet": ["cat"], "fps": 60, "fish": 10, "bubbles": 0,
+                                   "rays": 90}, "남긴 그대로 다시 읽힘"
     finally:
         SETTINGS = real
     from types import SimpleNamespace
@@ -2103,9 +2139,18 @@ def check():
     Weather.handle(z, 24)
     assert list(z.pets) == ["cat"], "다시 누르면 꺼짐"
     q = SimpleNamespace(commands=queue.Queue())
-    Weather.read_panel(q, SimpleNamespace(stdout=["amount 30\n", "amount x\n", "amount 150\n", "2\n",
-                                                        "43\n", "23\n", "77\n", "hi\n"]))
-    assert list(q.commands.queue) == [("amount", 30), 2, 43, 23], "설정 창이 보낸 줄 중 아는 것만"
+    Weather.read_panel(q, SimpleNamespace(stdout=["amount 30\n", "amount x\n", "amount 150\n", "fish 0\n", "rays 101\n",
+                                                        "bubbles x\n", "fishy 3\n", "2\n", "43\n", "23\n", "77\n", "hi\n"]))
+    assert list(q.commands.queue) == [("amount", 30), ("fish", 0), 2, 43, 23], "설정 창이 보낸 줄 중 아는 것만"
+    hz = SimpleNamespace(kind="snow", amount=50, tank={k: 50 for k in TANK}, done=[])
+    hz.reset, hz.save = (lambda: hz.done.append("reset")), (lambda: hz.done.append("save"))
+    Weather.handle(hz, ("fish", 0))
+    assert hz.tank["fish"] == 0 and hz.amount == 50 and hz.done == ["save"], "어항이 아니면 남기기만 — 다시 깔면 쌓인 눈이 날아감"
+    hz.kind, hz.done = "aquarium", []
+    Weather.handle(hz, ("rays", 80))
+    Weather.handle(hz, ("amount", 30))
+    assert hz.tank == {"fish": 0, "bubbles": 50, "rays": 80} and hz.amount == 30 and hz.done == ["reset", "save"] * 2, \
+        "어항이면 어항을 새로 깔고, 양은 양에"
     print("자체 점검 통과")
 
 
@@ -2140,26 +2185,36 @@ def panel(state):
     kind = tk.StringVar(value=state["kind"])
     for i, (cid, (key, label)) in enumerate(KINDS.items()):
         ttk.Radiobutton(f, text=label, value=key, variable=kind, style="Toolbutton",
-                        command=lambda cid=cid: send(cid)).grid(row=1 + i // 4, column=i % 4, sticky="ew",
-                                                                padx=px(2), pady=px(2))
+                        command=lambda cid=cid: (send(cid), fit())).grid(row=1 + i // 4, column=i % 4, sticky="ew",
+                                                                         padx=px(2), pady=px(2))
 
-    row = ttk.Frame(f)
-    row.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(px(12), px(6)))
-    ttk.Label(row, text="양").pack(side="left")
-    val = tk.DoubleVar(value=state["amount"])
-    pct = ttk.Label(row, width=5, anchor="e", text="%d%%" % state["amount"])
-    show = lambda *_: pct.configure(text="%d%%" % round(val.get()))
-    scale = ttk.Scale(row, from_=0, to=100, variable=val, command=show)
-    pct.pack(side="right")
-    scale.pack(side="left", fill="x", expand=True, padx=(px(10), px(4)))
+    bars = ttk.Frame(f)  # 막대 줄들. 한 격자라 이름 폭이 달라도 막대가 나란함
+    bars.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(px(12), px(6)))
+    bars.columnconfigure(1, weight=1)
 
-    def jump(e):  # 볼륨 막대처럼 누른 자리로 바로 감 (ttk 기본은 한 칸씩)
-        val.set(max(0.0, min(100.0, e.x / max(1, scale.winfo_width()) * 100)))
-        show()
+    def bar(r, label, value, word):
+        """0–100% 막대 한 줄 → (이름, 막대, 숫자). 손을 떼면 `word 값` 을 보냄 — 끄는 동안 매번 다시 뿌리지 않게."""
+        val = tk.DoubleVar(value=value)
+        pct = ttk.Label(bars, width=5, anchor="e", text="%d%%" % value)
+        show = lambda *_: pct.configure(text="%d%%" % round(val.get()))
+        scale = ttk.Scale(bars, from_=0, to=100, variable=val, command=show)
 
-    scale.bind("<Button-1>", jump, add="+")
-    scale.bind("<ButtonRelease-1>", lambda _: send("amount", round(val.get())))  # 끄는 동안 매번 다시 뿌리지 않게
-    scale.bind("<KeyRelease>", lambda _: send("amount", round(val.get())))
+        def jump(e):  # 볼륨 막대처럼 누른 자리로 바로 감 (ttk 기본은 한 칸씩)
+            val.set(max(0.0, min(100.0, e.x / max(1, scale.winfo_width()) * 100)))
+            show()
+
+        scale.bind("<Button-1>", jump, add="+")
+        scale.bind("<ButtonRelease-1>", lambda _: send(word, round(val.get())))
+        scale.bind("<KeyRelease>", lambda _: send(word, round(val.get())))
+        name = ttk.Label(bars, text=label)
+        name.grid(row=r, column=0, sticky="w", pady=px(1))
+        scale.grid(row=r, column=1, sticky="ew", padx=(px(10), px(4)), pady=px(1))
+        pct.grid(row=r, column=2, sticky="e", pady=px(1))
+        return name, scale, pct
+
+    bar(0, "양", state["amount"], "amount")
+    tank = state.get("tank", {})  # 예전 weather 가 띄우면 없음 — 설정 창은 디스크의 새 파일로 뜸
+    tank_bars = [wd for r, (key, label) in enumerate(TANK.items(), start=1) for wd in bar(r, label, tank.get(key, 50), key)]
 
     smooth = ttk.Frame(f)
     smooth.grid(row=4, column=0, columnspan=4, sticky="ew", pady=(0, px(8)))
@@ -2211,11 +2266,18 @@ def panel(state):
         was["down"] = down
         root.after(50, outside)
 
-    root.update_idletasks()
-    w, h = root.winfo_reqwidth(), root.winfo_reqheight()
     l, t, r, b = overlay.work_area()
-    x, _ = root.winfo_pointerxy()  # 트레이를 누른 자리 위, 작업 표시줄 바로 위
-    root.geometry("+%d+%d" % (max(l, min(x - w // 2, r - w - px(12))), b - h - px(12)))
+    at, _ = root.winfo_pointerxy()  # 트레이를 누른 자리 위, 작업 표시줄 바로 위
+
+    def fit():
+        """어항일 때만 어항 막대를 보이고, 창 밑변을 작업 표시줄 위에 다시 맞춤 — 줄이 늘면 창은 아래로 자람."""
+        for wd in tank_bars:
+            wd.grid() if kind.get() == "aquarium" else wd.grid_remove()
+        root.update_idletasks()
+        w, h = root.winfo_reqwidth(), root.winfo_reqheight()
+        root.geometry("+%d+%d" % (max(l, min(at - w // 2, r - w - px(12))), b - h - px(12)))
+
+    fit()
     root.focus_force()  # Esc 가 먹게. weather 가 AllowSetForegroundWindow 로 허락해 둠
     root.after(50, outside)
     root.mainloop()
@@ -2267,7 +2329,7 @@ def main():
         ctypes.windll.winmm.timeBeginPeriod(1)  # 기본 타이머 간격(15.6ms)이면 30fps 를 청해도 21fps 에서 멈춤
     PID_FILE.write_text(str(os.getpid()))
     try:
-        Weather(args.kind, args.amount, saved.get("pet", []), saved.get("fps", FPS)).run()
+        Weather(args.kind, args.amount, saved.get("pet", []), saved.get("fps", FPS), saved).run()
     finally:
         if not MAC:
             ctypes.windll.winmm.timeEndPeriod(1)
