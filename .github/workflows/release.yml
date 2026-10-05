@@ -45,12 +45,22 @@ jobs:
             if ($LASTEXITCODE) { throw "$name 굽기 실패" }
           }
           Get-ChildItem dist | ForEach-Object { '{0,-14} {1,6:N1} MB' -f $_.Name, ($_.Length / 1MB) }
-      # 창 없는 exe 가 부모가 준 파이프로 stdout 을 쓰는지 — weather 설정 창이 이 길로 누른 것을 돌려보냄
-      - name: weather.exe --check (stdout 을 파일로)
+      # 창 없는 exe 는 잡히지 않은 예외를 대화상자로만 보이고 멈춤. 오류를 읽으려고 콘솔판을 따로 구워(릴리스엔 안 붙임) 점검함
+      - name: 콘솔판 weather.exe --check
         run: |
-          $p = Start-Process dist/weather.exe -ArgumentList '--check' -Wait -PassThru -RedirectStandardOutput check.out -RedirectStandardError check.err
+          python -m PyInstaller --noconfirm --onefile --console --log-level WARN --name weather `
+            --paths "$PWD/shared" --distpath build/console --workpath build/console-work --specpath build/console-work weather/weather.py
+          if ($LASTEXITCODE) { throw "콘솔판 굽기 실패" }
+          build/console/weather.exe --check
+          if ($LASTEXITCODE) { throw "콘솔판 weather.exe --check 실패 (종료 코드 $LASTEXITCODE)" }
+      # 창 없는 exe 가 부모가 준 파이프로 stdout 을 쓰는지 — weather 설정 창이 이 길로 누른 것을 돌려보냄
+      - name: 창 없는 weather.exe --check (stdout 을 파일로)
+        run: |
+          $p = Start-Process dist/weather.exe -ArgumentList '--check' -PassThru -RedirectStandardOutput check.out -RedirectStandardError check.err
+          $null = $p.Handle
+          if (-not $p.WaitForExit(60000)) { Stop-Process -Id $p.Id -Force; throw "60초 안에 안 끝남 — 오류 대화상자에 멈췄을 수 있음" }
           Get-Content check.out, check.err
-          if ($p.ExitCode -ne 0 -or -not (Select-String -Quiet '자체 점검 통과' check.out)) { throw "weather.exe --check 실패 (종료 코드 $($p.ExitCode))" }
+          if ($p.ExitCode -ne 0 -or -not (Select-String -Quiet '자체 점검 통과' check.out)) { throw "stdout 이 파이프로 안 나감 (종료 코드 $($p.ExitCode))" }
       # 창 없는 exe 는 죽으면 오류 대화상자를 띄운 채 살아 있으므로, 살아 있는 것만 보지 않고 트레이 창이 떴는지 봄
       - name: exe 띄워 보기
         run: |
@@ -62,7 +72,8 @@ jobs:
             Start-Sleep 8
             if ($p.HasExited) { throw "$name.exe 가 뜨다 죽음 (종료 코드 $($p.ExitCode))" }
             if ([U.W]::FindWindow($tray[$name], $null) -eq [IntPtr]::Zero) { throw "$name.exe 의 트레이 창이 없음 — 오류 대화상자에 멈췄을 수 있음" }
-            Start-Process "dist/$name.exe" -ArgumentList '--stop' -Wait
+            $s = Start-Process "dist/$name.exe" -ArgumentList '--stop' -PassThru
+            if (-not $s.WaitForExit(15000)) { throw "$name.exe --stop 이 안 끝남" }
             if (-not $p.WaitForExit(10000)) { throw "$name.exe 가 --stop 으로 안 꺼짐" }
             "$name.exe 뜨고 꺼짐"
           }
