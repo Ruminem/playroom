@@ -2016,10 +2016,11 @@ class Weather:
 
 
 def check():
-    hidden = {n for line in Path(__file__).read_text(encoding="utf-8").splitlines()
-              if re.match(r"\s*self\.\w+(\s*,\s*self\.\w+)*\s*=[^=]", line)
-              for n in re.findall(r"self\.(\w+)", line.split("=")[0]) if callable(Weather.__dict__.get(n))}
-    assert not hidden, ("속성이 메서드를 가림 — 부르면 TypeError", hidden)
+    if not getattr(sys, "frozen", False):  # 굳힌 exe 엔 소스 파일이 없음 — 같은 소스를 weather.yml 이 파이썬으로 봄
+        hidden = {n for line in Path(__file__).read_text(encoding="utf-8").splitlines()
+                  if re.match(r"\s*self\.\w+(\s*,\s*self\.\w+)*\s*=[^=]", line)
+                  for n in re.findall(r"self\.(\w+)", line.split("=")[0]) if callable(Weather.__dict__.get(n))}
+        assert not hidden, ("속성이 메서드를 가림 — 부르면 TypeError", hidden)
     fake =types.SimpleNamespace(surface=types.SimpleNamespace(pixels=bytearray(40 * 40 * 4)), stride=40 * 4, w=40, h=40,
                                  base=[0] * 40, splashes=[], crowns=[],
                                  droplet=place(disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR), 40 * 4),
