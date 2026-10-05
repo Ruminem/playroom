@@ -16,7 +16,7 @@ Snow, rain, a thunderstorm, hail, fireflies, fireworks or an aquarium over every
 
 ## Use
 
-Double-click [weather.bat](weather.bat) to start or stop it. A snowflake icon sits in the notification area. Left-click it for a small settings panel above the taskbar: kind buttons (or **No weather**), an amount slider from 0 to 100% that applies as you drag — snow already on the ground stays and only the number of flakes changes (in the aquarium also fish · bubbles · light rays sliders), a **Smoothness** row (30 · 60 · 120 fps), an **Animal** row of on/off buttons (cat · bird · dog · rabbit · penguin), boxes for rain sound (shown, with its volume slider, only while rain or storm is picked) and picking up animals with the mouse (both off by default), showing it and starting with Windows, and **Exit**. Clicking anywhere else closes it. Right-clicking the icon opens the same panel. Your choice is remembered in `%LOCALAPPDATA%\playroom\weather.json`, and starting with Windows uses it.
+Double-click [weather.bat](weather.bat) to start or stop it. A snowflake icon sits in the notification area. Left-click it for a small settings panel right above the icon: kind buttons (or **No weather**), an amount slider from 0 to 100% that applies as you drag — snow already on the ground stays and only the number of flakes changes (in the aquarium also fish · bubbles · light rays sliders), a **Smoothness** row (30 · 60 · 120 fps), an **Animal** row of on/off buttons (cat · bird · dog · rabbit · penguin), boxes for rain sound (shown, with its volume slider, only while rain or storm is picked) and picking up animals with the mouse (both off by default), showing it and starting with Windows, and **Exit**. Clicking anywhere else closes it. Right-clicking the icon opens the same panel. The panel waits hidden from the start (about 54 MB) so it shows at once — opening it fresh on each click took 0.35–0.57 s. Your choice is remembered in `%LOCALAPPDATA%\playroom\weather.json`, and starting with Windows uses it.
 
 ```bash
 python weather.py --toggle --kind rain --amount 80
@@ -78,7 +78,7 @@ PIP 영상이든 지금 타이핑하는 앱이든 모든 창 위로 눈·비·�
 
 ### 쓰는 법
 
-[weather.bat](weather.bat) 을 더블클릭하면 켜지고 다시 누르면 꺼짐. 알림 영역에 눈송이 아이콘이 뜸. 왼쪽 클릭하면 작업 표시줄 위에 작은 설정 창이 떠서 종류 단추(또는 **날씨 없음**), 0–100% 양 막대(끄는 동안 바로 적용됨 — 쌓인 눈은 그대로 두고 눈송이 수만 바뀜, 어항이면 물고기·거품·빛줄기 막대도), **부드러움** 줄(30·60·120fps), **동물** 줄(고양이·새·강아지·토끼·펭귄, 하나씩 켜고 끄는 단추), 빗소리(비·뇌우를 골랐을 때만 크기 막대와 같이 보임)·마우스로 동물 집기(둘 다 기본 꺼짐)·보이기·윈도우 시작 시 실행 상자와 **끝내기** 가 있음. 다른 데를 누르면 닫힘. 오른쪽 클릭해도 같은 창이 뜸. 고른 것은 `%LOCALAPPDATA%\playroom\weather.json` 에 남고, 윈도우와 같이 켜질 때도 이걸 따름.
+[weather.bat](weather.bat) 을 더블클릭하면 켜지고 다시 누르면 꺼짐. 알림 영역에 눈송이 아이콘이 뜸. 왼쪽 클릭하면 아이콘 바로 위에 작은 설정 창이 떠서 종류 단추(또는 **날씨 없음**), 0–100% 양 막대(끄는 동안 바로 적용됨 — 쌓인 눈은 그대로 두고 눈송이 수만 바뀜, 어항이면 물고기·거품·빛줄기 막대도), **부드러움** 줄(30·60·120fps), **동물** 줄(고양이·새·강아지·토끼·펭귄, 하나씩 켜고 끄는 단추), 빗소리(비·뇌우를 골랐을 때만 크기 막대와 같이 보임)·마우스로 동물 집기(둘 다 기본 꺼짐)·보이기·윈도우 시작 시 실행 상자와 **끝내기** 가 있음. 다른 데를 누르면 닫힘. 오른쪽 클릭해도 같은 창이 뜸. 설정 창은 켤 때부터 숨은 채 떠 있어(54MB 쯤) 누르면 바로 보임 — 누를 때마다 새로 띄우면 0.35–0.57초 걸렸음. 고른 것은 `%LOCALAPPDATA%\playroom\weather.json` 에 남고, 윈도우와 같이 켜질 때도 이걸 따름.
 
 ```bash
 python weather.py --toggle --kind rain --amount 80

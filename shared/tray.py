@@ -66,6 +66,22 @@ kernel32.GetModuleHandleW.restype = wintypes.HMODULE
 shell32.Shell_NotifyIconW.argtypes = (wintypes.DWORD, ctypes.POINTER(NOTIFYICONDATAW))
 
 
+class NOTIFYICONIDENTIFIER(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.DWORD), ("hWnd", wintypes.HWND), ("uID", wintypes.UINT),
+                ("guidItem", ctypes.c_byte * 16)]
+
+
+def icon_rect(class_name):
+    """그 이름의 트레이 창이 띄운 아이콘의 화면 사각형 (l, t, r, b). 다른 프로세스에서 불러도 됨.
+    창이 없거나 아이콘이 숨긴 아이콘 칸에 들어가 안 보이면 None."""
+    nii = NOTIFYICONIDENTIFIER(cbSize=ctypes.sizeof(NOTIFYICONIDENTIFIER), hWnd=user32.FindWindowW(class_name, None),
+                               uID=1)
+    r = wintypes.RECT()
+    if not nii.hWnd or shell32.Shell_NotifyIconGetRect(ctypes.byref(nii), ctypes.byref(r)) != 0 or r.right <= r.left:
+        return None
+    return r.left, r.top, r.right, r.bottom
+
+
 class Tray:
     """menu() 는 메뉴를 열 때마다 불린다. 항목: (글, id, 체크?) · (글, [하위 항목]) · None(구분선)."""
 
