@@ -1,3 +1,7 @@
+- 여기까지 됨 (2026-10-05 — 릴리스가 CHANGELOG 푸시로 돌고 드라이브에도 올림): release.yml 이 main 에 CHANGELOG.md 가 푸시되면 맨 위 절의 버전을 리눅스 작업에서 보고, 그 태그가 없을 때만 윈도우 러너로 굽고 점검한 뒤 rclone 으로 드라이브 Apps/playroom/ 에 다섯 exe 를 같은 이름으로 덮어쓰고 GitHub 릴리스를 만든다. 비밀값 RCLONE_CONFIG_GDRIVE_TOKEN 은 PC rclone 원격 gdrive 의 토큰(drive.file, 공용 client id — 그 앱이 만든 파일만 보임). PC 의 rclone.conf 는 Claude 앱 안에서 만들어 %LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\rclone\ 에 있다(MSIX 가상화 — 바깥 셸에선 안 보임). yt-pip 도 같은 방식
+- 다음 할 것: 다음 릴리스 때 드라이브 파일 ID 가 그대로인지 보기. rclone 공용 client id 가 2026 년 중 막힌다는 경고가 떠 있어, 막히면 자기 client id 와 drive 권한으로 다시 인증해 두 저장소 비밀값을 바꾼다
+- 막힌 것: 없음
+
 - 여기까지 됨 (2026-10-05 — weather 어항에서 동물이 스쿠버 장비로 헤엄): 어항이면 weather 가 동물마다 update/draw 대신 Pet.swim/draw_swim 을 불러 state 는 그대로 두고, 어항을 벗어나면 dive 를 지워 바닥 동작으로 돌아간다. 다섯 다 옆으로 누운 잠수 그림 두 장(발차기)에 물안경·노란 공기통·호흡기, 새 빼고 파란 오리발. 바닥에서 40–320px 사이 목표 높이로 20px/초씩 오르내리고(숨 거품 최저 24px/초보다 느려야 제 숨을 안 앞지름 — weather 검사가 박음) 4–10초마다 또는 화면 끝에서 돈다. 1.2–2.6초마다 호흡기에서 거품 2–4개를 내쉬고, 이 거품은 다시 안 생기고 위로 빠져 사라진다. 펭귄 95px/초로 제일 빠름. 클라우드 판의 펭귄 전용 "swim" 상태는 걷어 냄. pet 자체 점검 20→28초(동물마다 120초 흉내). 변이 16개(pet 10·weather 6) 다 걸림 — 처음엔 발차기 검사가 그림 대신 식을 다시 세고 있어 "발차기 한 장"이 살아남아, 같은 자리를 KICK 만큼 다른 시각에 두 번 그려 픽셀이 다른지 보게 고쳤다
 - 다음 할 것: 실제 화면에서 잠수하는 동물 보기 (직접). 그림 크기·헤엄 빠르기·숨 거품 양이 어떤지. 그 밖은 아래 어항 항목의 다음 할 것 그대로
 - 막힌 것: 없음
@@ -8,7 +12,7 @@
 
 - 여기까지 됨 (2026-10-05 — 첫 릴리스 v0.1.0): .github/workflows/release.yml(수동 실행, 입력 version)이 윈도우 도구 다섯(launcher·hud·weather·sysmon·layers)을 PyInstaller onefile·창 없는 exe 로 굽고, weather --check 를 콘솔판·창 없는 판으로 돌리고, 넷의 트레이 창과 런처 창이 30초 안에 뜨는지·--stop 으로 꺼지는지 본 뒤 CHANGELOG.md 의 그 버전 절을 노트로 릴리스를 만든다. 릴리스 exe 는 옆의 <스크립트 이름>.exe 를 띄우고(startup.command·launcher.argv·weather 설정 창) 시작 시 실행도 그 exe 를 가리킨다. 함정 셋: 굳힌 exe 는 PYTHONUTF8 를 안 읽어 --python-option 'X utf8' 로 박음(utf8_mode=1 은 조용히 무시됨), PowerShell 은 .NET string 인자로 넘긴 $null 을 "" 로 바꿔 FindWindow(class, $null) 이 제목 있는 창을 못 찾음, onefile 은 뜨는 데 2–5초. 크기 합 64.6MB(sysmon 10.2 · 나머지 13.5–13.7). https://github.com/Ruminem/playroom/releases/tag/v0.1.0
 - 다음 할 것: 받은 exe 를 실제 PC 에서 띄워 보기. 런처의 설치·시작 시 실행이 exe 를 가리키는지, SmartScreen 경고, 아이콘(지금은 PyInstaller 기본)
-- 막힌 것: 구글 드라이브 'Apps' 폴더에 올리기. 커넥터 create_file 이 내용을 base64 로 통째로 받아서 다섯 개면 8,600만 자(제일 작은 sysmon 도 1,350만 자)를 출력해야 함 — 사람이 릴리스에서 받아 끌어 넣는 쪽
+- 막힌 것: 구글 드라이브 'Apps' 폴더에 올리기. 커넥터 create_file 이 내용을 base64 로 통째로 받아서 다섯 개면 8,600만 자(제일 작은 sysmon 도 1,350만 자)를 출력해야 함 — 사람이 릴리스에서 받아 끌어 넣는 쪽. → 풀림: 워크플로가 rclone 으로 올림(위 항목)
 
 - 여기까지 됨 (2026-10-05 — weather 바람에 날린 눈 언덕): Pile.blow 가 settle 마다 더미 겉 LOOSE(3px)의 일부를 Weather.wind 쪽 옆 열로 옮긴다(DRIFT 0.12 × 바람 px/초 × 초, 한 번에 0.9 까지). 옆 표면이 LIFT(2px) 넘게 높으면 못 넘어 틀 옆면 앞에 언덕이 되고, 틀 위 눈은 바람 아래 모서리로 떨어지고, 화면 끝으로 날린 눈은 사라진다. 눈만, 우박은 안 날림. 이 작업 표시줄 모양으로 20분 흉내: 틀 옆이 보통 양 10–28px(트인 틈 5px), 3배 양 30–46px. 바람이 48초쯤마다 돌아서 언덕이 틀 양쪽을 오간다. DRIFT 0.03 이면 5–16px 였다. 한 번 1.25ms(0.5%). 변이 21개 다 걸림
 - 다음 할 것: 언덕 크기·오가는 빠르기를 눈으로 보기. 키우려면 DRIFT, 덜 오가게 하려면 LOOSE 를 줄이기
