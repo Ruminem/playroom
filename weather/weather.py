@@ -1585,9 +1585,9 @@ def check():
         if nb:
             a.next_base = nb
             a.frame(1 / 60, 0.0)
-        for x, rows, *_ in a.aq["weeds"]:
-            xx, y = x - len(rows[0]) // 8, ah - a.base[x] - a.sand[x]
-            assert at(xx, y - 1) == rows[0][:4] and at(xx, y) == sand_top, ("해초 뿌리는 틀 윗변의 모래 위", x, nb)
+        for x, rows, *_ in a.aq["weeds"]:  # 뿌리 높이는 x 열로 정함 — 옆 열은 모래가 1px 다를 수 있어 x 열만 봄
+            y = ah - a.base[x] - a.sand[x]
+            assert at(x, y - 1) == rows[0][:4] and at(x, y) == sand_top, ("해초 뿌리는 틀 윗변의 모래 위", x, nb)
         assert at(5, ah - a.base[5] - a.sand[5]) == sand_top and at(5, ah - a.base[5]) != sand_top, "모래는 틀 위"
     a.flakes = [a.new_bubble(li, False) for li in (0, 1) for _ in range(10)]
     for f in a.flakes:
