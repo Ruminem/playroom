@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.5 — 2026-10-05
+
+- weather: picking rain or storm in 0.2.4 stopped the animation for good (a name clash with the new rain sound); fixed
+- weather: the rain sound is redone to sound like rain heard from indoors through a window — a muffled, steady wash in stereo with now and then a soft tap of a drop on stone, instead of the metallic ticking of 0.2.4. The first time it is turned on it starts a couple of seconds late
+
+**한국어**
+
+- weather: 0.2.4 에서 비나 뇌우를 고르면 그림이 아예 멈추던 것을 고침(새 빗소리와 이름이 겹쳤음)
+- weather: 빗소리를 창 너머 방 안에서 듣는 비처럼 다시 만들었음 — 0.2.4 의 철판에 떨어지는 듯한 타닥 대신, 먹먹하고 고른 스테레오 쏴아에 가끔 돌바닥에 떨어지는 방울이 툭 하고 섞임. 처음 켤 때는 2초쯤 늦게 남
+
 ## 0.2.4 — 2026-10-05
 
 - weather: a new **rain sound** box in the settings panel and right-click menu (off by default) plays a soft hiss of rain against a window, like white noise, while rain or storm is showing, with a volume slider (50% by default). Storm uses the same sound, without thunder. It stops when the weather is hidden or another kind is picked, and works on macOS too
