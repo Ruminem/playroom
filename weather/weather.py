@@ -17,6 +17,7 @@
 """
 import argparse
 import ctypes
+import itertools
 import json
 import math
 import os
@@ -125,10 +126,12 @@ AQ_TOP, AQ_DEEP = (96, 178, 226), (26, 92, 178)
 AQ_ALPHA = (0.05, 0.08)  # 양 50% 일 때 (맨 위, 맨 아래) 불투명도. 양에 비례 — 100% 면 두 배, 0% 면 투명
 AQ_BANDS = 4       # 거품 그림에 미리 섞어 두는 물빛 높이 띠 수. 띠 안의 물빛 차이는 알파 1/255 안팎
 RAY_COUNT, RAY_REACH = 5, 0.45  # 빛줄기 수 · 화면 위에서 닿는 깊이(높이 비율). 행마다 한 번 찍어서 위쪽에만
-RAY_WIDTHS = (36, 64)  # 빛줄기 위쪽 폭 px. 내려가며 두 배로 퍼짐
-RAY_SLANT, RAY_SWAY = 0.22, 0.05  # 기울기 (가로 / 세로) · 흔들리는 폭 — 위 끝을 축으로 아래가 좌우로 흔들림
+RAY_WIDTHS, RAY_SPREAD = (0.025, 0.039, 0.055), 2.0  # 빛줄기 모양별 위쪽 폭 (화면 폭 비율, 2560 에서 64·100·140px) · 아래 끝은 (1 + SPREAD) 배로 퍼짐
+RAY_SLANT, RAY_SWAY = (0.12, 0.30), 0.05  # 기울기 (가로 / 세로) 왼쪽 줄기 → 오른쪽 줄기, 부채꼴 · 흔들리는 폭
 RAY_COLOR, RAY_ALPHA = (226, 246, 255), 0.16
-RAY_LEVELS = (1.0, 0.75, 0.5)  # 밝기 단계. 천천히 오감
+# 밝기 단계 수 (1/8 … 1). 줄기 통째로 천천히 오감. 줄기를 따라 행마다 단계를 달리하면 단계 경계가 가로줄로 보이고,
+# 행 디더는 가로 줄무늬가 보여서 안 함(2026-10-05 그려 봄)
+RAY_LEVELS = 8
 # 거품 층: 눈 층(SNOW_LAYERS)과 같은 꼴 — (비율, 반지름들, 오르는 빠르기 px/초, 알파, 안 씀, 흔들림 px, 안 씀, 안 씀)
 BUBBLE_LAYERS = ((0.6, (1.2, 1.7), (24, 42), 150, 0, 3, 0, False),
                  (0.4, (2.3, 3.2), (42, 74), 205, 0, 6, 0, False))
@@ -728,32 +731,70 @@ def bubble(r, alpha, fx=0.0, fy=0.0):
     return n, rows
 
 
-def ray_shape(top_w, length):
-    """빛줄기 한 줄기: 행마다 (가운데에서 왼쪽 끝까지 px, 알파 바이트). 내려가며 폭은 두 배로 퍼지고 옅어짐,
-    가로로는 가운데가 밝은 sin² 꼴. 위 몇 줄은 물 위에서 들어오듯 빠르게 밝아짐."""
-    rows = []
+def ray_shape(top_w, length, rng):
+    """빛줄기 한 줄기: 행마다 (가운데에서 왼쪽 끝까지 px, 알파 바이트). 가는 빛살 3–5 가닥이 겹친 단면 — 가닥마다
+    자리·굵기·세기·끝나는 깊이가 달라 결이 보이고, 자리를 폭 비율로 두어 내려가며 같이 벌어짐. 바깥은 sin² 로 사그라듦.
+    위 몇 줄은 물 위에서 들어오듯 빠르게 밝아지고, 아래로 옅어져 끝에서 0. 단면은 깊이 1/32 마다 256 칸으로 한 번 셈하고
+    폭이 바뀔 때만 그 폭으로 늘려 씀(폭마다 픽셀을 다 셈하면 2560×1440 에서 세 모양 0.2초, 이렇게 0.05초).
+    행마다는 단면에 밝기를 bytes.translate 로 곱함."""
+    strands = [(rng.uniform(0.2, 0.8), rng.uniform(0.06, 0.16), rng.uniform(0.45, 1.0), rng.uniform(0.5, 1.0))
+               for _ in range(rng.randint(3, 5))]  # (가로 자리 0–1, 굵기, 세기, 끝나는 깊이 0–1)
+    bases, profiles, scales, rows = {}, {}, {}, []
     for j in range(length):
         u = j / length
-        wj = max(2, int(top_w * (1 + u)))
-        a = 255 * RAY_ALPHA * (1 - u) ** 1.6 * min(1.0, (j + 1) / 24)
-        rows.append((-(wj // 2), bytes(int(a * math.sin(math.pi * (x + 0.5) / wj) ** 2) for x in range(wj))))
+        wj = max(2, int(top_w * (1 + RAY_SPREAD * u)))
+        prof = profiles.get(wj)
+        if prof is None:
+            m = int(u * 32)
+            base = bases.get(m)
+            if base is None:
+                live = [(c, s, k * min(1.0, max(0.0, (end - m / 32) / 0.3))) for c, s, k, end in strands]
+                base = bases[m] = [255 * math.sin(math.pi * t) ** 2 * min(1.0, 0.45 + 0.55 * sum(
+                    k * math.exp(-((t - c) / s) ** 2) for c, s, k in live)) for t in ((i + 0.5) / 256 for i in range(256))]
+            prof = profiles[wj] = bytes(int(base[(2 * x + 1) * 128 // wj]) for x in range(wj))
+        # 수면 가까이 조금 더 밝고(1 + 0.4 e^-u/0.05), 아래로 길게 옅어져 끝에서 0
+        q = int(255 * RAY_ALPHA * (1 - u) ** 1.3 * (1 + 0.4 * math.exp(-u / 0.05)) / 1.4 * min(1.0, (j + 1) / 14))
+        tab = scales.get(q)
+        if tab is None:  # 알파 2 아래는 0 — 옅은 가장자리를 잘라 겹친 줄기를 덜 지움
+            tab = scales[q] = bytes(v * q // 255 if v * q // 255 >= 2 else 0 for v in range(256))
+        a = prof.translate(tab)
+        lead = len(a) - len(a.lstrip(b"\0"))  # 투명한 앞뒤는 자름 — 겹친 줄기를 덜 지움
+        rows.append((lead - wj // 2, a.strip(b"\0") or b"\0"))
     return rows
 
 
-def tint_ray(shape, tints, level):
-    """ray_shape 의 알파 행들에 RAY_COLOR 를 입혀 행마다 그 행의 물빛 위에 섞음 → [(왼쪽 끝 px, 픽셀 바이트)…].
-    픽셀마다 파이썬을 돌면 느려서 bolt_sprite 처럼 채널마다 bytes.translate 표로 함. 물빛이 같은 행끼리 표를 같이 씀."""
+def tint_rays(shapes, tints):
+    """ray_shape 의 알파 행들에 RAY_COLOR 를 밝기 단계마다 입혀 행마다 그 행의 물빛 위에 섞음
+    → [모양][단계] = [(왼쪽 끝 px, 픽셀 바이트) 행…]. 채널마다 bytes.translate 표로 하고, 물빛이 같은 행(2560×1440 에서
+    위 45% 가 6 가지)은 이어 붙여 한 번에 섞어 행마다 파이썬을 덜 돎. 섞는 셈은 한 번에 반올림 — 두 번 내림하면
+    가장자리가 물빛보다 1 어두운 테두리가 됨."""
     tables, out = {}, []
-    for (lead, alphas), under in zip(shape, tints):
-        tab = tables.get(under)
-        if tab is None:
-            a_tab = [int(v * level) for v in range(256)]
-            tab = tables[under] = [bytes(min(255, (a * col) // 255 + under[c] * (255 - a) // 255) for a in a_tab)
-                                   for c, col in enumerate((*RAY_COLOR[::-1], 255))]
-        px = bytearray(len(alphas) * 4)
-        px[0::4], px[1::4], px[2::4], px[3::4] = (alphas.translate(t) for t in tab)
-        out.append((lead, bytes(px)))
+    for shape in shapes:
+        levels = []
+        for k in range(RAY_LEVELS):
+            rows = []
+            for under, group in itertools.groupby(zip(shape, tints), key=lambda rt: rt[1]):
+                group = [r for r, _ in group]
+                tab = tables.get((under, k))
+                if tab is None:
+                    a_tab = [v * (k + 1) // RAY_LEVELS for v in range(256)]
+                    tab = tables[under, k] = [bytes((a * col + under[c] * (255 - a) + 127) // 255 for a in a_tab)
+                                              for c, col in enumerate((*RAY_COLOR[::-1], 255))]
+                alphas = b"".join(d for _, d in group)
+                px = bytearray(len(alphas) * 4)
+                px[0::4], px[1::4], px[2::4], px[3::4] = (alphas.translate(t) for t in tab)
+                px, o = bytes(px), 0
+                for lead, d in group:
+                    rows.append((lead, px[o:o + len(d) * 4]))
+                    o += len(d) * 4
+            levels.append(rows)
+        out.append(levels)
     return out
+
+
+def ray_level(lo, hi, s):
+    """밝기 비율 lo–hi 사이를 s(−1…1)로 오가는 줄기의 밝기 단계 번호 (0 … RAY_LEVELS − 1, 단계 k 의 밝기는 (k+1)/단계 수)."""
+    return min(RAY_LEVELS - 1, max(0, round((lo + (hi - lo) * (0.5 + 0.5 * s)) * RAY_LEVELS) - 1))
 
 
 def sand_columns(n, rng):
@@ -1352,7 +1393,7 @@ class Weather:
                 "jelly_size": size(JELLY_ART[0]),
                 "bubbles": [[[bubble(r, layer[3], fx / 4, fy / 4) for fy in range(4) for fx in range(4)]
                              for r in layer[1]] for layer in BUBBLE_LAYERS],
-                "rays": [ray_shape(tw, int(h * RAY_REACH)) for tw in RAY_WIDTHS],
+                "rays": [ray_shape(max(8, int(w * f)), int(h * RAY_REACH), rng) for f in RAY_WIDTHS],
                 "fish": [[{right: pet.segments(rows, not right, FISH_COLORS) for right in (True, False)} for rows in pair]
                          for pair in frames],
                 "fish_size": [(len(rows[0]) * pet.SCALE, len(rows) * pet.SCALE) for rows, _ in FISH_ART],
@@ -1478,11 +1519,12 @@ class Weather:
             pet.stamp(px, stride, int(j[0]), int(j[1]), self.jelly_sprites[band][int(now - j[4] < JELLY_SQUEEZE)], w, h)
 
     def rays(self, now):
-        """빛줄기: 위 끝을 축으로 아래가 천천히 좌우로 흔들리고 밝기가 오감. 행마다 그 행 물빛이 섞인 조각을 덮어씀."""
+        """빛줄기: 위 끝을 축으로 아래가 천천히 좌우로 흔들리고, 줄기마다 제 범위(lo–hi) 안에서 밝기가 오감.
+        행마다 그 행 물빛이 섞인 조각을 덮어씀."""
         px, stride = self.surface.pixels, self.stride
-        for x0, shape, ph, sp in self.rays_at:
-            slant = RAY_SLANT + RAY_SWAY * math.sin(now * sp * 3 + ph)
-            lv = int((0.5 + 0.5 * math.sin(now * sp * 2 + 2 * ph)) * (len(RAY_LEVELS) - 0.001))
+        for x0, shape, ph, sp, slant, lo, hi in self.rays_at:
+            slant += RAY_SWAY * math.sin(now * sp * 3 + ph)
+            lv = ray_level(lo, hi, math.sin(now * sp * 2 + 2 * ph))
             o = 0
             for j, (lead, data) in enumerate(self.ray_rows[shape][lv]):
                 a = o + (int(x0 + j * slant) + lead) * 4
@@ -1631,11 +1673,13 @@ class Weather:
             if len(self.rays_at) != rays:  # 고르게 벌려 놓으므로 수가 바뀌면 다시 놓음
                 h, w = self.h, self.w
                 reach = int(h * RAY_REACH)
-                lo, hi = RAY_WIDTHS[-1], w - RAY_WIDTHS[-1] - (RAY_SLANT + RAY_SWAY) * reach  # 퍼진 아래 끝까지 화면 안
-                # [위 끝 가운데 x, 모양, 위상, 빠르기]
-                self.rays_at = [] if hi <= lo else [[lo + (i + random.uniform(0.15, 0.85)) * (hi - lo) / rays,
-                                                     random.randrange(len(RAY_WIDTHS)), random.uniform(0, math.tau),
-                                                     random.uniform(0.08, 0.16)] for i in range(rays)]
+                edge = w * RAY_WIDTHS[-1] * (1 + RAY_SPREAD) / 2  # 제일 넓은 모양의 퍼진 아래 끝 반폭
+                lo, hi = edge, w - edge - (RAY_SLANT[1] + RAY_SWAY) * reach  # 퍼진 아래 끝까지 화면 안
+                # [위 끝 가운데 x, 모양, 위상, 빠르기, 기울기, 밑 밝기 범위 lo · hi] — 기울기는 x 를 따라 부채꼴로 벌어짐
+                xs = [] if hi <= lo else [lo + (i + random.uniform(0.15, 0.85)) * (hi - lo) / rays for i in range(rays)]
+                self.rays_at = [[x, random.randrange(len(RAY_WIDTHS)), random.uniform(0, math.tau),
+                                 random.uniform(0.08, 0.16), RAY_SLANT[0] + (RAY_SLANT[1] - RAY_SLANT[0]) * (x - lo) / (hi - lo),
+                                 random.uniform(0.2, 0.45), random.uniform(0.7, 1.0)] for x in xs]
 
     def water_tint(self):
         """어항 물빛과 그 위에 섞어 둔 거품·빛줄기·해파리 그림을 양에 맞춤. 2560×1440 에서 30–40ms 라 양이 바뀔 때만."""
@@ -1647,7 +1691,7 @@ class Weather:
                 "water": b"".join(p * self.w for p in rows), "strip": b"".join(rows[h - self.strip_h:]),
                 "bubbles": [[[[place(over(sp, under), self.stride) for sp in subs] for subs in radii]
                              for radii in aq["bubbles"]] for under in bands],
-                "rays": [[tint_ray(shape, rows, lv) for lv in RAY_LEVELS] for shape in aq["rays"]],
+                "rays": tint_rays(aq["rays"], rows),
                 "jelly": [[tinted(art, JELLY_COLORS, under) for art in JELLY_ART] for under in bands]})
             self.sand_base = None  # 모래 띠 바탕도 물빛이라 다음 프레임에 다시 그림
         t = self.aq_tint[1]
@@ -2283,8 +2327,16 @@ def check():
     reach = int(ah * RAY_REACH)
     assert (len(a.fish), len(a.flakes), len(a.rays_at)) == (0, 60, 2 * RAY_COUNT), \
         ("막대 0·100% 면 없음·두 배, 양과 무관", len(a.fish), len(a.flakes), len(a.rays_at))
-    assert all(RAY_WIDTHS[-1] <= x0 and x0 + (RAY_SLANT + RAY_SWAY) * reach + RAY_WIDTHS[-1] <= aw for x0, *_ in a.rays_at), \
-        "빛줄기가 두 배여도 퍼진 아래 끝까지 화면 안"
+    assert all(0 <= int(x0 + j * (slant + sw)) + lead and int(x0 + j * (slant + sw)) + lead + len(d) // 4 <= aw
+               for x0, shape, _, _, slant, *_ in a.rays_at for sw in (-RAY_SWAY, RAY_SWAY)
+               for lv in a.ray_rows[shape] for j, (lead, d) in enumerate(lv)), "빛줄기가 두 배여도 퍼진 아래 끝까지 화면 안"
+    slants = [r[4] for r in a.rays_at]
+    assert slants == sorted(slants) and RAY_SLANT[0] <= slants[0] < slants[-1] <= RAY_SLANT[1], "빛줄기는 부채꼴로 벌어짐"
+    assert [ray_level(0.2, 1.0, s) for s in (-1, 0, 1)] == [1, 4, 7] and ray_level(0, 0, -1) == 0, "밝기 단계는 lo–hi 를 오감"
+    under = tint[40]
+    (_, d), = tint_rays([[(0, bytes(range(256)))]], [under])[0][-1]
+    exact = [(a * col + under[c] * (255 - a)) / 255 for a in range(256) for c, col in enumerate((*RAY_COLOR[::-1], 255))]
+    assert all(abs(v - e) <= 0.5 for v, e in zip(d, exact)), "빛줄기 섞기는 반올림 — 내림 두 번이면 가장자리가 물빛보다 어두움"
     a.tank = {"fish": FISH_MAX, "bubbles": 0, "rays": 0}
     a.reset()
     assert (len(a.fish), len(a.flakes), a.rays_at) == (FISH_MAX, 0, []), "물고기는 고른 마릿수, 거품·빛줄기 없음"
