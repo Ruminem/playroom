@@ -130,6 +130,7 @@ BUBBLE_LAYERS = ((0.6, (1.2, 1.7), (24, 42), 150, 0, 3, 0, False),
                  (0.4, (2.3, 3.2), (42, 74), 205, 0, 6, 0, False))
 BUBBLE_SHARE = 0.2  # 양 → 거품 수 ('보통' 30개)
 BUBBLE_COLOR = (236, 250, 255)
+BREATH_BUBBLES = (2, 4)  # 동물이 숨 한 번에 내쉬는 거품 수 (간격은 pet.BREATH)
 SAND_H = (3, 7)    # 모래 두께 px
 SAND_COLORS = ((238, 222, 176), (224, 204, 150), (210, 188, 134), (232, 214, 164), (196, 172, 120))
 WEED_EVERY, WEED_H, WEED_SWAY = 160, (24, 64), 7  # 해초 사이 평균 px · 키 px · 꼭대기가 흔들리는 px
@@ -1124,22 +1125,34 @@ class Weather:
             f[1] = self.h - self.base[col] - self.pile.h[col] - n - random.uniform(0, 4)
         return f
 
-    def bubbles(self, dt, now):
-        """거품: 눈송이(snow)를 거꾸로 — 같은 꼴로 흔들리며 오르다 수면(화면 위)을 넘으면 바닥에서 다시 나옴."""
-        px, stride, w, h = self.surface.pixels, self.stride, self.w, self.h
-        for f in self.flakes:
+    def bubbles(self, dt, now, flakes, refill):
+        """거품: 눈송이(snow)를 거꾸로 — 같은 꼴로 흔들리며 오르다 수면(화면 위)을 넘으면 refill 이면 바닥에서 다시
+        나오고 아니면(동물이 내쉰 숨) 사라짐. 남은 거품을 돌려줌."""
+        px, stride, w, h, live = self.surface.pixels, self.stride, self.w, self.h, []
+        for f in flakes:
             layer = BUBBLE_LAYERS[f[3]]
             f[1] -= f[2] * dt
             sprites = self.bubble_sprites[min(AQ_BANDS - 1, max(0, int(f[1] * AQ_BANDS / h)))][f[3]][f[4]]
             n = sprites[0][0]
             if f[1] + n < 0:
-                f[:] = self.new_bubble(f[3], True)
+                if refill:
+                    f[:] = self.new_bubble(f[3], True)
+                    live.append(f)
                 continue
+            live.append(f)
             x = f[0] + math.sin(f[5] + now * f[6] * 2) * layer[5]
             xi, yi = int(x), int(f[1])
             if yi < 0 or xi < 0 or xi + n > w or yi + n > h:
                 continue
             stamp(px, stride, xi, yi, sprites[int((f[1] - yi) * 4) * 4 + int((x - xi) * 4)][1])
+        return live
+
+    def exhale(self, x, y):
+        """호흡기(x, y)에서 작은 거품 몇 개 — 처음엔 몰려 있다 오르며 흩어짐. 같은 프레임에 한 번 오르므로 검사는 2px 더 봄."""
+        for _ in range(random.randint(*BREATH_BUBBLES)):
+            f = self.new_flake(0, False, BUBBLE_LAYERS)
+            f[0], f[1] = x + random.uniform(-2, 2), y - random.uniform(0, 8)
+            self.breaths.append(f)
 
     def fish_band(self, fh):
         """키 fh 인 물고기가 오가는 높이 (위, 아래) — 위 12% 아래부터 모래·작업 표시줄 위까지."""
@@ -1173,7 +1186,7 @@ class Weather:
     def reset(self):
         n, kind = count(self.amount), self.kind
         self.full_clear = True
-        self.flakes, self.drops, self.splashes, self.flies = [], [], [], []
+        self.flakes, self.drops, self.splashes, self.flies, self.breaths = [], [], [], [], []
         self.crowns, self.gust_phase = [], random.uniform(0, math.tau)
         self.bolt, self.next_bolt = None, time.perf_counter() + random.uniform(2, 5)
         self.pile = Pile(self.w, self.base)
@@ -1223,13 +1236,22 @@ class Weather:
         self.bangs = []
 
     def walk_pet(self, dt, now):
-        rainy = self.kind in ("rain", "storm")
+        rainy, wet = self.kind in ("rain", "storm"), self.kind == "aquarium"
         self.react(now)
         for p in self.pets.values():
-            p.update(dt, now, rainy)
+            if wet:  # 잠수 장비를 차고 헤엄 — 하던 짓은 멈춰 둠
+                p.swim(dt, now)
+            else:
+                p.dive = None  # 어항을 벗어나면 바닥에서 하던 짓을 이어 감
+                p.update(dt, now, rainy)
             a, b = p.feet()
             g = p.follow(max(v + f for v, f in zip(self.pile.h[a:b], self.base[a:b])), dt, now)  # 틀 단은 뛰어 오르내림
-            p.draw(self.surface.pixels, self.stride, self.h, self.pet_sprites, g, now, rainy)
+            if wet:
+                p.draw_swim(self.surface.pixels, self.stride, self.h, self.pet_sprites, g, now)
+                if p.breathe:
+                    self.exhale(*p.mouth)
+            else:
+                p.draw(self.surface.pixels, self.stride, self.h, self.pet_sprites, g, now, rainy)
 
     def frame(self, dt, now):
         kind = self.kind
@@ -1277,7 +1299,8 @@ class Weather:
         elif kind == "fireflies":
             self.fireflies(dt, now)
         elif kind == "aquarium":
-            self.bubbles(dt, now)
+            self.bubbles(dt, now, self.flakes, True)
+            self.breaths = self.bubbles(dt, now, self.breaths, False)
             self.fishes(dt, now)
         elif kind in ("rain", "storm"):
             self.rain(dt, now)
@@ -1592,11 +1615,30 @@ def check():
     a.flakes = [a.new_bubble(li, False) for li in (0, 1) for _ in range(10)]
     for f in a.flakes:
         f[1] = ah / 2
-    a.bubbles(0.05, 1.0)
+    a.bubbles(0.05, 1.0, a.flakes, True)
     assert all(f[1] < ah / 2 for f in a.flakes), "거품은 위로"
     a.flakes[0][1] = -50
-    a.bubbles(0.05, 1.1)
-    assert a.flakes[0][1] > ah * 0.8, "수면을 넘은 거품은 바닥에서 다시 나옴"
+    assert len(a.bubbles(0.05, 1.1, a.flakes, True)) == 20 and a.flakes[0][1] > ah * 0.8, "수면을 넘은 거품은 바닥에서 다시 나옴"
+    a.flakes[1][1] = -50
+    assert a.flakes[1] not in a.bubbles(0.05, 1.2, a.flakes, False), "내쉰 숨 거품은 수면을 넘으면 사라짐"
+    # 동물은 잠수 장비를 차고 떠올라 헤엄치며 호흡기에서 거품을 내쉼. 어항을 벗어나면 바닥에서 하던 짓으로
+    assert pet.SWIM_RISE < min(layer[2][0] for layer in BUBBLE_LAYERS), "떠오르는 동물이 제 숨 거품을 앞지르지 않음"
+    dog = pet.Dog(aw, random.Random(5))
+    a.pets, a.pet_sprites, a.bolt_seen, a.bangs, a.flakes = {"dog": dog}, pet.sprites(), None, [], []
+    state, puffs, first = dog.state, 0, None
+    for i in range(60 * 8):
+        a.frame(1 / 60, i / 60)
+        if dog.breathe:
+            puffs += 1
+            first = first or (a.breaths[-1], a.breaths[-1][1])
+            new = a.breaths[-BREATH_BUBBLES[0]:]
+            assert all(abs(f[0] - dog.mouth[0]) <= 2 and dog.mouth[1] - 10 <= f[1] <= dog.mouth[1] for f in new),                 ("거품은 호흡기에서", dog.mouth, new)
+    assert dog.dive == 0 and dog.lift > 60 and dog.state == state and puffs >= 3, ("떠서 헤엄", dog.lift, puffs)
+    assert first[0] not in a.breaths or first[0][1] < first[1] - 100, "숨 거품은 위로"
+    a.kind = "none"
+    a.reset()
+    a.frame(1 / 60, 8.0)
+    assert dog.dive is None and not a.breaths, "어항을 벗어나면 바닥으로"
     pinned, seen = [0] * len(a.fish), set()
     for i in range(60 * 120):
         a.fishes(1 / 60, i / 60)
