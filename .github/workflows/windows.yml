@@ -27,6 +27,7 @@ jobs:
       - name: HUD 띄워 보기
         run: |
           $p = Start-Process python -ArgumentList 'usage-hud/hud.py' -PassThru -RedirectStandardError hud.err
+          $null = $p.Handle  # 먼저 잡아 두지 않으면 끝난 뒤 ExitCode 가 빈다
           Start-Sleep 8
           if ($p.HasExited) { Get-Content hud.err; throw "HUD 가 뜨다 죽음 (종료 코드 $($p.ExitCode))" }
           python usage-hud/hud.py --stop
