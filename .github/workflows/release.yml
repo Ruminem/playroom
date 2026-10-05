@@ -62,6 +62,21 @@ jobs:
           if (-not $p.WaitForExit(60000)) { Stop-Process -Id $p.Id -Force; throw "60초 안에 안 끝남 — 오류 대화상자에 멈췄을 수 있음" }
           Get-Content check.out, check.err
           if ($p.ExitCode -ne 0 -or -not (Select-String -Quiet '자체 점검 통과' check.out)) { throw "stdout 이 파이프로 안 나감 (종료 코드 $($p.ExitCode))" }
+      # 트레이까지 뜨는지 콘솔판으로 먼저 봄 — 창 없는 판이 대화상자에 멈추면 오류를 읽을 길이 없음
+      - name: 콘솔판 hud.exe 8초 띄우기
+        run: |
+          python -m PyInstaller --noconfirm --onefile --console --log-level WARN --name hud --python-option 'X utf8' `
+            --paths "$PWD/shared" --add-data "$PWD/usage-hud/page.html;." `
+            --distpath build/console --workpath build/console-work --specpath build/console-work usage-hud/hud.py
+          if ($LASTEXITCODE) { throw "콘솔판 굽기 실패" }
+          $p = Start-Process build/console/hud.exe -PassThru -RedirectStandardOutput hud.out -RedirectStandardError hud.err
+          $null = $p.Handle
+          Start-Sleep 8
+          $alive = -not $p.HasExited
+          if ($alive) { build/console/hud.exe --stop; $null = $p.WaitForExit(10000) }
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+          Get-Content hud.out, hud.err
+          if (-not $alive) { throw "콘솔판 hud.exe 가 뜨다 죽음 (종료 코드 $($p.ExitCode))" }
       # 창 없는 exe 는 죽으면 오류 대화상자를 띄운 채 살아 있으므로, 살아 있는 것만 보지 않고 트레이 창이 떴는지 봄
       - name: exe 띄워 보기
         run: |
@@ -72,7 +87,10 @@ jobs:
             $null = $p.Handle  # 먼저 잡아 두지 않으면 끝난 뒤 ExitCode 가 빈다
             Start-Sleep 8
             if ($p.HasExited) { throw "$name.exe 가 뜨다 죽음 (종료 코드 $($p.ExitCode))" }
-            if ([U.W]::FindWindow($tray[$name], $null) -eq [IntPtr]::Zero) { throw "$name.exe 의 트레이 창이 없음 — 오류 대화상자에 멈췄을 수 있음" }
+            if ([U.W]::FindWindow($tray[$name], $null) -eq [IntPtr]::Zero) {
+              Get-ChildItem $env:TEMP -Filter 'playroom-*.log' | ForEach-Object { "--- $($_.Name)"; Get-Content $_.FullName -Tail 40 }
+              throw "$name.exe 의 트레이 창이 없음 — 오류 대화상자에 멈췄을 수 있음"
+            }
             $s = Start-Process "dist/$name.exe" -ArgumentList '--stop' -PassThru
             if (-not $s.WaitForExit(15000)) { throw "$name.exe --stop 이 안 끝남" }
             if (-not $p.WaitForExit(10000)) { throw "$name.exe 가 --stop 으로 안 꺼짐" }
