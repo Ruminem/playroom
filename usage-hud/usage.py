@@ -19,6 +19,7 @@
 """
 import contextlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -40,6 +41,11 @@ TIMEOUT = 5
 REVIVE = ["-p", ".", "--model", "haiku", "--no-session-persistence", "--strict-mcp-config",
           "--settings", '{"disableAllHooks": true}']
 REVIVE_EVERY = 30 * 60  # 로그아웃된 채면 매번 실패하므로 이 초에 한 번만
+# 맥 메뉴 막대판은 5분마다 이 파일을 새 프로세스로 부르므로 마지막으로 해 본 때를 파일에 남긴다
+REVIVE_STAMP = Path(tempfile.gettempdir()) / "playroom-usage-revive"
+# launchd(맥 로그인 시 실행)는 PATH 가 /usr/bin:/bin 뿐이라 흔한 설치 자리를 직접 본다
+CLAUDE = ("claude", str(Path.home() / ".local" / "bin" / "claude"), "/opt/homebrew/bin/claude",
+          "/usr/local/bin/claude")
 
 # 100만 토큰당 달러. (입력, 출력, 캐시 읽기, 캐시 쓰기 5분, 캐시 쓰기 1시간)
 # 규칙 저장소 turn-usage.py 의 표를 옮김 — 그쪽에서 기록의 cost-state 로 역산해 맞춘 값이다.
@@ -126,19 +132,22 @@ def fetch_limits():
         return empty
 
 
-_revived = 0.0
-
-
 def revive():
     """CLI 를 한 번 불러 만료된 토큰을 새로 고치게 함. 고쳤으면 True. REVIVE_EVERY 초에 한 번만."""
-    global _revived
-    exe = shutil.which("claude") or shutil.which(str(Path.home() / ".local" / "bin" / "claude"))
-    if not exe or time.time() - _revived < REVIVE_EVERY:
+    exe = next((p for p in map(shutil.which, CLAUDE) if p), None)
+    if not exe:
         return False
-    _revived = time.time()
+    try:
+        if time.time() - REVIVE_STAMP.stat().st_mtime < REVIVE_EVERY:
+            return False
+    except OSError:
+        pass  # 처음 해 봄
+    # 찾은 폴더를 PATH 앞에 — npm 으로 깐 claude 는 같은 폴더의 node 를 찾는다
+    env = {**os.environ, "PATH": os.path.dirname(exe) + os.pathsep + os.environ.get("PATH", "")}
     try:  # 임시 폴더에서 — 프로젝트 CLAUDE.md 를 싣지 않게. pythonw 아래서 콘솔 창이 뜨지 않게
-        r = subprocess.run([exe, *REVIVE], cwd=tempfile.gettempdir(), capture_output=True, timeout=120,
-                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        REVIVE_STAMP.touch()
+        r = subprocess.run([exe, *REVIVE], cwd=tempfile.gettempdir(), env=env, capture_output=True,
+                           timeout=120, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (OSError, subprocess.SubprocessError):
         return False
     return r.returncode == 0
@@ -332,10 +341,12 @@ def check():
     assert left(3 * 3600 + 20 * 60) == "3H20M"
     assert left(-5) == "0M"
 
-    # 401 → CLI 로 고친 뒤 한 번 더 받음. 30분 안에 또 401 이면 CLI 를 다시 부르지 않고 만료
-    global _revived
-    real = urllib.request.urlopen, subprocess.run, oauth_token, _revived
+    # 401 → CLI 로 고친 뒤 한 번 더 받음. 30분 안에 또 401 이면 — 새 프로세스여도 — CLI 를 다시
+    # 부르지 않고 만료
+    global REVIVE_STAMP
+    real = urllib.request.urlopen, subprocess.run, oauth_token, REVIVE_STAMP, shutil.which
     answers, runs = [], []
+    stamp = Path(tempfile.mkdtemp()) / "stamp"
 
     def fake_open(req, timeout):
         a = answers.pop(0)
@@ -344,18 +355,27 @@ def check():
         return contextlib.nullcontext(types.SimpleNamespace(headers=h))
     try:
         globals()["oauth_token"] = lambda: "t"
-        urllib.request.urlopen, _revived = fake_open, 0.0
-        subprocess.run = lambda *a, **k: runs.append(a) or types.SimpleNamespace(returncode=0)
+        urllib.request.urlopen, REVIVE_STAMP = fake_open, stamp
+        # PATH 에 없어도 설치 자리에서 찾고, 그 폴더를 PATH 앞에 붙여 부름
+        shutil.which = lambda p: p if p == "/opt/homebrew/bin/claude" else None
+        subprocess.run = lambda *a, **k: runs.append((a, k)) or types.SimpleNamespace(returncode=0)
         answers[:] = [401, 200]
         assert fetch_limits()["expired"] is False and len(runs) == 1 and not answers
+        ((exe, *_),), kw = runs[0]
+        assert exe == "/opt/homebrew/bin/claude" and kw["env"]["PATH"].startswith("/opt/homebrew/bin" + os.pathsep)
         answers[:] = [401]
         assert fetch_limits()["expired"] is True and len(runs) == 1, "쉬는 동안은 CLI 를 안 부름"
-        _revived = 0.0
+        os.utime(stamp, (0, 0))
         subprocess.run = lambda *a, **k: types.SimpleNamespace(returncode=1)
         answers[:] = [401]
         assert fetch_limits()["expired"] is True and not answers, "CLI 가 실패하면 다시 받지 않음"
+        shutil.which = lambda p: None
+        os.utime(stamp, (0, 0))
+        answers[:] = [401]
+        assert fetch_limits()["expired"] is True, "claude 가 없으면 그냥 만료"
     finally:
-        urllib.request.urlopen, subprocess.run, globals()["oauth_token"], _revived = real
+        urllib.request.urlopen, subprocess.run, globals()["oauth_token"], REVIVE_STAMP, shutil.which = real
+        shutil.rmtree(stamp.parent, ignore_errors=True)
     print("ok")
 
 

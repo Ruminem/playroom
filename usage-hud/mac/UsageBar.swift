@@ -154,7 +154,8 @@ final class App: NSObject, NSApplicationDelegate {
         }
         if let s = snap {
             if s.expired {
-                add("로그인 토큰 만료 — 터미널에서 claude 를 한 번 여세요", nil)
+                // usage.py 가 claude -p 로 먼저 고쳐 보고(30분에 한 번), 그래도 안 된 것
+                add("로그인 토큰 만료 — 자동으로 못 고침. 터미널에서 claude 를 한 번 여세요", nil)
             } else {
                 add(menuLine("HP (7일)", s.bars.d7), nil)
                 add(menuLine("ST (5시간)", s.bars.h5), nil)
