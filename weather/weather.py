@@ -83,6 +83,7 @@ SETTLE_SEC = 0.25
 FRAMES_EVERY = 3   # 작업 표시줄 틀을 다시 읽는 간격 초. 한 번 55ms(UI 자동화)라 다른 스레드에서
 FULLSCREEN_EVERY = 0.25  # 전체 화면 앱이 떴는지 보는 간격 초. 한 번 0.1ms
 SINK_G, SINK_CRUMBLE = 900, 0.12  # 틀이 사라져 바닥이 내려앉는 가속 px/초² · 4px 묶음마다 늦게 떨어지는 최대 초
+SINK_WATER_G, SINK_WATER_V = 600, 70  # 어항은 물속이라 덜 가속하고 이 px/초(종단 속도)를 안 넘음 — 모래가 천천히 가라앉음
 
 STORM_MULT = 1.5   # 뇌우는 비보다 굵게
 BOLT_EVERY = (5, 14)  # '보통' 일 때 번개 간격 초. 양에 반비례
@@ -600,6 +601,11 @@ def crumble(w):
     return [d for d in (random.uniform(0, SINK_CRUMBLE) for _ in range(w // 4 + 1)) for _ in range(4)][:w]
 
 
+def drop(t, g, vt=math.inf):
+    """t 초 동안 떨어진 px — g px/초² 로 빨라지다 종단 속도 vt px/초 에 닿으면 그 빠르기로(물 저항)."""
+    return g * t * t / 2 if g * t <= vt else vt * t - vt * vt / (2 * g)
+
+
 def pile_column_parts(depth=PILE_STRIP):
     """열 하나를 그릴 조각: 윗면 가장자리(높이의 소수부 16단계 알파)와 위에서 아래로 몸통(depth px)."""
     top, deep = (240, 244, 252), (212, 221, 238)
@@ -826,10 +832,11 @@ class Weather:
 
     def sink(self, now):
         """바닥을 goal 로 한 걸음. 솟는 열은 바로(작업 표시줄은 확 나타남), 낮아지는 열은 SINK_G 로 떨어짐 — 바닥
-        위의 모래·눈·장식·동물은 base 를 따라 같이 내려옴. 바닥이 바뀌었으면 True."""
+        위의 모래·눈·장식·동물은 base 를 따라 같이 내려옴. 어항은 물속이라 SINK_WATER_V 를 안 넘게 천천히.
+        바닥이 바뀌었으면 True."""
         start, t0 = self.fall
-        t, g = now - t0, SINK_G / 2
-        base = [n if n >= s else max(n, s - int(g * max(0.0, t - d) ** 2))
+        t, (g, vt) = now - t0, (SINK_WATER_G, SINK_WATER_V) if self.kind == "aquarium" else (SINK_G, math.inf)
+        base = [n if n >= s else max(n, s - int(drop(max(0.0, t - d), g, vt)))
                 for n, s, d in zip(self.goal, start, self.crumble)]
         if base == self.goal:
             base, self.fall = self.goal, None
@@ -1298,11 +1305,30 @@ class Weather:
         lo, hi = max(0, x), min(self.w, x + width)
         return self.h - max((b + s for b, s in zip(self.base[lo:hi], self.pile.h[lo:hi])), default=0)
 
+    def rest_at(self, x, width):
+        """x 에 놓으려던 폭 width 짜리가 앉을 (x, 화면 y). 가운데가 틀 단 밖이라 반 넘게 허공이면 낮은 쪽으로 넘어가
+        단 바로 옆 바닥에 앉음. 넘어갈지는 바닥이 가려는 모양(goal)으로 정함 — 지금 바닥으로 정하면 무너지는 동안
+        4px 묶음마다 높이가 달라 장식이 들썩임. 높은 데가 양쪽에 다 있으면(틀 둘에 걸친 다리) 그대로."""
+        for _ in range(3):  # ponytail: 옮긴 자리가 또 단에 걸치면 몇 번만 다시 봄. 옆 장식·해초와 겹치는 건 안 막음
+            lo, hi = max(0, x), min(self.w, x + width)
+            if hi <= lo:
+                break
+            mid = (lo + hi) // 2
+            left = [i for i in range(lo, mid) if self.goal[i] > self.goal[mid]]
+            right = [i for i in range(mid + 1, hi) if self.goal[i] > self.goal[mid]]
+            if bool(left) == bool(right):
+                break
+            x = min(max(left[-1] + 1 if left else right[0] - width, 0), max(0, self.w - width))
+        return x, self.floor_at(x, width)
+
     def place_decor(self):
-        """장식 · 상자가 앉을 화면 y. 틀 모양이 바뀔 때만 (render_sand 와 같이)."""
-        self.decor_at = [(x, self.floor_at(x, dw) - dh, segs) for x, (dw, dh), segs in self.aq["decor"]]
+        """장식 · 상자가 앉을 자리. 틀 모양이 바뀔 때만 (render_sand 와 같이)."""
+        self.decor_at = []
+        for x, (dw, dh), segs in self.aq["decor"]:
+            x, y = self.rest_at(x, dw)
+            self.decor_at.append((x, y - dh, segs))
         cx = self.aq["chest_x"]
-        self.chest_floor = None if cx is None else self.floor_at(cx, self.aq["chest_size"][0][0])
+        self.chest_x, self.chest_floor = (None, None) if cx is None else self.rest_at(cx, self.aq["chest_size"][0][0])
 
     def decor(self, now):
         """바닥 장식과 보물상자. 상자는 CHEST_SHUT 동안 닫혀 있다 CHEST_OPEN 동안 열리고, 열린 동안 CHEST_PUFF 마다
@@ -1318,7 +1344,7 @@ class Weather:
         if now >= c[0] + CHEST_OPEN:
             c[0] = now + random.uniform(*CHEST_SHUT)
         is_open = int(now >= c[0])
-        (cw, ch), x = aq["chest_size"][is_open], aq["chest_x"]
+        (cw, ch), x = aq["chest_size"][is_open], self.chest_x
         pet.stamp(px, stride, x, self.chest_floor - ch, aq["chest"][is_open], w, h)
         if is_open and now >= c[1]:
             c[1] = now + CHEST_PUFF
@@ -1973,14 +1999,16 @@ def check():
 
     def sits(x, y, sh, segs):  # 그림 맨 아래 행이 (x, y) 에 찍혀 있음
         return all(px[(y + dy) * st + x * 4 + k:(y + dy) * st + x * 4 + k + len(d)] == d for dy, k, d in segs if dy == sh - 1)
+    def seated():  # 장식마다 앉은 자리(x 는 단에서 넘어가 옮겨졌을 수 있음)의 바닥 위에 찍혀 있음
+        return all(y + dh == a.floor_at(x, dw) and sits(x, y, dh, segs)
+                   for (x, y, segs), (_, (dw, dh), _) in zip(a.decor_at, aq["decor"]))
     assert aq["decor"] and aq["chest_x"] is not None, ("장식과 상자가 놓임", len(aq["decor"]))
     for t, nb in ((20.0, None), (20.1, [0] * 100 + [rise] * 300)):  # 틀이 바뀌면 새 바닥 위로
         if nb:
             a.next_base = nb
         a.frame(1 / 60, t)
-        for x, (dw, dh), segs in aq["decor"]:
-            assert sits(x, a.floor_at(x, dw) - dh, dh, segs), ("장식은 바닥 위", x, nb is not None)
-    cx, (cw, ch) = aq["chest_x"], aq["chest_size"][1]
+        assert seated(), ("장식은 바닥 위", nb is not None)
+    cx, (cw, ch) = a.chest_x, aq["chest_size"][1]
     a.chest, a.breaths = [30.0, 30.0], []
     for i in range(int(60 * CHEST_OPEN)):
         a.frame(1 / 60, 30 + i / 60)
@@ -1995,6 +2023,23 @@ def check():
         sh = aq["chest_size"][0][1]
         assert sits(cx, a.chest_floor - sh, sh, aq["chest"][0]), "닫힌 상자"
     assert len(a.breaths) <= opened, "닫히면 안 뿜음"
+    # 틀 단에 반 넘게 허공으로 걸치면 낮은 쪽으로 넘어가 단 옆 바닥에 앉음. 반 넘게 틀 위면 걸친 채 틀 위
+    keep, ox, ow = a.base, aq["chest_x"], aq["chest_size"][0][0]
+    for shape, side in (([0] * (ox + ow * 3 // 4) + [rise] * aw, -1),  # 오른쪽 1/4 만 틀 위 → 왼쪽으로
+                        ([0] * (ox + ow // 4) + [rise] * aw, 0),        # 3/4 가 틀 위 → 그대로
+                        ([rise] * (ox + ow // 4) + [0] * aw, 1),        # 왼쪽 1/4 만 틀 위 → 오른쪽으로
+                        ([rise] * (ox + ow // 4) + [0] * (ow // 2) + [rise] * aw, 0)):  # 양쪽 틀에 걸친 다리 → 그대로
+        a.base = a.goal = a.pile.base = shape[:aw]
+        a.sand_base = None
+        a.frame(1 / 60, 50.0)
+        x, is_open = a.chest_x, int(50.0 >= a.chest[0])
+        under, sh = set(a.base[x:x + ow]), aq["chest_size"][is_open][1]
+        assert (x > ox) - (x < ox) == side and (under == {0} if side else under == {0, rise}), ("단에서 넘어감", side, x, ox)
+        assert a.chest_floor == a.floor_at(x, ow) and sits(x, a.chest_floor - sh, sh, aq["chest"][is_open]), \
+            ("넘어간 상자는 그 자리 바닥 위", side)
+        assert seated(), ("장식도 단에서 넘어가 바닥 위", side)
+    a.base = a.goal = a.pile.base = keep
+    a.sand_base = None
     a.reset()
     cw, ch = aq["crab_size"]
     walked, settled, sides = 0, 0, set()
@@ -2028,8 +2073,10 @@ def check():
     assert any(d[i + 3] < 255 for d in datas for i in range(0, len(d), 4)), "해파리는 비침"
 
     # 전체 화면 앱이 작업 표시줄을 가리면 틀이 사라짐 — 바닥이 무너지듯 떨어지고, 다시 나타나면 바로 솟음
-    up, land = [0] * 100 + [rise] * 300, math.sqrt(2 * rise / SINK_G)
-    for kind in ("aquarium", "snow"):
+    up = [0] * 100 + [rise] * 300
+    for kind in ("aquarium", "snow"):  # 어항은 물속이라 덜 빨라지다 종단 속도로 — rise 가 그 전에 닿는 거리보다 큼
+        g, vt = (SINK_WATER_G, SINK_WATER_V) if kind == "aquarium" else (SINK_G, math.inf)
+        land = vt / g / 2 + rise / vt if rise > vt * vt / g / 2 else math.sqrt(2 * rise / g)
         if kind == "snow":
             a.kind, a.pile_zero = "snow", bytes(a.strip_h * 4)
             a.reset()
@@ -2041,6 +2088,7 @@ def check():
         a.next_base, seen = [0] * aw, []
         for i in range(int(60 * (land + SINK_CRUMBLE + 0.1))):
             a.frame(1 / 60, 500 + (i + 1) / 60)
+            assert all(p - q <= vt / 60 + 1 for p, q in zip(seen[-1] if seen else up, a.base)), ("종단 속도를 안 넘음", kind, i)
             seen.append(a.base)
             got = bytes(a.strip)  # 바뀐 열만 다시 그린 띠가 통째로 그린 것과 같음
             if kind == "snow":
@@ -2049,8 +2097,9 @@ def check():
             else:
                 a.sand_base = None
                 a.render_sand()
-                for x, (dw, dh), segs in aq["decor"]:
-                    assert sits(x, a.floor_at(x, dw) - dh, dh, segs), ("떨어지는 동안에도 장식은 바닥 위", x, i)
+                # 가려는 바닥이 평평하니 묶음마다 높이가 달라도 장식은 제자리에서 바닥을 따라 내려옴(옆으로 안 들썩임)
+                assert seated() and [d[0] for d in a.decor_at] == [x for x, *_ in aq["decor"]] \
+                    and a.chest_x == aq["chest_x"], ("떨어지는 동안에도 장식은 제자리 바닥 위", i)
             assert bytes(a.strip) == got, ("떨어지는 동안 띠가 바닥을 따라감", kind, i)
         first = next(i for i, b in enumerate(seen) if b == [0] * aw)
         assert abs((first + 1) / 60 - max(a.crumble[100:]) - land) <= 2 / 60 and a.fall is None, \
