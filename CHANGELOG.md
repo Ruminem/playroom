@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1 — 2026-10-05
+
+- weather: the sliders in the settings panel now apply while you drag them instead of only when you let go, and moving one no longer starts the weather over — snow already on the ground stays and fish keep swimming where they are
+- weather: the aquarium fish slider picks a number of fish (0–20, 8 by default) instead of a percentage
+
+**한국어**
+
+- weather: 설정 창 막대가 손을 뗄 때가 아니라 끄는 동안 바로 반영되고, 막대를 움직여도 날씨를 처음부터 다시 깔지 않음 — 쌓인 눈은 그대로, 물고기는 헤엄치던 자리에 남음
+- weather: 어항 물고기 막대가 퍼센트 대신 마릿수(0–20마리, 기본 8마리)를 고름
+
 ## 0.2.0 — 2026-10-05
 
 - Opening a newer download of a tool while an older copy is running now closes the old one and takes over instead of quietly doing nothing, and start with Windows moves to the new file if it pointed at the old one
