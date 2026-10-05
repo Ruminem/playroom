@@ -6,6 +6,7 @@
 
   python pet.py    자체 점검
 """
+import math
 import random
 
 SCALE = 3  # 그림 한 칸 = 화면 px
@@ -202,6 +203,15 @@ POUNCE_V, CALM = 320, (4, 10)  # 반딧불이로 폴짝: 처음 위로 px/초 ·
 WET = ("rain", "storm")
 HOP_EVERY, HOP_DX, HOP_UP = 0.32, 14, 7  # 새 콩콩 뛰기: 간격 초, 한 번에 px, 높이 px
 FLY, FLY_ALT, FLAP = 170, 60, 0.09  # 새가 날 때 px/초, 높이 px(weather 가 다시 그리는 바닥 띠 안), 날갯짓 간격 초
+LEDGE, CLIMB = 8, 400  # 발밑이 한 번에 이 px 넘게 바뀌면(작업 표시줄 틀 단) 뜀 · 작은 굴곡(눈 더미)을 따라가는 px/초
+
+
+def leap_height(g0, g1, apex, p):
+    """g0 에서 g1 로 뛰는 포물선의 p(0..1) 자리 높이. 꼭대기가 두 끝 중 높은 쪽보다 apex 만큼 위.
+    apex 0 이면 위로 안 뜨고 내려가며 점점 빨라짐(미끄럼)."""
+    d = g1 - g0
+    u = abs(d) + 2 * apex + 2 * math.sqrt(apex * (abs(d) + apex))  # 꼭대기 조건을 푼 4h
+    return g0 + d * p + u * p * (1 - p)
 
 
 def segments(rows, flip):
@@ -251,6 +261,28 @@ class Pet:
     snowy = False  # 눈·우박 더미가 있는 날 (펭귄이 봄)
     mood = None    # (표시, 나온 시각, 끝 시각)
     calm = 0.0     # 이 시각까지는 불꽃·반딧불이에 반응 안 함
+    # 틀 단을 뛰어 오르내림: 걸리는 초, 두 끝 중 높은 쪽보다 더 뜨는 px. 이 상태 동안엔 새로 안 뜀(이미 떠 있음)
+    LEAP = {"up": (0.35, 12), "down": (0.35, 8)}
+    NO_LEAP = ()
+    ground = None  # 지금 딛고 선 높이 px
+    leap = None    # 단을 뛰는 중이면 (시작 시각, 출발 높이, 오르나)
+
+    def follow(self, want, dt, now):
+        """발밑 높이 want(발 밑 열들의 바닥+눈 중 가장 높은 것)를 따라가 그릴 높이를 돌려줌. 틀 단처럼 크게 바뀌면
+        LEAP 포물선으로 뛰고 그동안 pose 가 뛰는 그림을 고름. 뛰는 중에 want 가 바뀌면 착지점도 따라 바뀜."""
+        g = want if self.ground is None else self.ground
+        if self.leap is None and abs(want - g) > LEDGE and self.state not in self.NO_LEAP:
+            self.leap = (now, g, want > g)
+        if self.leap:
+            t0, g0, up = self.leap
+            secs, apex = self.LEAP["up" if up else "down"]
+            p = (now - t0) / secs
+            if p < 1:
+                self.ground = leap_height(g0, want, apex, p)
+                return self.ground
+            self.leap, g = None, want
+        self.ground = min(want, g + CLIMB * dt) if want > g else max(want, g - CLIMB * dt)
+        return self.ground
 
     def emote(self, mark, now, dur=1.6):
         self.mood = (mark, now, now + dur)
@@ -286,6 +318,8 @@ class Cat(Pet):
     강아지·펭귄은 그림(PRE 로 시작하는 이름)·크기·빠르기만 바꿔 이어받음."""
     PRE, W, H, FOOT, WALK_V = "", W, H, FOOT, WALK
     DUR = {"walk": (3, 9), "stand": (1.5, 4), "sit": (3, 8), "sleep": (12, 30), "hop": (9, 9), "run": (1.2, 1.8)}
+    LEAP, NO_LEAP = {"up": (0.3, 12), "down": (0.3, 8)}, ("hop",)  # 고양이는 짧고 날렵하게
+    LEAP_POSE = ("walk1", "walk1")  # 뛰는 동안 그림 (내려갈 때, 오를 때) — 다리를 앞뒤로 뻗음
     pounce = False  # 지금 뛰는 게 반딧불이를 잡으려는 폴짝인가 (놀라 뛴 게 아니라)
 
     def __init__(self, width, rng=random):
@@ -368,6 +402,8 @@ class Cat(Pet):
             self.zz = []
 
     def pose(self, now, rainy):
+        if self.leap:
+            return self.PRE + self.LEAP_POSE[self.leap[2]]
         if self.state in ("walk", "run"):
             step = RUN_STEP if self.state == "run" or rainy else STEP
             return self.PRE + ("walk1" if int((now - self.since) / step) % 2 == 0 else "walk2")
@@ -397,6 +433,7 @@ class Bird(Pet):
     """Cat 과 같은 겉모습. 상태: hop(콩콩) · peck(쪼기) · stand(두리번) · fly(화면 안 다른 자리로 날아가 앉음).
     비 오면 덜 날아다니고, 반딧불이가 머리 위로 내려오면 쪼려 함."""
     W, H = BIRD_W, BIRD_H
+    LEAP, NO_LEAP = {"up": (0.3, 8), "down": (0.4, 4)}, ("fly",)  # 날갯짓하며 사뿐히. 나는 중엔 그냥 높이만 따라감
 
     def __init__(self, width, rng=random):
         self.rng, self.width = rng, width
@@ -472,7 +509,7 @@ class Bird(Pet):
                 self.right = not self.right
 
     def pose(self, now):
-        if self.state == "fly":
+        if self.state == "fly" or self.leap:
             return "bird_fly1" if int((now - self.since) / FLAP) % 2 == 0 else "bird_fly2"
         if self.state == "peck":
             return "bird_peck" if int((now - self.since) / 0.25) % 2 == 0 else "bird_stand"
@@ -492,6 +529,7 @@ class Bird(Pet):
 class Dog(Cat):
     """고양이처럼 걷고 앉고 자며, 서 있을 땐 꼬리를 흔듦. 비나 눈이 오면 신나서 뛰어다님."""
     PRE, W, H, FOOT = "dog_", 20 * SCALE, 13 * SCALE, (4 * SCALE, 19 * SCALE)
+    LEAP = {"up": (0.42, 22), "down": (0.42, 16)}  # 신나서 높이 붕
 
     def next_state(self, now, rainy):
         if self.kind in ("rain", "snow") and self.state != "run" and self.rng.random() < 0.3:
@@ -503,13 +541,15 @@ class Dog(Cat):
 
     def pose(self, now, rainy):
         p = super().pose(now, rainy)
-        return "dog_wag" if self.state == "stand" and int((now - self.since) / 0.18) % 2 else p
+        return "dog_wag" if self.state == "stand" and not self.leap and int((now - self.since) / 0.18) % 2 else p
 
 
 class Penguin(Cat):
     """뒤뚱뒤뚱 걷다 서고, 눈·우박이 쌓인 날엔 가끔 배를 깔고 미끄러짐. 앉거나 자지 않음."""
     PRE, W, H, FOOT, WALK_V = "peng_", 14 * SCALE, 16 * SCALE, (4 * SCALE, 10 * SCALE), 22
     DUR = {**Cat.DUR, "slide": (0.8, 1.6)}
+    # 오를 땐 낮게 뒤뚱 뛰고, 내려올 땐 배를 깔고 미끄러져 내려옴(위로 안 뜸)
+    LEAP, LEAP_POSE = {"up": (0.5, 4), "down": (0.6, 0)}, ("slide", "stand")
 
     def next_state(self, now, rainy):
         r = self.rng.random()
@@ -528,6 +568,7 @@ class Rabbit(Pet):
     비 오면 자주 웅크려 가만히 있고, 눈 오는 날엔 더 높이 뜀."""
     W, H, FOOT = 14 * SCALE, 14 * SCALE, (2 * SCALE, 12 * SCALE)
     JUMP = {"hop": (0.42, 34, 20, (2, 6)), "run": (0.3, 60, 28, (4, 6))}  # 한 번에 초, 앞으로 px, 높이 px, 몇 번
+    LEAP = {"up": (0.34, 26), "down": (0.34, 18)}  # 제일 높이 깡충. 늘 뛰는 깡충 위에 얹힘
 
     def __init__(self, width, rng=random):
         self.rng, self.width = rng, width
@@ -575,6 +616,8 @@ class Rabbit(Pet):
             self.right = self.x <= 0
 
     def pose(self, now):
+        if self.leap:
+            return "rab_jump"
         if self.state in self.JUMP:
             return "rab_jump" if self.alt > 2 else "rab_stand"
         if self.state == "sniff":
@@ -611,6 +654,39 @@ def check():
     r, l = sp[("walk1", True)], sp[("walk1", False)]
     row = lambda segs, dy: {skip // 4 + i // 4 for d0, skip, d in segs if d0 == dy for i in range(0, len(d), 4)}
     assert row(l, 10) == {W - 1 - c for c in row(r, 10)}
+
+    # 틀 단 뛰기: 꼭대기는 높은 끝보다 apex 위, 끝은 정확히 착지
+    for g0, g1, a in ((0, 48, 12), (48, 0, 8), (48, 0, 0), (0, 5, 3)):
+        ys = [leap_height(g0, g1, a, i / 1000) for i in range(1001)]
+        assert abs(max(ys) - (max(g0, g1) + a)) < 0.05 and ys[0] == g0 and abs(ys[-1] - g1) < 1e-9, (g0, g1, a)
+    leap_poses = {Cat: ({"walk1"}, {"walk1"}), Dog: ({"dog_walk1"}, {"dog_walk1"}),
+                  Penguin: ({"peng_slide"}, {"peng_stand"}), Rabbit: ({"rab_jump"}, {"rab_jump"}),
+                  Bird: ({"bird_fly1", "bird_fly2"}, {"bird_fly1", "bird_fly2"})}
+    for cls, (down_pose, up_pose) in leap_poses.items():
+        a = cls(300, random.Random(1))
+        a.state = "stand"
+        pose = (lambda t: a.pose(t, False)) if isinstance(a, Cat) else a.pose
+        assert a.follow(48.0, 1 / 60, 0.0) == 48 and a.follow(45.0, 1 / 60, 0.0) == 45 and not a.leap, \
+            ("눈 더미 굴곡 정도는 뛰지 않고 따라감", cls)
+        for target, want_pose, apex in ((0.0, down_pose, cls.LEAP["down"][1]), (45.0, up_pose, cls.LEAP["up"][1])):
+            t, start, top, poses = 0.0, a.ground, 0.0, set()
+            while True:
+                t += 1 / 60
+                g = a.follow(target, 1 / 60, t)
+                if not a.leap:
+                    break
+                top, poses = max(top, g), poses | {pose(t)}
+            secs = cls.LEAP["up" if target > start else "down"][0]
+            assert g == target and t <= secs + 2 / 60 + 1e-9, ("제때 정확히 착지", cls, target, t)  # 첫 프레임에 뛰기 시작
+            assert max(start, target) + apex - 1 <= top <= max(start, target) + apex + 1e-9, ("동물마다 뜨는 높이", cls, top)
+            assert poses == want_pose, ("뛰는 동안 그 동물의 뛰는 그림", cls, poses)
+        assert cls.H + cls.LEAP["up"][1] <= BAND and cls.H + cls.LEAP["down"][1] <= BAND, "다시 그리는 띠 안"
+    assert Rabbit.H + Rabbit.JUMP["run"][2] * 1.5 + Rabbit.LEAP["up"][1] <= BAND, "토끼는 늘 뛰는 깡충 위에 얹혀도 띠 안"
+    for a, state in ((Bird(300), "fly"), (Cat(300), "hop")):
+        a.state = state
+        a.follow(48.0, 1 / 60, 0.0)
+        a.follow(0.0, 1 / 60, 1 / 60)
+        assert not a.leap and a.ground == 48 - CLIMB / 60, ("날거나 이미 뛰는 중엔 새로 안 뛰고 높이만 따라감", state)
 
     rng = random.Random(7)
     cat = Cat(500, rng)

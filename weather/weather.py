@@ -80,7 +80,6 @@ DIFFUSE = 0.12     # 표면을 매끈하게 퍼뜨리는 정도
 MELT_PER_SEC = 0.0045  # 높이에 비례해 녹는 비율. 넣는 양 ÷ 이 값에서 높이가 멈춤 ('보통' 이면 5px 쯤)
 SETTLE_SEC = 0.25
 FRAMES_EVERY = 3   # 작업 표시줄 틀을 다시 읽는 간격 초. 한 번 55ms(UI 자동화)라 다른 스레드에서
-CLIMB = 400        # 동물이 틀 위로 오르내리는 빠르기 px/초 — 48px 단을 0.12초에
 
 STORM_MULT = 1.5   # 뇌우는 비보다 굵게
 BOLT_EVERY = (5, 14)  # '보통' 일 때 번개 간격 초. 양에 반비례
@@ -467,7 +466,6 @@ class Weather:
         self.pets = {a: PET_CLASS[a](self.w) for a in PET_CLASS if a in (animals or ())}
         self.bolt_seen, self.pet_startled = None, {}  # 이름 → 우박에 다시 놀랄 수 있는 시각
         self.bangs = []  # 이번 프레임에 터진 불꽃의 x — 동물들이 돌아봄
-        self.pet_ground = {}  # 이름 → 지금 딛고 선 높이. 틀 단을 바로 건너뛰지 않고 CLIMB 로 오르내림
         self.commands = queue.Queue()  # 트레이 스레드 → 그리는 스레드
         write_ico(ICON_FILE, ICON, ICON_COLORS)
         self.panel = None  # 왼쪽 클릭으로 띄운 설정 창 프로세스
@@ -931,13 +929,10 @@ class Weather:
     def walk_pet(self, dt, now):
         rainy = self.kind in ("rain", "storm")
         self.react(now)
-        for name, p in self.pets.items():
+        for p in self.pets.values():
             p.update(dt, now, rainy)
             a, b = p.feet()
-            want = max(v + f for v, f in zip(self.pile.h[a:b], self.base[a:b]))
-            g = self.pet_ground.get(name, want)  # 단을 만나면 순간 이동하지 않고 오르내림
-            g = min(want, g + CLIMB * dt) if want > g else max(want, g - CLIMB * dt)
-            self.pet_ground[name] = g
+            g = p.follow(max(v + f for v, f in zip(self.pile.h[a:b], self.base[a:b])), dt, now)  # 틀 단은 뛰어 오르내림
             p.draw(self.surface.pixels, self.stride, self.h, self.pet_sprites, g, now, rainy)
 
     def frame(self, dt, now):
@@ -1125,16 +1120,17 @@ def check():
     cat.go("walk", 0.0)
     Weather.react(rf, cat.calm)
     assert cat.state == "hop" and cat.pounce and cat.kind == "fireflies", "낮은 반딧불이로 폴짝"
-    # 틀 단을 만나면 순간 이동하지 않고 CLIMB 빠르기로 오르내림
+    # 틀 단을 만나면 순간 이동하지 않고 뛰어 내려옴 (뛰는 모양은 pet.check 가 봄)
     walker = pet.Cat(200, random.Random(4))
-    gf = big(pets={"cat": walker}, pile=Pile(200), base=[48] * 200, pet_ground={}, pet_sprites=pet.sprites(),
+    gf = big(pets={"cat": walker}, pile=Pile(200), base=[48] * 200, pet_sprites=pet.sprites(),
              kind="none", flies=[], bangs=[], bolt=None, bolt_seen=None)
     gf.react = lambda now: Weather.react(gf, now)
     Weather.walk_pet(gf, 1 / 60, 0.0)
-    assert gf.pet_ground["cat"] == 48, "처음엔 발밑 높이에 바로 섬"
-    gf.base = [0] * 200
+    assert walker.ground == 48, "처음엔 발밑 높이에 바로 섬"
+    gf.base = [0] * 200  # HUD 를 끔
     Weather.walk_pet(gf, 1 / 60, 1 / 60)
-    assert abs(gf.pet_ground["cat"] - (48 - CLIMB / 60)) < 1e-9, "단에서 내려올 땐 한 프레임에 CLIMB·dt 만큼"
+    Weather.walk_pet(gf, 1 / 60, 2 / 60)
+    assert walker.leap and walker.ground > 48, "발밑 틀이 사라지면 뛰어내림(살짝 뜨며 시작)"
     assert floor_heights(5, 100, 0, 48, None) == [48] * 5, "틀을 모르면 작업 표시줄 윗변 전체가 바닥"
     assert floor_heights(10, 100, 10, 48, [(12, 52, 15), (16, 57, 30), (11, 20, 13), (0, 100, 20)]) == \
         [0, 0, 48, 48, 48, 0, 43, 43, 43, 43], "틀마다 그 윗변 높이, 띠 위의 창·높이 0 인 것은 안 셈"
