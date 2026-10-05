@@ -41,7 +41,7 @@ jobs:
           foreach ($name in $tools.Keys) {
             $extra = if ($name -eq 'hud') { @('--add-data', "$PWD/usage-hud/page.html;.") } else { @() }
             # --specpath 를 build 로 옮기면 상대 경로가 그쪽 기준이 되므로 절대 경로로 넘김
-            python -m PyInstaller --noconfirm --onefile --windowed --log-level WARN --name $name --python-option 'X utf8_mode=1' `
+            python -m PyInstaller --noconfirm --onefile --windowed --log-level WARN --name $name --python-option 'X utf8' `
               --paths "$PWD/shared" --distpath dist --workpath build --specpath build @extra $tools[$name]
             if ($LASTEXITCODE) { throw "$name 굽기 실패" }
           }
@@ -49,7 +49,7 @@ jobs:
       # 창 없는 exe 는 잡히지 않은 예외를 대화상자로만 보이고 멈춤. 오류를 읽으려고 콘솔판을 따로 구워(릴리스엔 안 붙임) 점검함
       - name: 콘솔판 weather.exe --check
         run: |
-          python -m PyInstaller --noconfirm --onefile --console --log-level WARN --name weather --python-option 'X utf8_mode=1' `
+          python -m PyInstaller --noconfirm --onefile --console --log-level WARN --name weather --python-option 'X utf8' `
             --paths "$PWD/shared" --distpath build/console --workpath build/console-work --specpath build/console-work weather/weather.py
           if ($LASTEXITCODE) { throw "콘솔판 굽기 실패" }
           build/console/weather.exe --check
