@@ -6,8 +6,12 @@
 - 다음 할 것: 실제 화면에서 꾸민 어항 보기 (직접). 장식 수(DECOR_SHARE)·해파리 수와 빠르기·상자 여는 간격이 어떤지
 - 막힌 것: 없음
 
+- 여기까지 됨 (2026-10-05 — 드라이브 파일 이름에 버전): release.yml 드라이브 단계가 도구마다 옛 파일(hud.exe·hud-<옛 버전>.exe)에 copyto 로 덮어쓰고 hud-<버전>.exe 로 moveto 한다(yt-pip 와 같음). 런처 Tool.exe 와 startup.command 는 shared/startup.beside 로 옆의 hud.exe, 없으면 숫자로 가장 높은 hud-<버전>.exe 를 찾는다 — 두 곳에 따로 있던 규칙을 한 곳으로. launcher --check 에 검사를 더했고 변이 셋 다 걸림. 사용자가 손으로 만든 드라이브 playroom 폴더(v0.1.0)는 사용자가 지웠다
+- 다음 할 것: 없음. v0.1.2 에서 드라이브 이름이 <이름>-0.1.2.exe 로 바뀌고 ID 다섯이 아래 v0.1.1 값과 같은 것을 봤다(덮어쓰기가 ID 를 지킴). 드라이브 단계 1분 56초(rclone 열 번)
+- 막힌 것: 없음. 첫 실행은 사용자가 손으로 만든 폴더 대신 rclone 이 만든 폴더를 지워 "directory not found" 로 실패했고, 휴지통에서 되살린 뒤 실패한 작업만 다시 돌렸다 — 이름이 같은 폴더 둘은 드라이브 화면에서 구분이 안 되니 링크로 가리킬 것
+
 - 여기까지 됨 (2026-10-05 — 릴리스가 CHANGELOG 푸시로 돌고 드라이브에도 올림): release.yml 이 main 에 CHANGELOG.md 가 푸시되면 맨 위 절의 버전을 리눅스 작업에서 보고, 그 태그가 없을 때만 윈도우 러너로 굽고 점검한 뒤 rclone 으로 드라이브 Apps/playroom/ 에 다섯 exe 를 같은 이름으로 덮어쓰고 GitHub 릴리스를 만든다. 비밀값 RCLONE_CONFIG_GDRIVE_TOKEN 은 PC rclone 원격 gdrive 의 토큰(drive.file, 공용 client id — 그 앱이 만든 파일만 보임). PC 의 rclone.conf 는 Claude 앱 안에서 만들어 %LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\rclone\ 에 있다(MSIX 가상화 — 바깥 셸에선 안 보임). yt-pip 도 같은 방식
-- 다음 할 것: 다음 릴리스 때 드라이브 파일 ID 가 그대로인지 보기. rclone 공용 client id 가 2026 년 중 막힌다는 경고가 떠 있어, 막히면 자기 client id 와 drive 권한으로 다시 인증해 두 저장소 비밀값을 바꾼다
+- 다음 할 것: 다음 릴리스 때 드라이브 파일 ID 가 그대로인지 보기(`rclone lsjson gdrive:Apps/playroom`). v0.1.1 에서: hud 1IkmnfcBAKefLlbNdnLmBNSeFdaHVohk4 · launcher 1CuFE1oF9_nFBDBGNqIIICGwbqAXcShHj · layers 11sYlHvZOR2y8jB_ZVL7ELemeWZWLEAKH · sysmon 1oauX0Krje_MZhrdgP-cxzqH_HwXoKJtL · weather 1dwzjxVsmLefpcKuNWaU_1kBcc5ViOVEw. 첫 실행 3분 12초. rclone 공용 client id 가 2026 년 중 막힌다는 경고가 떠 있어, 막히면 자기 client id 와 drive 권한으로 다시 인증해 두 저장소 비밀값을 바꾼다
 - 막힌 것: 없음
 
 - 여기까지 됨 (2026-10-05 — weather 어항에서 동물이 스쿠버 장비로 헤엄): 어항이면 weather 가 동물마다 update/draw 대신 Pet.swim/draw_swim 을 불러 state 는 그대로 두고, 어항을 벗어나면 dive 를 지워 바닥 동작으로 돌아간다. 다섯 다 옆으로 누운 잠수 그림 두 장(발차기)에 물안경·노란 공기통·호흡기, 새 빼고 파란 오리발. 바닥에서 40–320px 사이 목표 높이로 20px/초씩 오르내리고(숨 거품 최저 24px/초보다 느려야 제 숨을 안 앞지름 — weather 검사가 박음) 4–10초마다 또는 화면 끝에서 돈다. 1.2–2.6초마다 호흡기에서 거품 2–4개를 내쉬고, 이 거품은 다시 안 생기고 위로 빠져 사라진다. 펭귄 95px/초로 제일 빠름. 클라우드 판의 펭귄 전용 "swim" 상태는 걷어 냄. pet 자체 점검 20→28초(동물마다 120초 흉내). 변이 16개(pet 10·weather 6) 다 걸림 — 처음엔 발차기 검사가 그림 대신 식을 다시 세고 있어 "발차기 한 장"이 살아남아, 같은 자리를 KICK 만큼 다른 시각에 두 번 그려 픽셀이 다른지 보게 고쳤다
