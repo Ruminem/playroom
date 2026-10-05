@@ -15,6 +15,10 @@ A hobby playroom. One folder per experiment, each with its own short README.
 - [launcher](launcher/) — one window to run or stop the tools above, keep each on top or not, start it with Windows, and install or uninstall it as a Start menu shortcut
 - [shared](shared/) — the tray icon, per-pixel alpha window, taskbar text, single-instance, work-area and start-with-Windows helpers the overlays share
 
+## Download
+
+The Windows tools come as standalone `.exe` files on the [Releases](https://github.com/Ruminem/playroom/releases) page, no Python needed: `launcher.exe`, `hud.exe` (usage-hud), `weather.exe`, `sysmon.exe` and `layers.exe`. Keep them in one folder — the launcher runs and installs the `.exe` next to it. They are not code-signed, so SmartScreen may warn the first time. What changed in each release is in [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
@@ -37,6 +41,10 @@ Apache-2.0. See [LICENSE](LICENSE).
 - [layers](layers/) — 맨 위에 뜨는 창들 중 무엇이 앞에 올지 정함. 여기 오버레이들, PIP 영상, 직접 넣은 아무 창이나. 없으면 오버레이들이 서로 번갈아 앞으로 튀어나옴
 - [launcher](launcher/) — 위 도구들을 한 창에서 실행·중단하고, 항상 위·윈도우 시작 시 실행을 켜고 끄고, 시작 메뉴 바로가기로 설치·제거함
 - [shared](shared/) — 오버레이들이 같이 쓰는 트레이 아이콘, 픽셀 알파 창, 작업 표시줄 글자, 한 번만 뜨게 하기, 작업 영역, 윈도우 시작 시 실행 코드
+
+### 받기
+
+윈도우 도구는 [Releases](https://github.com/Ruminem/playroom/releases) 페이지에 파이썬 없이 도는 `.exe` 로 있음: `launcher.exe`, `hud.exe`(usage-hud), `weather.exe`, `sysmon.exe`, `layers.exe`. 한 폴더에 둘 것 — 런처가 옆에 있는 `.exe` 를 실행하고 설치함. 코드 서명이 없어서 처음엔 SmartScreen 이 경고할 수 있음. 릴리스마다 무엇이 바뀌었는지는 [CHANGELOG.md](CHANGELOG.md) 에 있음.
 
 ### 라이선스
 

@@ -569,7 +569,8 @@ class Weather:
         state = {"kind": self.kind, "amount": self.amount, "pet": list(self.pets), "show": self.visible,
                  "auto": startup.is_on(RUN_NAME, __file__), "fps": self.fps}
         ctypes.windll.user32.AllowSetForegroundWindow(-1)  # 방금 트레이를 누른 건 이 프로세스라 앞으로 올릴 권한을 넘김
-        self.panel =subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--panel", json.dumps(state)],
+        me = [] if getattr(sys, "frozen", False) else [str(Path(__file__).resolve())]  # 릴리스 exe 는 스크립트 없이 자기 자신
+        self.panel = subprocess.Popen([sys.executable, *me, "--panel", json.dumps(state)],
                                       stdout=subprocess.PIPE, text=True, encoding="utf-8")
         threading.Thread(target=self.read_panel, args=(self.panel,), daemon=True).start()
 

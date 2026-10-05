@@ -48,6 +48,7 @@ class Tool:
     def __init__(self, name, label, script, tray, run, pick_top):
         self.name, self.label, self.tray, self.run, self.pick_top = name, label, tray, run, pick_top
         self.script = ROOT / script
+        self.exe = Path(sys.executable).with_name(self.script.stem + ".exe")  # 릴리스 exe 로 돌 때 옆에 있는 도구
         self.pid = Path(tempfile.gettempdir()) / f"playroom-{name}.pid"
         self.settings = DATA / f"{name}.json"
         self.link = MENU / f"{name}.lnk"
@@ -64,9 +65,19 @@ def running(t):
     return overlay.running_pid(t.pid) is not None
 
 
+def frozen():
+    return getattr(sys, "frozen", False)
+
+
+def argv(t):
+    """도구를 띄우는 명령과 작업 폴더. 릴리스 exe 면 같은 폴더의 <스크립트 이름>.exe, 아니면 pythonw <스크립트>."""
+    return ([str(t.exe)], t.exe.parent) if frozen() else ([str(EXE), str(t.script)], t.script.parent)
+
+
 def start(t):
     """인자 없이 띄우면 도구가 저장된 설정을 따름. 이미 떠 있으면 도구가 알아서 그냥 끝남."""
-    subprocess.Popen([str(EXE), str(t.script)], cwd=t.script.parent, close_fds=True, creationflags=NO_WINDOW)
+    cmd, cwd = argv(t)
+    subprocess.Popen(cmd, cwd=cwd, close_fds=True, creationflags=NO_WINDOW)
 
 
 def stop(t):
@@ -92,7 +103,9 @@ def set_on_top(t, on):
 def install(t):
     """시작 메뉴 Playroom 폴더에 바로가기. 누르면 .bat 처럼 켜고 끔."""
     t.link.parent.mkdir(parents=True, exist_ok=True)
-    env = {**os.environ, "LNK": str(t.link), "EXE": str(EXE), "ARGS": f'"{t.script}" --toggle', "DIR": str(t.script.parent)}
+    (exe, *script), cwd = argv(t)
+    args = " ".join([f'"{a}"' for a in script] + ["--toggle"])
+    env = {**os.environ, "LNK": str(t.link), "EXE": exe, "ARGS": args, "DIR": str(cwd)}
     subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", LINK_PS],
                    env=env, check=True, capture_output=True, creationflags=NO_WINDOW)
 
@@ -292,6 +305,15 @@ def check():
         assert not fake_tool.link.exists() and not fake_tool.settings.exists(), "제거하면 바로가기·설정이 지워짐"
         assert not fake_tool.link.parent.exists(), "빈 폴더도 지움"
         assert overlay.below() == set(), "항상 위 표식도 지움"
+
+        sys.frozen = True  # 릴리스 exe 흉내: 도구는 옆의 <스크립트 이름>.exe
+        try:
+            hud = TOOLS[0]
+            assert hud.exe.name == "hud.exe" and argv(hud) == ([str(hud.exe)], hud.exe.parent), "exe 를 그대로 띄움"
+            assert startup.command(hud.script) == f'"{hud.exe}"', "시작 시 실행도 런처가 아니라 도구 exe"
+        finally:
+            del sys.frozen
+        assert argv(hud)[0][1:] == [str(hud.script)], "스크립트로 돌면 pythonw <스크립트>"
     finally:
         overlay.LAUNCHER_FILE = real
     print("자체 점검 통과")

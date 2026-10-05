@@ -15,8 +15,11 @@ APPROVED_KEY = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupAppro
 
 
 def command(script):
-    """시작할 때 부를 명령. 콘솔 창이 안 뜨게 pythonw, 나머지는 각자 저장된 설정을 따름."""
+    """시작할 때 부를 명령. 콘솔 창이 안 뜨게 pythonw, 나머지는 각자 저장된 설정을 따름.
+    릴리스 exe 로 돌면 스크립트 이름을 딴 옆의 exe (hud.py → hud.exe) — 런처가 남의 것을 켜도 맞게."""
     exe = Path(sys.executable)
+    if getattr(sys, "frozen", False):
+        return '"%s"' % exe.with_name(Path(script).stem + ".exe")
     w = exe.with_name("pythonw.exe")
     return '"%s" "%s"' % (w if w.exists() else exe, Path(script).resolve())
 
