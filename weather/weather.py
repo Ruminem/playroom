@@ -81,6 +81,8 @@ DRIFT, LOOSE, LIFT = 0.12, 3.0, 2.0  # 바람에 날리는 눈: 바람 px/초 ×
 MELT_PER_SEC = 0.0045  # 높이에 비례해 녹는 비율. 넣는 양 ÷ 이 값에서 높이가 멈춤 ('보통' 이면 5px 쯤)
 SETTLE_SEC = 0.25
 FRAMES_EVERY = 3   # 작업 표시줄 틀을 다시 읽는 간격 초. 한 번 55ms(UI 자동화)라 다른 스레드에서
+FULLSCREEN_EVERY = 0.25  # 전체 화면 앱이 떴는지 보는 간격 초. 한 번 0.1ms
+SINK_G, SINK_CRUMBLE = 900, 0.12  # 틀이 사라져 바닥이 내려앉는 가속 px/초² · 4px 묶음마다 늦게 떨어지는 최대 초
 
 STORM_MULT = 1.5   # 뇌우는 비보다 굵게
 BOLT_EVERY = (5, 14)  # '보통' 일 때 번개 간격 초. 양에 반비례
@@ -593,6 +595,11 @@ def floor_heights(w, bottom, left, rise, frames):
     return base
 
 
+def crumble(w):
+    """열마다 바닥이 늦게 떨어지는 초. 4px 묶음끼리 같아서 한 덩이씩 무너짐 — 열마다 따로면 지글거림."""
+    return [d for d in (random.uniform(0, SINK_CRUMBLE) for _ in range(w // 4 + 1)) for _ in range(4)][:w]
+
+
 def pile_column_parts(depth=PILE_STRIP):
     """열 하나를 그릴 조각: 윗면 가장자리(높이의 소수부 16단계 알파)와 위에서 아래로 몸통(depth px)."""
     top, deep = (240, 244, 252), (212, 221, 238)
@@ -759,6 +766,8 @@ class Weather:
         t += 1 if self.rise and t == 0 else 0
         self.w, self.h, self.left, self.top = r - l, b - t + self.rise, l, t
         self.base, self.next_base = [self.rise] * self.w, None
+        # 바닥이 가려는 모양 · 내려앉는 중이면 (시작 모양, 시각) · 열마다 늦게 떨어지는 초(모래가 무너지듯)
+        self.goal, self.fall, self.crumble = self.base, None, crumble(self.w)
         self.strip_h = PILE_STRIP + self.rise
         self.surface = Surface(l, t, self.w, self.h, SURFACE_CLASS)
         self.on_top = MAC or overlay.on_top("weather")  # 런처의 '항상 위'. 맥은 런처가 없음
@@ -794,10 +803,17 @@ class Weather:
             threading.Thread(target=self.watch_frames, daemon=True).start()
 
     def watch_frames(self):
-        """작업 표시줄 틀을 FRAMES_EVERY 초마다 읽어 그리는 스레드에 넘김 — 앱을 열고 닫으면 단추 묶음 폭이 바뀜."""
+        """작업 표시줄 틀을 FRAMES_EVERY 초마다 읽어 그리는 스레드에 넘김 — 앱을 열고 닫으면 단추 묶음 폭이 바뀜.
+        전체 화면 앱(F11 등)이 작업 표시줄을 가리면 틀이 없는 것으로 봄 — UI 자동화는 가려진 단추 자리도 그대로
+        알려 줌. 전체 화면은 싸게 알 수 있어 FULLSCREEN_EVERY 마다 보고, 바뀌면 바로 다시 냄."""
+        full, last = None, -math.inf
         while True:
-            self.next_base = floor_heights(self.w, self.top + self.h, self.left, self.rise, taskbar.frames())
-            time.sleep(FRAMES_EVERY)
+            fs = taskbar.fullscreen_app()
+            if fs != full or time.monotonic() - last >= FRAMES_EVERY:
+                full, last = fs, time.monotonic()
+                self.next_base = floor_heights(self.w, self.top + self.h, self.left, self.rise,
+                                               [] if fs else taskbar.frames())
+            time.sleep(FULLSCREEN_EVERY)
 
     def set_base(self, base):
         """바닥 모양을 바꿈. 틀이 사라진 열의 눈은 그대로 새 바닥으로 떨어지고(HUD 를 끄거나 앱을 닫으면 위에
@@ -807,6 +823,20 @@ class Weather:
             if b > a:
                 h[x] = max(0.0, h[x] - (b - a))
         self.base = self.pile.base = base
+
+    def sink(self, now):
+        """바닥을 goal 로 한 걸음. 솟는 열은 바로(작업 표시줄은 확 나타남), 낮아지는 열은 SINK_G 로 떨어짐 — 바닥
+        위의 모래·눈·장식·동물은 base 를 따라 같이 내려옴. 바닥이 바뀌었으면 True."""
+        start, t0 = self.fall
+        t, g = now - t0, SINK_G / 2
+        base = [n if n >= s else max(n, s - int(g * max(0.0, t - d) ** 2))
+                for n, s, d in zip(self.goal, start, self.crumble)]
+        if base == self.goal:
+            base, self.fall = self.goal, None
+        if base == self.base:
+            return False
+        self.set_base(base)
+        return True
 
     # ── 트레이 ──
     def menu(self):
@@ -1362,10 +1392,14 @@ class Weather:
                 o += stride
 
     def render_sand(self):
-        """모래 띠: 띠 높이의 물빛 위에, 열마다 그 열 바닥(틀 윗변) 바로 위로 모래. 틀 모양이 바뀔 때만 다시 그림."""
+        """모래 띠: 띠 높이의 물빛 위에, 열마다 그 열 바닥(틀 윗변) 바로 위로 모래. 틀 모양이 바뀔 때만, 바뀐 열만
+        다시 그림 — 바닥이 내려앉는 동안 프레임마다 불림(통째로면 2560 폭에 2.6ms)."""
         strip32 = self.strip.cast("I")
         w, sh, tint, cols, pick = self.w, self.strip_h, self.aq_tint[1]["strip"], self.aq["sand"], self.aq["sand_pick"]
+        old = self.sand_base or [-1] * w
         for x, (v, b) in enumerate(zip(self.sand, self.base)):
+            if b == old[x]:
+                continue
             strip32[x::w] = memoryview(tint[:(sh - b - v) * 4] + cols[pick[x]][:v * 4] + tint[(sh - b) * 4:]).cast("I")
         self.sand_base = self.base
 
@@ -1528,10 +1562,11 @@ class Weather:
         nb = self.next_base
         if nb is not None:
             self.next_base = None
-            if nb != self.base:
-                self.set_base(nb)
+            if nb != self.goal:  # 내려앉는 중이었으면 지금 높이에서 다시 떨어지기 시작
+                self.goal, self.fall = nb, (self.base, now)
                 self.full_clear = True  # 동물이 있던 띠 위쪽까지 한 번 지움
-        top = 0 if MAC or self.full_clear or kind != "none" else self.h - pet.BAND - self.rise
+        moved = self.fall is not None and self.sink(now)
+        top =0 if MAC or self.full_clear or kind != "none" else self.h - pet.BAND - self.rise
         self.full_clear = False
         if kind == "aquarium":  # 지우는 대신 미리 칠한 물빛으로 덮음 (2560×1440 memset 0.89 · memmove 1.15ms)
             self.surface.fill(self.water)
@@ -1547,6 +1582,8 @@ class Weather:
                 if kind == "snow":  # 우박 알은 무거워 안 날림
                     self.pile.blow(DRIFT * self.wind(now) * el)
                 self.last_settle = now
+                self.render_pile()
+            elif moved:  # 바뀐 열만 그림
                 self.render_pile()
             self.surface.pixels[(self.h - self.strip_h) * self.stride:] = self.strip
         elif kind == "aquarium":
@@ -1864,6 +1901,7 @@ def check():
     a.w, a.h, a.stride, a.rise, a.amount, a.kind, a.strip_h = aw, ah, aw * 4, rise, 50, "aquarium", PILE_STRIP + rise
     a.base, a.snow_pile, a.sprite_cache, a.aq_tint = [0] * 200 + [rise] * 200, pile_column_parts(PILE_STRIP + rise), {}, None
     a.next_base, a.full_clear, a.pets, a.on_top, a.last_settle = None, False, {}, False, 0
+    a.goal, a.fall, a.crumble = a.base, None, crumble(aw)
     a.surface = types.SimpleNamespace(pixels=bytearray(aw * ah * 4), clear=lambda top=0: None, present=lambda top=0: None)
     a.surface.fill = lambda src: a.surface.pixels.__setitem__(slice(None), src)
     a.reset()
@@ -1988,6 +2026,57 @@ def check():
     datas = [d for band in a.jelly_sprites for fr in band for _, _, d in fr]
     assert all(d[i + c] <= d[i + 3] for d in datas for i in range(0, len(d), 4) for c in range(3)), "해파리는 premultiplied"
     assert any(d[i + 3] < 255 for d in datas for i in range(0, len(d), 4)), "해파리는 비침"
+
+    # 전체 화면 앱이 작업 표시줄을 가리면 틀이 사라짐 — 바닥이 무너지듯 떨어지고, 다시 나타나면 바로 솟음
+    up, land = [0] * 100 + [rise] * 300, math.sqrt(2 * rise / SINK_G)
+    for kind in ("aquarium", "snow"):
+        if kind == "snow":
+            a.kind, a.pile_zero = "snow", bytes(a.strip_h * 4)
+            a.reset()
+            a.pile.h, a.last_settle = [3.0] * aw, 500.0
+            a.render_pile()
+        a.flakes, a.crab, a.jelly, a.fish, a.breaths = [], [], [], [], []
+        a.next_base = up
+        a.frame(1 / 60, 500.0)
+        a.next_base, seen = [0] * aw, []
+        for i in range(int(60 * (land + SINK_CRUMBLE + 0.1))):
+            a.frame(1 / 60, 500 + (i + 1) / 60)
+            seen.append(a.base)
+            got = bytes(a.strip)  # 바뀐 열만 다시 그린 띠가 통째로 그린 것과 같음
+            if kind == "snow":
+                a.pile_last = [-1] * aw
+                a.render_pile()
+            else:
+                a.sand_base = None
+                a.render_sand()
+                for x, (dw, dh), segs in aq["decor"]:
+                    assert sits(x, a.floor_at(x, dw) - dh, dh, segs), ("떨어지는 동안에도 장식은 바닥 위", x, i)
+            assert bytes(a.strip) == got, ("떨어지는 동안 띠가 바닥을 따라감", kind, i)
+        first = next(i for i, b in enumerate(seen) if b == [0] * aw)
+        assert abs((first + 1) / 60 - max(a.crumble[100:]) - land) <= 2 / 60 and a.fall is None, \
+            ("중력으로 떨어져 제때 닿음 — 제일 늦은 묶음이 닿을 때 끝", kind, first)
+        assert all(p >= q for s, t in zip([up] + seen, seen) for p, q in zip(s, t)), "떨어지기만 함"
+        assert any(len(set(b[100:])) > 2 for b in seen), "묶음마다 늦게 떨어져 무너지듯"
+        a.next_base = up
+        a.frame(1 / 60, 510.0)
+        assert a.base == up and a.fall is None, ("틀이 다시 나타나면 바로 솟음", kind)
+    if not MAC:  # 전체 화면이면 틀을 안 읽고 바닥 0, 바뀌면 FRAMES_EVERY 를 안 기다리고 바로 다시 냄
+        states, got, a.left, a.top = iter([False, False, True, True, False]), [], 0, 0
+
+        def nap(_):
+            got.append(a.next_base)
+            a.next_base = None
+            if len(got) == 5:
+                raise StopIteration
+        real = taskbar.fullscreen_app, taskbar.frames, time.sleep
+        taskbar.fullscreen_app, taskbar.frames, time.sleep = lambda: next(states), lambda: [(100, ah - rise, 400)], nap
+        try:
+            Weather.watch_frames(a)
+        except StopIteration:
+            pass
+        finally:
+            taskbar.fullscreen_app, taskbar.frames, time.sleep = real
+        assert got == [up, None, [0] * aw, None, up], ("전체 화면을 오가면 바로 바닥을 다시 냄", got)
     assert parse_amount("many") == 100 and parse_amount(0) == 0 and parse_amount(35) == 35
     assert all(parse_amount(a) is None for a in (101, -1, True, "x", [1], None, 2.5))
     assert amount_arg("normal") == 50 and amount_arg("7") == 7
