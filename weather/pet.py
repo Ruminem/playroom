@@ -303,6 +303,7 @@ FLY, FLY_ALT, FLAP = 170, 60, 0.09  # 새가 날 때 px/초, 높이 px(weather �
 # 발차기 그림 바꾸는 간격 초 · 숨 내쉬는 간격 초
 SWIM_DEPTH, SWIM_BOB, SWIM_RISE, SWIM_TURN, KICK, BREATH = (40, 320), 6, 20, (4, 10), 0.3, (1.2, 2.6)
 LEDGE, CLIMB = 8, 400  # 발밑이 한 번에 이 px 넘게 바뀌면(작업 표시줄 틀 단) 뜀 · 작은 굴곡(눈 더미)을 따라가는 px/초
+HIDE, PEEK_UP, PEEK_HOLD = (0.3, 0.8), 0.35, 0.9  # 솟은 틀 뒤에 묻힘: 숨어 있는 초 · 머리를 내미는 초 · 두리번하는 초
 
 
 def leap_height(g0, g1, apex, p):
@@ -345,16 +346,29 @@ def sprites():
     return sp
 
 
-def stamp(px, stride, x, y, segs, width, height):
-    """조각을 (x, y) 에 찍음. 화면 밖으로 나가는 행과 가로로 삐져나간 부분은 잘라 냄 (새가 옆으로 날아 나감)."""
+def stamp(px, stride, x, y, segs, width, height, floor=None):
+    """조각을 (x, y) 에 찍음. 화면 밖으로 나가는 행과 가로로 삐져나간 부분은 잘라 냄 (새가 옆으로 날아 나감).
+    floor(열마다 밑변에서 위로 px)를 주면 그 아래는 안 찍음 — 틀은 이 창이 아니라 밑의 작업 표시줄이 그려서,
+    안 찍은 자리엔 틀이 보여 그 뒤에 가린 것처럼 보임."""
     for dy, skip, data in segs:
         yy = y + dy
         if 0 <= yy < height:
             a = x * 4 + skip
             lo, hi = max(a, 0), min(a + len(data), width * 4)
-            if lo < hi:
-                o = yy * stride
-                px[o + lo:o + hi] = data if hi - lo == len(data) else data[lo - a:hi - a]
+            o = yy * stride
+            if floor is None:
+                if lo < hi:
+                    px[o + lo:o + hi] = data if hi - lo == len(data) else data[lo - a:hi - a]
+                continue
+            c, end, top = lo // 4, hi // 4, height - yy  # 바닥이 top 보다 낮은 열만 보임
+            while c < end:
+                if floor[c] >= top:
+                    c += 1
+                    continue
+                s = c
+                while c < end and floor[c] < top:
+                    c += 1
+                px[o + s * 4:o + c * 4] = data[s * 4 - a:c * 4 - a]
 
 
 class Pet:
@@ -373,6 +387,9 @@ class Pet:
     lift = 0.0       # 헤엄치며 바닥 위로 뜬 높이 px
     breathe = False  # 이번 프레임에 숨을 내쉼 — weather 가 mouth 에서 거품을 띄움
     mouth = (0, 0)   # 마지막으로 그린 호흡기 자리 (화면 px)
+    under = False    # 발밑에 솟은 틀 뒤에 묻혀 빼꼼하는 중 — 뛰어나와 착지하면 풀림. 그동안 weather 가 틀 아래를 안 찍음
+    peek = None      # 묻힌 뒤 첫 follow 에서 (머리를 내밀기 시작하는 시각, 묻힐 때 보던 쪽)
+    PEEK = 5         # 빼꼼할 때 틀 위로 내미는 그림 줄 수 — 눈까지
 
     def swim(self, dt, now):
         """어항: 사람처럼 물속에서 숨을 못 쉬니 잠수 장비를 차고 바닥에서 천천히 떠올라 헤엄침. 가끔 돌아서며
@@ -380,6 +397,7 @@ class Pet:
         rng, room = self.rng, max(0, self.width - max(self.W, DIVE_SIZE[self.DIVER][0]))
         if self.dive is None:
             self.dive, self.depth, self.bob = now, 0.0, rng.uniform(0, math.tau)
+            self.under = False  # 틀 뒤에 묻혀 있었으면 헤엄쳐 나옴
             self.aim, self.turn_at = rng.uniform(*SWIM_DEPTH), now + rng.uniform(*SWIM_TURN)
             self.breath_at = now + rng.uniform(*BREATH)
         edge = self.x <= 0 or self.x >= room  # 돌고 나서 움직임 — 늘 가는 쪽을 봄
@@ -406,7 +424,19 @@ class Pet:
 
     def follow(self, want, dt, now):
         """발밑 높이 want(발 밑 열들의 바닥+눈 중 가장 높은 것)를 따라가 그릴 높이를 돌려줌. 틀 단처럼 크게 바뀌면
-        LEAP 포물선으로 뛰고 그동안 pose 가 뛰는 그림을 고름. 뛰는 중에 want 가 바뀌면 착지점도 따라 바뀜."""
+        LEAP 포물선으로 뛰고 그동안 pose 가 뛰는 그림을 고름. 뛰는 중에 want 가 바뀌면 착지점도 따라 바뀜.
+        묻혔으면(bury) 틀 뒤에 숨었다가 머리만 PEEK 줄 내밀고 두리번한 뒤 그 자리에서 LEAP 로 뛰어나옴."""
+        if self.under and self.leap is None:
+            if self.peek is None:
+                self.peek = (now + self.rng.uniform(*HIDE), self.right)
+                self.go("stand", now)
+            t0, facing = self.peek
+            t = now - t0
+            self.right = facing != (t >= PEEK_UP + PEEK_HOLD / 2)  # 두리번 — 한가운데서 한 번 돌아봄
+            self.ground = want - self.H + self.PEEK * SCALE * min(1.0, max(0.0, t / PEEK_UP))
+            if t < PEEK_UP + PEEK_HOLD:
+                return self.ground
+            self.leap = (now, self.ground, True)
         g = want if self.ground is None else self.ground
         if self.leap is None and abs(want - g) > LEDGE and self.state not in self.NO_LEAP and self.dive is None:
             self.leap = (now, g, want > g)
@@ -417,9 +447,18 @@ class Pet:
             if p < 1:
                 self.ground = leap_height(g0, want, apex, p)
                 return self.ground
-            self.leap, g = None, want
+            self.leap, g, self.under = None, want, False
         self.ground = min(want, g + CLIMB * dt) if want > g else max(want, g - CLIMB * dt)
         return self.ground
+
+    def bury(self):
+        """발밑에 틀이 솟아 그 뒤에 묻힘 — weather.set_base 가 부름. 날거나 이미 뛰는 중·헤엄치는 중이면 그대로
+        틀을 따라감. 뛰던 높이·Z·머리 위 표시는 지움 — 숨은 자리 위에 떠 있지 않게."""
+        if self.under or self.state in self.NO_LEAP or self.dive is not None:
+            return
+        self.under, self.peek, self.leap, self.mood = True, None, None, None
+        self.alt = self.hop = 0.0  # 토끼·새는 alt, 고양이 무리는 hop
+        self.zz = []
 
     def emote(self, mark, now, dur=1.6):
         self.mood = (mark, now, now + dur)
@@ -551,11 +590,11 @@ class Cat(Pet):
         a, b = self.FOOT if self.right else (self.W - self.FOOT[1], self.W - self.FOOT[0])
         return int(self.x) + a, int(self.x) + b
 
-    def draw(self, px, stride, height, sprites, ground, now, rainy):
-        """ground: 발 밑 열들 중 가장 높이 쌓인 높이 px. 그 위에 섬."""
+    def draw(self, px, stride, height, sprites, ground, now, rainy, floor=None):
+        """ground: 발 밑 열들 중 가장 높이 쌓인 높이 px. 그 위에 섬. floor: 틀 뒤에 묻혔을 때 그 아래를 가림."""
         x = int(self.x)
         y = height - int(ground) - self.H - int(self.hop)
-        stamp(px, stride, x, y, sprites[(self.pose(now, rainy), self.right)], self.width, height)
+        stamp(px, stride, x, y, sprites[(self.pose(now, rainy), self.right)], self.width, height, floor)
         for t in self.zz:  # 머리 위에서 비스듬히 떠오름
             k = (now - t) / ZZ_RISE
             hx = x + (self.W - 5 * SCALE if self.right else 2 * SCALE)
@@ -571,7 +610,7 @@ class Bird(Pet):
     비 오면 덜 날아다니고, 반딧불이가 머리 위로 내려오면 쪼려 함."""
     W, H = BIRD_W, BIRD_H
     LEAP, NO_LEAP = {"up": (0.3, 8), "down": (0.4, 4)}, ("fly",)  # 날갯짓하며 사뿐히. 나는 중엔 그냥 높이만 따라감
-    DIVER, SWIM_V = "bird", 45
+    DIVER, SWIM_V, PEEK = "bird", 45, 4
 
     def __init__(self, width, rng=random):
         self.rng, self.width = rng, width
@@ -658,9 +697,9 @@ class Bird(Pet):
         a, b = BIRD_FOOT if self.right else (BIRD_W - BIRD_FOOT[1], BIRD_W - BIRD_FOOT[0])
         return int(self.x) + a, int(self.x) + b
 
-    def draw(self, px, stride, height, sprites, ground, now, rainy):
+    def draw(self, px, stride, height, sprites, ground, now, rainy, floor=None):
         y = height - int(ground) - BIRD_H - int(self.alt)
-        stamp(px, stride, int(self.x), y, sprites[(self.pose(now), self.right)], self.width, height)
+        stamp(px, stride, int(self.x), y, sprites[(self.pose(now), self.right)], self.width, height, floor)
         self.draw_mood(px, stride, height, sprites, int(self.x), y, now)
 
 
@@ -668,7 +707,7 @@ class Dog(Cat):
     """고양이처럼 걷고 앉고 자며, 서 있을 땐 꼬리를 흔듦. 비나 눈이 오면 신나서 뛰어다님."""
     PRE, W, H, FOOT = "dog_", 20 * SCALE, 13 * SCALE, (4 * SCALE, 19 * SCALE)
     LEAP = {"up": (0.42, 22), "down": (0.42, 16)}  # 신나서 높이 붕
-    DIVER, SWIM_V = "dog", 60
+    DIVER, SWIM_V, PEEK = "dog", 60, 4  # 빼꼼하면 흔드는 꼬리 끝도 같이 보임
 
     def next_state(self, now, rainy):
         if self.kind in ("rain", "snow") and self.state != "run" and self.rng.random() < 0.3:
@@ -689,7 +728,7 @@ class Penguin(Cat):
     DUR = {**Cat.DUR, "slide": (0.8, 1.6)}
     # 오를 땐 낮게 뒤뚱 뛰고, 내려올 땐 배를 깔고 미끄러져 내려옴(위로 안 뜸)
     LEAP, LEAP_POSE = {"up": (0.5, 4), "down": (0.6, 0)}, ("slide", "stand")
-    DIVER, SWIM_V = "penguin", 95
+    DIVER, SWIM_V, PEEK = "penguin", 95, 4  # 부리까지
 
     def next_state(self, now, rainy):
         r = self.rng.random()
@@ -709,7 +748,7 @@ class Rabbit(Pet):
     W, H, FOOT = 14 * SCALE, 14 * SCALE, (2 * SCALE, 12 * SCALE)
     JUMP = {"hop": (0.42, 34, 20, (2, 6)), "run": (0.3, 60, 28, (4, 6))}  # 한 번에 초, 앞으로 px, 높이 px, 몇 번
     LEAP = {"up": (0.34, 26), "down": (0.34, 18)}  # 제일 높이 깡충. 늘 뛰는 깡충 위에 얹힘
-    DIVER, SWIM_V = "rabbit", 55
+    DIVER, SWIM_V, PEEK = "rabbit", 55, 6  # 긴 귀가 먼저 솟음
 
     def __init__(self, width, rng=random):
         self.rng, self.width = rng, width
@@ -769,9 +808,9 @@ class Rabbit(Pet):
         a, b = self.FOOT if self.right else (self.W - self.FOOT[1], self.W - self.FOOT[0])
         return int(self.x) + a, int(self.x) + b
 
-    def draw(self, px, stride, height, sprites, ground, now, rainy):
+    def draw(self, px, stride, height, sprites, ground, now, rainy, floor=None):
         y = height - int(ground) - self.H - int(self.alt)
-        stamp(px, stride, int(self.x), y, sprites[(self.pose(now), self.right)], self.width, height)
+        stamp(px, stride, int(self.x), y, sprites[(self.pose(now), self.right)], self.width, height, floor)
         self.draw_mood(px, stride, height, sprites, int(self.x), y, now)
 
 
@@ -828,6 +867,45 @@ def check():
         a.follow(48.0, 1 / 60, 0.0)
         a.follow(0.0, 1 / 60, 1 / 60)
         assert not a.leap and a.ground == 48 - CLIMB / 60, ("날거나 이미 뛰는 중엔 새로 안 뛰고 높이만 따라감", state)
+        a.bury()
+        assert not a.under, ("날거나 이미 뛰는 중엔 안 묻힘", state)
+
+    # 발밑에 틀이 솟으면 그 뒤에 묻혔다가 머리만 빼꼼(눈까지) 내밀고 두리번한 뒤 뛰어나옴
+    stands = {Cat: ART["stand"], Dog: DOG_ART["dog_stand"], Penguin: PENG_ART["peng_stand"],
+              Rabbit: RABBIT_ART["rab_stand"], Bird: BIRD_ART["bird_stand"]}
+    for cls, rows in stands.items():
+        assert "e" in "".join(rows[:cls.PEEK]) and cls.PEEK * SCALE < cls.H / 2, ("머리만, 눈까지 내밂", cls)
+        a = cls(300, random.Random(1))
+        a.follow(0.0, 1 / 60, 0.0)
+        a.mood = ("♪", 0.0, 9.0)
+        a.bury()
+        assert a.under and a.mood is None, cls
+        t, out, sides = 0.0, [], set()
+        while a.under:
+            t += 1 / 60
+            out.append(round(a.follow(45.0, 1 / 60, t) + cls.H - 45, 6))  # 틀 윗변 위로 나온 px
+            sides.add(a.right)
+            assert t < HIDE[1] + PEEK_UP + PEEK_HOLD + cls.LEAP["up"][0] + 0.1, ("제때 나옴", cls)
+        hid, held = out.index(next(v for v in out if v > 0)), out.count(cls.PEEK * SCALE)
+        assert HIDE[0] * 60 - 1 <= hid <= HIDE[1] * 60 + 1 and max(out[:hid]) <= 0, ("처음엔 다 숨음", cls, hid)
+        j = next(i for i, v in enumerate(out) if v > cls.PEEK * SCALE)  # 뛰어나오기 시작
+        assert PEEK_HOLD * 60 - 2 <= held and out[j - held:j] == [cls.PEEK * SCALE] * held, ("머리만 내밀고 버팀", cls, held)
+        assert sides == {True, False} and a.state == "stand", ("두리번", cls)
+        assert a.ground == 45 and not a.leap and max(out) > cls.H, ("뛰어나와 틀 위에 섬", cls, max(out))
+    a = Cat(300)
+    a.dive = 1.0
+    a.bury()
+    assert not a.under, "헤엄치는 중엔 안 묻힘"
+    # 틀 뒤에 가림: 틀 열(바닥 20)에선 그 아래를 안 찍고, 틈 열(바닥 0)은 그대로
+    sp0 = sprites()[("stand", True)]
+    full, px, floor = bytearray(100 * 4 * 50), bytearray(100 * 4 * 50), [0] * 30 + [20] * 70
+    stamp(full, 400, 10, 50 - H + 9, sp0, 100, 50)  # 몸이 화면 끝을 넘고 틀 가장자리(30)에 걸침
+    stamp(px, 400, 10, 50 - H + 9, sp0, 100, 50, floor)
+    for y in range(50):
+        for c in range(100):
+            o = y * 400 + c * 4
+            assert px[o:o + 4] == (full[o:o + 4] if y < 50 - floor[c] else bytes(4)), ("틀 아래만 가림", y, c)
+    assert any(full[35 * 400 + 120:35 * 400 + 160]) and any(px[35 * 400:35 * 400 + 120]), "시험이 양쪽에 걸침"
 
     rng = random.Random(7)
     cat = Cat(500, rng)
