@@ -1,0 +1,22 @@
+# usage-hud 맥 메뉴 막대판이 빌드되고 자체 점검을 통과하는지 봄.
+# private 저장소에서 macOS 러너는 1분이 무료 한도 10분으로 잡혀서, 맥판이 읽는 파일이 바뀔 때만 돈다
+name: mac
+on:
+  push:
+    paths: [usage-hud/mac/**, usage-hud/usage.py, .github/workflows/mac.yml]
+  pull_request:
+    paths: [usage-hud/mac/**, usage-hud/usage.py, .github/workflows/mac.yml]
+  workflow_dispatch:
+env:
+  PYTHONUTF8: '1'
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: swiftc --version
+      - run: usage-hud/mac/build.sh
+      - run: usage-hud/mac/UsageBar --check
+      # 메뉴 막대판이 부르는 것과 같은 /usr/bin/python3 로
+      - run: /usr/bin/python3 usage-hud/usage.py --check
