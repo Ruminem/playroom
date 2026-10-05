@@ -1,0 +1,34 @@
+# usage-hud 윈도우판을 점검하고 실제로 띄워 봄. 파이썬이라 빌드는 없고, 뜨다가 죽지 않는지가 그 자리다.
+# private 저장소에서 윈도우 러너는 1분이 무료 한도 2분으로 잡혀서, HUD 가 읽는 파일이 바뀔 때만 돈다
+name: windows
+on:
+  push:
+    paths: [usage-hud/*.py, usage-hud/*.html, shared/**, .github/workflows/windows.yml]
+  pull_request:
+    paths: [usage-hud/*.py, usage-hud/*.html, shared/**, .github/workflows/windows.yml]
+  workflow_dispatch:
+env:
+  PYTHONUTF8: '1'
+jobs:
+  hud:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: python usage-hud/usage.py --check
+      - run: python shared/startup.py
+      # 8초 띄워 둔 뒤 살아 있으면 --stop 으로 치움. 그 전에 죽었으면 오류를 보이고 실패
+      - name: HUD 띄워 보기
+        run: |
+          $p = Start-Process python -ArgumentList 'usage-hud/hud.py' -PassThru -RedirectStandardError hud.err
+          Start-Sleep 8
+          if ($p.HasExited) { Get-Content hud.err; throw "HUD 가 뜨다 죽음 (종료 코드 $($p.ExitCode))" }
+          python usage-hud/hud.py --stop
+          if (-not $p.WaitForExit(10000)) { throw "--stop 으로 안 꺼짐" }
+          Get-Content hud.err
