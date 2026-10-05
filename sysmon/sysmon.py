@@ -306,7 +306,7 @@ class Monitor:
         if not self.on_top:
             self.surface.topmost(False)
         taskbar.prepare(self.surface, self.font)
-        self.vis_w = self.w
+        self.vis_w, self.vis_h = self.w, self.h
         self.commands = queue.Queue()
         write_ico(ICON_FILE, ICON, ICON_COLORS)
         self.tray = Tray(TRAY_CLASS, ICON_FILE, "CPU·메모리", self.menu, self.commands.put)
@@ -339,13 +339,17 @@ class Monitor:
             self.last_lines = lines
             if self.theme != "text":
                 self.vis_w = paint_pixel(self.surface, lines, self.s)
+                self.vis_h = pixel_size(lines)[1] * self.s
             else:
                 taskbar.paint_lines(self.surface, lines, self.line)
                 self.vis_w = taskbar.text_width(self.font, [t for t, _ in lines]) + self.pad + 2
+                self.vis_h = self.h
         spot = taskbar.spot()
-        if spot and (spot[:2], self.vis_w) != self.where:  # 트레이 아이콘이 늘거나 줄거나 폭이 바뀌면 따라감
-            self.where = spot[:2], self.vis_w
-            self.surface.view(spot[0] - GAP - self.vis_w, spot[1], self.w - self.vis_w, self.vis_w)
+        if spot and (spot[:2], self.vis_w, self.vis_h) != self.where:  # 트레이 아이콘이 늘거나 줄거나 폭이 바뀌면 따라감
+            self.where = spot[:2], self.vis_w, self.vis_h
+            # 창을 상자 높이에 꼭 맞춤 — weather 가 창 윗변을 상자 윗변으로 보고 그 위에 눈을 얹음
+            sy = (self.h - self.vis_h) // 2
+            self.surface.view(spot[0] - GAP - self.vis_w, spot[1] + sy, self.w - self.vis_w, self.vis_w, sy, self.vis_h)
         self.surface.present()
         if self.on_top:
             self.surface.topmost()  # 작업 표시줄을 누르면 그쪽이 앞으로 오므로 1초마다 다시 올라옴

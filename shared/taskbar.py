@@ -57,6 +57,85 @@ def window_left(class_name):
     return r.left
 
 
+ole32, oleaut32 = ctypes.windll.ole32, ctypes.windll.oleaut32
+ole32.CLSIDFromString.argtypes = (wintypes.LPCWSTR, ctypes.c_void_p)
+ole32.CoCreateInstance.argtypes = (ctypes.c_void_p, ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p,
+                                   ctypes.POINTER(ctypes.c_void_p))
+ole32.CoCreateInstance.restype = ctypes.HRESULT
+oleaut32.SysFreeString.argtypes = (ctypes.c_void_p,)
+PTR = ctypes.POINTER(ctypes.c_void_p)
+
+
+def guid(text):
+    g = (ctypes.c_byte * 16)()
+    ole32.CLSIDFromString(text, g)
+    return g
+
+
+def com(obj, index, *argtypes):
+    """COM 객체의 vtable index 번째 메서드. 실패한 HRESULT 는 OSError 로 올라옴."""
+    fn = ctypes.cast(obj, ctypes.POINTER(PTR))[0][index]
+    return lambda *args: ctypes.WINFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p, *argtypes)(fn)(obj, *args)
+
+
+def ui_items(hwnd):
+    """창 아래 UI 자동화 요소 전부의 (클래스 이름, (왼, 위, 오른, 아래)). 윈도우 11 작업 표시줄 단추는 XAML 이라
+    Win32 창으로는 안 보이고 이걸로만 자리가 나옴. 작업 표시줄에 18개, 한 번 몇십 ms."""
+    ole32.CoInitializeEx(None, 0)  # MTA. 이미 했으면 S_FALSE 라 그냥 넘어감
+    uia, root, cond, arr = (ctypes.c_void_p() for _ in range(4))
+    out = []
+    try:
+        ole32.CoCreateInstance(guid("{ff48dba4-60ef-4201-aa87-54103eef594e}"), None, 1,  # CUIAutomation
+                               guid("{30cbe57d-d9d0-452a-ab13-7ac5ac4825ee}"), ctypes.byref(uia))  # IUIAutomation
+        com(uia, 6, wintypes.HWND, PTR)(hwnd, ctypes.byref(root))  # ElementFromHandle
+        com(uia, 21, PTR)(ctypes.byref(cond))  # CreateTrueCondition
+        com(root, 6, ctypes.c_int, ctypes.c_void_p, PTR)(4, cond, ctypes.byref(arr))  # FindAll(TreeScope_Descendants)
+        n = ctypes.c_int()
+        com(arr, 3, ctypes.POINTER(ctypes.c_int))(ctypes.byref(n))  # get_Length
+        for i in range(n.value):
+            el, name, r = ctypes.c_void_p(), ctypes.c_void_p(), wintypes.RECT()
+            com(arr, 4, ctypes.c_int, PTR)(i, ctypes.byref(el))  # GetElement
+            try:
+                com(el, 30, PTR)(ctypes.byref(name))  # get_CurrentClassName
+                com(el, 43, ctypes.POINTER(wintypes.RECT))(ctypes.byref(r))  # get_CurrentBoundingRectangle
+                out.append((ctypes.wstring_at(name.value) if name.value else "", (r.left, r.top, r.right, r.bottom)))
+            finally:
+                oleaut32.SysFreeString(name)
+                com(el, 2)()  # Release
+    finally:
+        for p in (arr, cond, root, uia):
+            if p.value:
+                com(p, 2)()
+    return out
+
+
+def frames():
+    """작업 표시줄에서 눈에 보이는 틀 [(왼, 위, 오른)] — 앱 단추 묶음, 알림 영역 단추들, 그 위에 얹힌 usage-hud ·
+    sysmon 창. 작업 표시줄 테마(FrostyGlass 등)가 바탕을 투명하게 두고 이것들만 알약으로 띄우면 그 모양이 됨.
+    단추 묶음을 못 찾으면 None — 그때는 모양을 모르니 작업 표시줄 윗변 전체를 바닥으로 봄.
+    ponytail: 기본 작업 표시줄이면 단추 묶음이 전체 폭이라 윗변 전체와 같다고 보고 따로 안 가림(직접 못 봄)"""
+    bar = user32.FindWindowW("Shell_TrayWnd", None)
+    if not bar:
+        return None
+    try:
+        items = ui_items(bar)
+    except OSError:
+        return None
+    out = [r for c, r in items if c == "Taskbar.TaskbarFrameAutomationPeer"]
+    if not out:
+        return None
+    tray = [r for c, r in items if c.startswith("SystemTray.")]
+    if tray:  # TrayNotifyWnd 는 알약보다 왼쪽으로 12px 넓어서 단추들을 합침
+        out.append((min(r[0] for r in tray), min(r[1] for r in tray), max(r[2] for r in tray), 0))
+    for cls, title in ((None, "usage-hud"), ("PlayroomSysmonSurface", None)):
+        h = user32.FindWindowW(cls, title)
+        if h and user32.IsWindowVisible(h):
+            r = wintypes.RECT()
+            user32.GetWindowRect(h, ctypes.byref(r))
+            out.append((r.left, r.top, r.right, 0))
+    return [(l, t, r) for l, t, r, _ in out if r > l]
+
+
 def font(bar_h):
     # ANTIALIASED_QUALITY: 회색조라 R=G=B=덮인 정도. ClearType 이면 색 번짐이 남음
     return gdi32.CreateFontW(-round(bar_h * 0.36), 0, 0, 0, 600, 0, 0, 0, 1, 0, 0, 4, 0, "Segoe UI")

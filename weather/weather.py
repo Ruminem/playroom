@@ -7,8 +7,9 @@
   python weather.py --kind rain --amount 80   양은 0–100% (예전 few·normal·many 도 받음)
   python weather.py --check     자체 점검
 
-작업 영역(작업 표시줄 뺀 주 모니터) 전체를 덮는 픽셀 알파 창(shared/surface.py)에 기본 60fps 로 그린다(메뉴에서 30–180).
-눈은 원근 세 층으로 바람에 흔들리며 내리고 작업 표시줄 위에 쌓였다 천천히 녹는다.
+작업 영역(작업 표시줄 뺀 주 모니터)과 그 아래 작업 표시줄까지 덮는 픽셀 알파 창(shared/surface.py)에 기본 60fps 로
+그린다(메뉴에서 30–180). 바닥은 작업 표시줄에 보이는 틀(단추 묶음·알림 영역·HUD·sysmon, taskbar.frames)의 윗변이고
+그 사이 틈은 화면 맨 아래. 눈은 원근 세 층으로 바람에 흔들리며 내리고 그 바닥 위에 쌓였다 천천히 녹는다.
 비는 세 겹 깊이의 빗줄기가 돌풍에 기울며 내리고 바닥에서 튀며, 뇌우는 거기에 번개와 빗발의 물결을 더한다.
 반딧불이는 화면 아래쪽을 떠다니며 깜빡인다. 고양이(pet.py)를 켜면 바닥이나 쌓인 더미 위를 돌아다닌다.
 트레이의 눈송이 메뉴에서 종류·양·고양이·숨기기·끝내기를 하고(양은 10% 칸으로 0–100%),
@@ -38,6 +39,8 @@ import startup
 from surface import Surface
 import pet
 from tray import Tray, write_ico
+if not MAC:
+    import taskbar
 
 PID_FILE = Path(tempfile.gettempdir()) / "playroom-weather.pid"
 ICON_FILE = Path(tempfile.gettempdir()) / "playroom-weather.ico"
@@ -76,6 +79,8 @@ SLOPE = 0.8        # 이웃 열과의 높이 차가 이보다 크면 흘러내�
 DIFFUSE = 0.12     # 표면을 매끈하게 퍼뜨리는 정도
 MELT_PER_SEC = 0.0045  # 높이에 비례해 녹는 비율. 넣는 양 ÷ 이 값에서 높이가 멈춤 ('보통' 이면 5px 쯤)
 SETTLE_SEC = 0.25
+FRAMES_EVERY = 3   # 작업 표시줄 틀을 다시 읽는 간격 초. 한 번 55ms(UI 자동화)라 다른 스레드에서
+CLIMB = 400        # 동물이 틀 위로 오르내리는 빠르기 px/초 — 48px 단을 0.12초에
 
 STORM_MULT = 1.5   # 뇌우는 비보다 굵게
 BOLT_EVERY = (5, 14)  # '보통' 일 때 번개 간격 초. 양에 반비례
@@ -333,9 +338,12 @@ def bolt_sprite(segs):
 class Pile:
     """픽셀 열마다 높이(실수 px). 떨어진 자리에 둔덕을 보태고, settle() 이 흘러내림·퍼짐·녹음을 한다."""
 
-    def __init__(self, width):
+    def __init__(self, width, base=None):
         self.h = [0.0] * width
         self.flip = False
+        # 열마다 바닥 높이. 흘러내림은 바닥+더미 표면으로 셈 — 틀 위 눈이 모서리에서 옆 틈으로 흘러 옆면에 붙고,
+        # 많이 쌓이면 틀까지 언덕으로 이어짐. 틈의 눈은 표면이 틀 윗변을 넘어야 틀 위로 감
+        self.base = base or [0] * width
 
     def add(self, x, r):
         h = self.h
@@ -348,23 +356,24 @@ class Pile:
             h[i] = min(PILE_CAP, h[i] + vol * w / total)
 
     def settle(self, melt):
-        h, n = self.h, len(self.h)
-        # 안식각: 넘친 높이 차의 반을 낮은 쪽으로. 한 방향으로만 훑으면 한쪽으로 쏠리므로 번갈아 훑음
+        h, n, base = self.h, len(self.h), self.base
+        # 안식각: 넘친 높이 차의 반을 낮은 쪽으로(가진 눈만큼만). 한 방향으로만 훑으면 한쪽으로 쏠리므로 번갈아 훑음
         order = range(n - 1) if self.flip else range(n - 2, -1, -1)
         self.flip = not self.flip
         for i in order:
-            d = h[i] - h[i + 1]
+            d = h[i] + base[i] - h[i + 1] - base[i + 1]
             if d > SLOPE:
-                m = (d - SLOPE) / 2
+                m = min((d - SLOPE) / 2, h[i])
                 h[i] -= m
                 h[i + 1] += m
             elif d < -SLOPE:
-                m = (-d - SLOPE) / 2
+                m = min((-d - SLOPE) / 2, h[i + 1])
                 h[i] += m
                 h[i + 1] -= m
-        # 이웃끼리 조금씩 주고받아 표면을 매끈하게. 주고받기라 부피는 그대로.
+        # 이웃끼리 조금씩 주고받아 표면을 매끈하게. 주고받기라 부피는 그대로. 양옆으로 반씩까지만 내줌.
         # 흐름은 옛 높이로 한꺼번에 셈 — 차례로 고치면 훑는 방향으로 조금씩 쏠림
-        flow = [DIFFUSE * (b - a) for a, b in zip(h, h[1:])]
+        s = [a + b for a, b in zip(h, base)]
+        flow = [max(-h[i] / 2, min(h[i + 1] / 2, DIFFUSE * (s[i + 1] - s[i]))) for i in range(n - 1)]
         for i, f in enumerate(flow):
             h[i] += f
             h[i + 1] -= f
@@ -373,19 +382,34 @@ class Pile:
             self.h = [v * k if v > 0.01 else 0.0 for v in h]
 
 
-def pile_column_parts():
-    """열 하나를 그릴 조각: 윗면 가장자리(높이의 소수부 16단계 알파)와 위에서 아래로 몸통."""
+def floor_heights(w, bottom, left, rise, frames):
+    """열마다 바닥 높이 px(창 밑변에서 위로). frames: taskbar.frames() 의 [(왼, 위, 오른)] 화면 좌표 — 밑에서
+    rise 안(작업 표시줄 띠)에 윗변이 있는 것만 셈. None 이면 모양을 모르니 띠 윗변 전체가 바닥."""
+    if frames is None:
+        return [rise] * w
+    base = [0] * w
+    for l, t, r in frames:
+        b = bottom - t
+        if 0 < b <= rise:
+            for x in range(max(0, l - left), min(w, r - left)):
+                base[x] = max(base[x], b)
+    return base
+
+
+def pile_column_parts(depth=PILE_STRIP):
+    """열 하나를 그릴 조각: 윗면 가장자리(높이의 소수부 16단계 알파)와 위에서 아래로 몸통(depth px)."""
     top, deep = (240, 244, 252), (212, 221, 238)
     edges = [pixel(SNOW_RIM, 255 * q / 16) for q in range(16)]
     body = b"".join(pixel(tuple(int(a + (b - a) * min(1.0, d / 14)) for a, b in zip(top, deep)), 255)
-                    for d in range(PILE_STRIP))
+                    for d in range(depth))
     return edges, body
 
 
-def pile_column(v, edges, body, zero):
-    n = min(int(v), PILE_STRIP - 1)
+def pile_column(v, edges, body, zero, room=PILE_STRIP):
+    """room px 짜리 열: 위는 비우고 높이 v 의 더미. 틀 옆 언덕은 틀 높이까지 자라므로 room 은 그 열 바닥 위 띠 전체."""
+    n = min(int(v), room - 1)
     q = int((v - int(v)) * 16)
-    return zero[:(PILE_STRIP - n - 1) * 4] + edges[q] + body[:n * 4]
+    return zero[:(room - n - 1) * 4] + edges[q] + body[:n * 4]
 
 
 def load_settings():
@@ -414,7 +438,15 @@ class Weather:
         self.kind, self.amount, self.visible, self.fps = kind, amount, True, fps
         # ponytail: 시작할 때의 주 모니터 작업 영역에 고정. 해상도·작업 표시줄이 바뀌면 다시 켜야 함
         l, t, r, b = overlay.work_area()
-        self.w, self.h = r - l, b - t
+        spot = None if MAC else taskbar.spot()
+        # 작업 표시줄이 바로 아래 있으면 그 밑변까지 덮음 — 바탕이 투명한 작업 표시줄이면 틀(알약) 사이로는
+        # 화면 맨 아래까지 떨어지게. 바닥은 열마다 self.base(밑변에서 위로 px), 틀을 읽기 전엔 띠 윗변 전체
+        self.rise = spot[2] if spot and spot[1] == b else 0
+        # 모니터를 꽉 채우면 윈도우가 전체 화면 앱으로 봐서(QUNS_BUSY) 알림이 막히고 HUD·sysmon 이 숨음 — 위 1px 을 비움
+        t += 1 if self.rise and t == 0 else 0
+        self.w, self.h, self.left, self.top = r - l, b - t + self.rise, l, t
+        self.base, self.next_base = [self.rise] * self.w, None
+        self.strip_h = PILE_STRIP + self.rise
         self.surface = Surface(l, t, self.w, self.h, SURFACE_CLASS)
         self.on_top = MAC or overlay.on_top("weather")  # 런처의 '항상 위'. 맥은 런처가 없음
         if not self.on_top:
@@ -427,14 +459,15 @@ class Weather:
         self.droplet = place(disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR), s)
         self.crown = [place(crown(k), s) for k in range(3)]
         self.full_clear, self.blank = True, False  # 다음 프레임은 화면 전체를 지움 · 빈 화면이라 쉬는 중
-        self.snow_pile = pile_column_parts()
-        self.pile_zero = bytes(PILE_STRIP * 4)
+        self.snow_pile = pile_column_parts(self.strip_h)
+        self.pile_zero = bytes(self.strip_h * 4)
         self.sprite_cache = {}  # 비·반딧불 그림은 그 종류를 처음 고를 때 그림
         self.pet_sprites = pet.sprites()
         # 이름 → 동물, PET_CLASS 순. 종류를 바꿔도 그대로 — 동물은 날씨와 따로 삶
         self.pets = {a: PET_CLASS[a](self.w) for a in PET_CLASS if a in (animals or ())}
         self.bolt_seen, self.pet_startled = None, {}  # 이름 → 우박에 다시 놀랄 수 있는 시각
         self.bangs = []  # 이번 프레임에 터진 불꽃의 x — 동물들이 돌아봄
+        self.pet_ground = {}  # 이름 → 지금 딛고 선 높이. 틀 단을 바로 건너뛰지 않고 CLIMB 로 오르내림
         self.commands = queue.Queue()  # 트레이 스레드 → 그리는 스레드
         write_ico(ICON_FILE, ICON, ICON_COLORS)
         self.panel = None  # 왼쪽 클릭으로 띄운 설정 창 프로세스
@@ -444,6 +477,23 @@ class Weather:
         self.last = self.last_settle = self.last_topmost = time.perf_counter()
         self.reset()
         self.surface.show(True)
+        if self.rise:
+            threading.Thread(target=self.watch_frames, daemon=True).start()
+
+    def watch_frames(self):
+        """작업 표시줄 틀을 FRAMES_EVERY 초마다 읽어 그리는 스레드에 넘김 — 앱을 열고 닫으면 단추 묶음 폭이 바뀜."""
+        while True:
+            self.next_base = floor_heights(self.w, self.top + self.h, self.left, self.rise, taskbar.frames())
+            time.sleep(FRAMES_EVERY)
+
+    def set_base(self, base):
+        """바닥 모양을 바꿈. 틀이 사라진 열의 눈은 그대로 새 바닥으로 떨어지고(HUD 를 끄거나 앱을 닫으면 위에
+        쌓였던 눈이 내려앉아 옆과 섞임), 틀이 새로 솟은 열은 틀이 밀고 올라온 만큼 눈이 묻힘."""
+        h = self.pile.h
+        for x, (a, b) in enumerate(zip(self.base, base)):
+            if b > a:
+                h[x] = max(0.0, h[x] - (b - a))
+        self.base = self.pile.base = base
 
     # ── 트레이 ──
     def menu(self):
@@ -543,7 +593,7 @@ class Weather:
         return 14 * math.sin(now * 0.13) + 9 * math.sin(now * 0.051 + 1.3) + 6 * math.sin(now * 0.37 + 4.0)
 
     def snow(self, dt, now):
-        px, stride, w, h, ph = self.surface.pixels, self.stride, self.w, self.h, self.pile.h
+        px, stride, w, h, ph, base = self.surface.pixels, self.stride, self.w, self.h, self.pile.h, self.base
         wind = self.wind(now)
         for f in self.flakes:
             layer = SNOW_LAYERS[f[3]]
@@ -554,7 +604,7 @@ class Weather:
             x = f[0] + math.sin(f[5] + now * f[6]) * layer[5]
             xi, yi = int(x), int(f[1])
             col = min(max(xi + n // 2, 0), w - 1)
-            if yi + n >= h - ph[col]:  # 쌓인 눈에 닿음. 먼 층은 쌓이지 않고 그 뒤로 사라짐
+            if yi + n >= h - base[col] - ph[col]:  # 쌓인 눈이나 바닥에 닿음. 먼 층은 쌓이지 않고 그 뒤로 사라짐
                 if layer[7]:
                     self.pile.add(col, layer[1][f[4]])
                 f[:] = self.new_flake(f[3], True)
@@ -565,13 +615,13 @@ class Weather:
 
     def render_pile(self):
         strip32 = self.strip.cast("I")
-        w, last, body = self.w, self.pile_last, self.pile_body
-        for x, v in enumerate(self.pile.h):
-            key = int(v * 16)
+        w, last, body, zero, sh = self.w, self.pile_last, self.pile_body, self.pile_zero, self.strip_h
+        for x, (v, b) in enumerate(zip(self.pile.h, self.base)):
+            key = int(v * 16) | b << 16
             if key != last[x]:  # 1/16 px 아래로 안 바뀐 열은 건너뜀
-                last[x] = key
-                strip32[x::w] = memoryview(pile_column(v, self.pile_edges, body,
-                                                       self.pile_zero)).cast("I")
+                last[x] = key  # 띠는 위에서부터 빈 칸 · 더미 · 틀 높이만큼 빈 칸
+                strip32[x::w] = memoryview(pile_column(v, self.pile_edges, body, zero, sh - b)
+                                           + zero[:b * 4]).cast("I")
 
     # ── 반딧불이 ──
     def fly_sprites(self):
@@ -659,12 +709,14 @@ class Weather:
         sprites = self.rain_sprites[lit][round(slant / SLANTS[1])]
         # 뇌우는 빗발이 물결처럼 굵어졌다 가늘어짐 — 문턱보다 큰 빗방울은 떨어지기만 하고 안 그림
         dens = 1.0 if self.kind == "rain" else 0.7 + 0.3 * math.sin(now * 0.5 + self.gust_phase)
+        base = self.base
         for d in self.drops:
             d[1] += d[2] * dt
             d[0] += d[2] * slant * dt
-            if d[1] + d[4] >= h:
+            x = d[0] + d[4] * slant  # 빗줄기 아래 끝
+            if d[1] + d[4] >= h - base[min(max(int(x), 0), w - 1)]:
                 if d[5] < dens:
-                    self.splash(d[0] + d[4] * slant, d[3])
+                    self.splash(x, d[3])
                 d[:] = self.new_drop(d[3], True)
                 continue
             if d[5] >= dens:
@@ -691,23 +743,24 @@ class Weather:
                 live.append(s)
         self.splashes = live
         live = []
-        for c in self.crowns:  # [닿은 x, 남은 초]
+        for c in self.crowns:  # [닿은 x, 남은 초, 바닥 y]
             c[1] -= dt
             n, rows = self.crown[min(2, int((1 - c[1] / CROWN_SEC) * 3))]
             xi = int(c[0]) - n // 2
             if c[1] > 0 and 0 <= xi <= w - n:
-                stamp(px, stride, xi, h - n, rows)
+                stamp(px, stride, xi, c[2] - n, rows)
                 live.append(c)
         self.crowns = live
 
     def splash(self, x, li):
         if not li:
             return  # 멀리 것은 안 튐
-        self.crowns.append([x, CROWN_SEC])
+        floor = self.h - self.base[min(max(int(x), 0), self.w - 1)]
+        self.crowns.append([x, CROWN_SEC, floor])
         for _ in range(random.randint(1, 3) if li == 2 else random.randint(0, 1)):  # 가까운 빗줄기가 더 튐
             # 물방울 그림 밑변이 바닥에 닿는 자리에서 출발. 더 아래서 뜨면 첫 프레임에 그 차이만큼 못 오른 것은
             # 화면 밖으로 보고 지워서 180fps(한 프레임 0.5–1.2px)에서는 하나도 안 보였음
-            self.splashes.append([x, self.h - self.droplet[0], random.uniform(-90, 90), random.uniform(-220, -90),
+            self.splashes.append([x, floor - self.droplet[0], random.uniform(-90, 90), random.uniform(-220, -90),
                                   random.uniform(0.25, 0.45)])
 
     # ── 우박 ──
@@ -719,14 +772,14 @@ class Weather:
                 random.uniform(-15, 15), v, v, int(big), 0]
 
     def hail(self, dt, now):
-        px, stride, w, h, ph = self.surface.pixels, self.stride, self.w, self.h, self.pile.h
+        px, stride, w, h, ph, base = self.surface.pixels, self.stride, self.w, self.h, self.pile.h, self.base
         for s in self.stones:
             s[3] = min(s[3] + 2200 * dt, s[4])
             s[0] += s[2] * dt
             s[1] += s[3] * dt
             n, rows = self.hail_sprites[s[5]]
             col = min(max(int(s[0]) + n // 2, 0), w - 1)
-            floor = h - ph[col] - n
+            floor = h - base[col] - ph[col] - n
             if s[1] >= floor and s[3] > 0:  # 바닥이나 더미에 닿음
                 if s[6] == 0:
                     self.scare_pet(col, now)
@@ -831,9 +884,9 @@ class Weather:
         self.flakes, self.drops, self.splashes, self.flies = [], [], [], []
         self.crowns, self.gust_phase = [], random.uniform(0, math.tau)
         self.bolt, self.next_bolt = None, time.perf_counter() + random.uniform(2, 5)
-        self.pile = Pile(self.w)
-        self.strip = memoryview(bytearray(self.stride * PILE_STRIP))
-        self.pile_last = [0] * self.w
+        self.pile = Pile(self.w, self.base)
+        self.strip = memoryview(bytearray(self.stride * self.strip_h))
+        self.pile_last = [-1] * self.w  # 처음엔 모든 열을 그림 — 빈 열이어도 틀 높이가 들어감
         self.pile_edges, self.pile_body = self.snow_pile
         if kind == "snow":
             self.flakes = [self.new_flake(li, False) for li, layer in enumerate(SNOW_LAYERS)
@@ -862,7 +915,8 @@ class Weather:
         bolt = self.bolt and self.bolt[0] != self.bolt_seen
         if bolt:
             self.bolt_seen = self.bolt[0]
-        low = [(f[0], self.h - f[1]) for f in self.flies] if self.kind == "fireflies" else []  # 높이는 동물이 거름
+        base, w = self.base, self.w  # 높이는 그 자리 바닥에서 셈. 거르는 건 동물이
+        low = [(f[0], self.h - f[1] - base[min(int(f[0]), w - 1)]) for f in self.flies] if self.kind == "fireflies" else []
         for p in self.pets.values():
             p.kind, p.snowy = self.kind, self.kind in ("snow", "hail")
             if bolt:
@@ -877,16 +931,26 @@ class Weather:
     def walk_pet(self, dt, now):
         rainy = self.kind in ("rain", "storm")
         self.react(now)
-        for p in self.pets.values():
+        for name, p in self.pets.items():
             p.update(dt, now, rainy)
             a, b = p.feet()
-            p.draw(self.surface.pixels, self.stride, self.h, self.pet_sprites, max(self.pile.h[a:b]), now, rainy)
+            want = max(v + f for v, f in zip(self.pile.h[a:b], self.base[a:b]))
+            g = self.pet_ground.get(name, want)  # 단을 만나면 순간 이동하지 않고 오르내림
+            g = min(want, g + CLIMB * dt) if want > g else max(want, g - CLIMB * dt)
+            self.pet_ground[name] = g
+            p.draw(self.surface.pixels, self.stride, self.h, self.pet_sprites, g, now, rainy)
 
     def frame(self, dt, now):
         kind = self.kind
         # 날씨 없이 고양이만이면 고양이가 닿는 맨 아래 띠만 지우고 그만큼만 내보냄(180fps 에서 한 코어 43% → 아래 참고).
         # 종류를 바꾼 첫 프레임은 위에 남은 것까지 통째로. 맥 Surface 는 버퍼 둘을 번갈아 써서 늘 통째로
-        top = 0 if MAC or self.full_clear or kind != "none" else self.h - pet.BAND
+        nb = self.next_base
+        if nb is not None:
+            self.next_base = None
+            if nb != self.base:
+                self.set_base(nb)
+                self.full_clear = True  # 동물이 있던 띠 위쪽까지 한 번 지움
+        top = 0 if MAC or self.full_clear or kind != "none" else self.h - pet.BAND - self.rise
         self.full_clear = False
         self.surface.clear(top) if top else self.surface.clear()
         piled = kind in ("snow", "hail")
@@ -896,7 +960,7 @@ class Weather:
                 self.pile.settle(melt * (now - self.last_settle))
                 self.last_settle = now
                 self.render_pile()
-            self.surface.pixels[(self.h - PILE_STRIP) * self.stride:] = self.strip
+            self.surface.pixels[(self.h - self.strip_h) * self.stride:] = self.strip
         if self.pets:  # 더미 위, 내리는 것 아래
             self.walk_pet(dt, now)
         if kind == "snow":
@@ -957,7 +1021,8 @@ class Weather:
 
 def check():
     fake = types.SimpleNamespace(surface=types.SimpleNamespace(pixels=bytearray(40 * 40 * 4)), stride=40 * 4, w=40, h=40,
-                                 splashes=[], crowns=[], droplet=place(disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR), 40 * 4),
+                                 base=[0] * 40, splashes=[], crowns=[],
+                                 droplet=place(disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR), 40 * 4),
                                  crown=[place(crown(k), 40 * 4) for k in range(3)])
     for fps in (30, 60, 180):
         fake.splashes, fake.crowns = [], []
@@ -969,8 +1034,11 @@ def check():
         assert len(fake.crowns) == 20, "ㅅ자 튐도 첫 프레임에 보임 (%dfps)" % fps
     Weather.splash(fake, 20, 0)
     assert len(fake.crowns) == 20, "먼 층은 안 튐"
-    big = lambda **kw: types.SimpleNamespace(surface=types.SimpleNamespace(pixels=bytearray(200 * 200 * 4)),
-                                             stride=800, w=200, h=200, amount=100, **kw)
+    fake.base = [0] * 20 + [12] * 20
+    Weather.splash(fake, 25, 2)
+    assert fake.crowns[-1][2] == 40 - 12 and fake.splashes[-1][1] == 28 - fake.droplet[0], "틀 위에 떨어지면 틀 윗변에서 튐"
+    big = lambda **kw: types.SimpleNamespace(**{"surface": types.SimpleNamespace(pixels=bytearray(200 * 200 * 4)),
+                                                "stride": 800, "w": 200, "h": 200, "amount": 100, "base": [0] * 200, **kw})
     hf = big(pile=Pile(200), pets={"cat": pet.Cat(200, random.Random(2)), "rabbit": pet.Rabbit(200, random.Random(2))},
              pet_startled={},
              hail_sprites=[place(disc(r, s, a, HAIL_COLOR, HAIL_RIM), 800) for r, s, a in HAIL_SIZES])
@@ -988,6 +1056,43 @@ def check():
     hf.stones = [[100, 199, 0, 900, 900, 1, HAIL_BOUNCES]]  # 이미 두 번 튄 알이 아직 빠르게 닿아도
     Weather.hail(hf, 1 / 180, 99)
     assert hf.stones[0][6] == 0 and hf.stones[0][1] < 0, "세 번째는 안 튀고 더미로"
+    hf.base, hf.pile = [0] * 100 + [48] * 100, Pile(200)
+    hf.stones = [[150, 200 - 48 - 30, 0, 900, 900, 1, HAIL_BOUNCES], [50, 200 - 48 - 30, 0, 900, 900, 1, HAIL_BOUNCES]]
+    for _ in range(10):  # 프레임에 5px — 30px 밑 틀 윗변은 지나고, 화면 밑변에는 아직
+        Weather.hail(hf, 1 / 180, 99)
+    assert hf.stones[0][6] == 0 and sum(hf.pile.h[100:]) > 0, "틀 위의 알은 틀 윗변에 닿아 더미로(새 알로 바뀜)"
+    assert hf.stones[1][1] > 200 - 48 - 30 and not any(hf.pile.h[:100]), "틈의 알은 그 높이를 지나 계속 떨어짐"
+    sf = big(base=[0] * 100 + [48] * 100, pile=Pile(200), wind=Weather.wind,
+             snow_sprites=[[[place(disc(rad, layer[4], layer[3], SNOW_COLOR, SNOW_RIM, fx / 4, fy / 4), 800)
+                             for fy in range(4) for fx in range(4)] for rad in layer[1]] for layer in SNOW_LAYERS])
+    li = next(i for i, layer in enumerate(SNOW_LAYERS) if layer[7])  # 쌓이는 층
+    sf.new_flake = lambda li, top: [0.0, -1000.0, 0.0, li, 0, 0.0, 1.0]
+    n = sf.snow_sprites[li][0][0][0]
+    sf.flakes = [[x, 200 - 48 - n - 2, 300.0, li, 0, 0.0, 1.0] for x in (150.0, 50.0)]
+    Weather.snow(sf, 1 / 60, 0.0)
+    assert sf.flakes[0][1] == -1000 and sf.flakes[1][1] > 0 and sum(sf.pile.h[100:]) > 0 and not any(sf.pile.h[:100]), \
+        "눈송이도 틀 위에서는 틀 윗변에, 틈에서는 계속 떨어짐"
+    n = RAIN_LAYERS[1][1][0]
+    wf = big(base=[0] * 100 + [48] * 100, kind="rain", gust_phase=0.0, bolt=None, sprite_cache={}, splashes=[], crowns=[],
+             droplet=place(disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR), 800), crown=[place(crown(k), 800) for k in range(3)],
+             drops=[[x, 200 - 48 - n - 2, 300.0, 1, n, 0.0] for x in (150.0, 50.0)])
+    for m in ("gust", "rain_set", "splash", "splatter"):
+        setattr(wf, m, getattr(Weather, m).__get__(wf))
+    wf.rain_sprites = wf.rain_set()
+    wf.new_drop = lambda li, top: [0.0, -1000.0, 0.0, li, n, 0.0]
+    Weather.rain(wf, 1 / 60, 0.0)
+    assert [c[2] for c in wf.crowns] == [152] and wf.drops[1][1] > 0, "빗방울도 틀 위에선 틀 윗변에서 튀고, 틈에선 계속"
+    zf = big(kind="none", amount=0, strip_h=PILE_STRIP + 48, snow_pile=pile_column_parts(PILE_STRIP + 48),
+             base=[0] * 100 + [48] * 100)
+    Weather.reset(zf)
+    assert zf.pile.base is zf.base, "종류를 바꿔 더미를 새로 깔아도 틀 모양을 앎"
+    zf.pile.h = [5.0] * 90 + [50.0] * 10 + [5.0] * 100  # 틈 90..99 엔 틀 높이를 넘는 언덕
+    Weather.set_base(zf, [0] * 90 + [48] * 110)  # 앱을 열어 단추 묶음이 왼쪽으로 10px 넓어짐
+    assert zf.pile.h[88:101] == [5.0] * 2 + [2.0] * 10 + [5.0] and zf.pile.base is zf.base, \
+        "틀이 솟은 열은 그만큼 눈이 묻히고, 안 바뀐 열은 그대로"
+    Weather.set_base(zf, [0] * 200)  # HUD 를 끔
+    assert zf.pile.h[88:] == [5.0] * 2 + [2.0] * 10 + [5.0] * 100 and zf.pile.base == [0] * 200, \
+        "틀이 사라지면 위에 쌓였던 눈이 그대로 바닥으로 떨어짐"
     assert all(0 < n <= 6 / HAIL_SCARE[2] + 1 for n in scares.values()), ("동물마다 가끔 놀라고 따로 쉼", scares)
     ff = big(rockets=[], sparks=[], next_launch=math.inf, pets={}, bangs=[],
              fw=[[place(glow(1.1, 3.6, lv / FW_LEVELS, 0, 0, c, hc), 800) for lv in range(1, FW_LEVELS + 1)]
@@ -1020,6 +1125,19 @@ def check():
     cat.go("walk", 0.0)
     Weather.react(rf, cat.calm)
     assert cat.state == "hop" and cat.pounce and cat.kind == "fireflies", "낮은 반딧불이로 폴짝"
+    # 틀 단을 만나면 순간 이동하지 않고 CLIMB 빠르기로 오르내림
+    walker = pet.Cat(200, random.Random(4))
+    gf = big(pets={"cat": walker}, pile=Pile(200), base=[48] * 200, pet_ground={}, pet_sprites=pet.sprites(),
+             kind="none", flies=[], bangs=[], bolt=None, bolt_seen=None)
+    gf.react = lambda now: Weather.react(gf, now)
+    Weather.walk_pet(gf, 1 / 60, 0.0)
+    assert gf.pet_ground["cat"] == 48, "처음엔 발밑 높이에 바로 섬"
+    gf.base = [0] * 200
+    Weather.walk_pet(gf, 1 / 60, 1 / 60)
+    assert abs(gf.pet_ground["cat"] - (48 - CLIMB / 60)) < 1e-9, "단에서 내려올 땐 한 프레임에 CLIMB·dt 만큼"
+    assert floor_heights(5, 100, 0, 48, None) == [48] * 5, "틀을 모르면 작업 표시줄 윗변 전체가 바닥"
+    assert floor_heights(10, 100, 10, 48, [(12, 52, 15), (16, 57, 30), (11, 20, 13), (0, 100, 20)]) == \
+        [0, 0, 48, 48, 48, 0, 43, 43, 43, 43], "틀마다 그 윗변 높이, 띠 위의 창·높이 0 인 것은 안 셈"
     for kind in GUST:
         for phase in (0, 1.3, 4):
             fake.kind, fake.gust_phase = kind, phase
@@ -1047,7 +1165,33 @@ def check():
     q.h = [PILE_CAP] * 5
     q.add(2, 3.0)
     assert q.h == [PILE_CAP] * 5, "다 차면 더 안 쌓임"
-    edges, body = pile_column_parts()
+    step = [0] * 10 + [20] * 10  # 왼쪽 틈 · 오른쪽 틀
+    low = Pile(20, step)
+    low.h[:10] = [10.0] * 10
+    for _ in range(100):
+        low.settle(0)
+    assert low.h[10:] == [0.0] * 10, "틈의 눈은 표면이 틀 윗변보다 낮으면 틀 위로 안 오름"
+    for flip in (False, True):  # 틀이 오른쪽 · 왼쪽
+        high = Pile(20, step[::-1] if flip else step)
+        high.h = [10.0] * 10 + [0.0] * 10 if flip else [0.0] * 10 + [10.0] * 10
+        for _ in range(300):
+            high.settle(0)
+        g = high.h[::-1] if flip else high.h
+        assert abs(sum(g) - 100) < 1e-6 and min(g) >= 0, "틀에서 흘러내려도 부피 그대로, 음수 없음"
+        assert g[9] > g[5] > 0 and g[9] > SLOPE * 4, "틀 위 눈이 모서리에서 틈으로 흘러 옆면에 언덕으로 붙음"
+    rise = PILE_STRIP + 4
+    edges, body = pile_column_parts(rise + PILE_STRIP)
+    rf = types.SimpleNamespace(w=4, strip_h=PILE_STRIP + rise, base=[0, rise, 1, 0],
+                               pile=types.SimpleNamespace(h=[0.0, 0.0, 3.5, PILE_STRIP + 10.5]),
+                               pile_last=[-1] * 4, pile_edges=edges, pile_body=body,
+                               pile_zero=bytes((PILE_STRIP + rise) * 4),
+                               strip=memoryview(bytearray(4 * 4 * (PILE_STRIP + rise))))
+    Weather.render_pile(rf)
+    strip = rf.strip.cast("I")
+    col = [strip[r * 4 + 2] for r in range(PILE_STRIP + rise)]
+    assert col[-2] and not col[-1], "더미 밑변이 그 열의 틀 윗변(밑에서 1px)에 앉음"
+    assert sum(map(bool, col)) == 4 and not any(strip[1::4]), "몸통 3px + 가장자리 1px, 빈 열은 비움"
+    assert sum(map(bool, strip[3::4])) == PILE_STRIP + 11, "틀 옆 언덕은 옛 띠 높이(PILE_STRIP)보다 높게도 그림"
     for v in (0.0, 0.5, 7.3, PILE_CAP):
         assert len(pile_column(v, edges, body, bytes(PILE_STRIP * 4))) == PILE_STRIP * 4, "열 길이가 띠 높이"
     stride = 40 * 4
