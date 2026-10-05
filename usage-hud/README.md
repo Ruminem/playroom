@@ -47,7 +47,7 @@ The HUD is Windows only, so on a Mac the same numbers sit in the menu bar instea
 ## Where the numbers come from
 
 - **Limits**: a one-token Haiku request with the OAuth token the Claude Code CLI saved in `~/.claude/.credentials.json` (on macOS, in the Keychain under `Claude Code-credentials`), reading the `anthropic-ratelimit-unified-*` response headers. Sent at most once every five minutes. These headers are undocumented, so a window whose value looks wrong is left blank rather than drawn wrong
-- **LOGIN**: the token has expired. The desktop app keeps its own login and does not refresh it, so on days you only use the app it goes stale. Opening `claude` in a terminal once refreshes it
+- **LOGIN**: the token has expired and could not be refreshed. The token lasts eight hours and the desktop app keeps its own login without refreshing it, so on a 401 the HUD runs the CLI once in the background — a one-word Haiku `claude -p` with hooks off and no session saved, about 10 seconds — and asks again. It tries this at most once every 30 minutes. If that fails (logged out, `claude` not on the PATH), opening `claude` in a terminal once fixes it
 - **Coin**: `usage` of every assistant line in `~/.claude/projects/**/*.jsonl`, counted once per request and priced per model. Sessions run in the cloud are not on this PC and are not counted
 
 `python usage.py --check` runs the self-check.
@@ -110,7 +110,7 @@ HUD 는 윈도우 전용이라 맥에서는 같은 값을 메뉴 막대에 띄�
 ### 값이 오는 곳
 
 - **한도**: Claude Code CLI 가 `~/.claude/.credentials.json`(맥은 Keychain 의 `Claude Code-credentials`)에 둔 OAuth 토큰으로 Haiku 1토큰 요청을 보내 응답 헤더 `anthropic-ratelimit-unified-*` 에서 읽음. 5분에 한 번만 보냄. 문서에 없는 헤더라 값이 이상한 창은 틀리게 그리지 않고 비워 둠
-- **LOGIN**: 토큰이 만료된 것. 데스크톱 앱은 로그인을 따로 들고 그 자리를 안 고쳐서, 앱만 쓴 날은 낡음. 터미널에서 `claude` 를 한 번 열면 새로 고쳐짐
+- **LOGIN**: 토큰이 만료됐고 새로 고치지도 못한 것. 토큰은 8시간짜리이고 데스크톱 앱은 로그인을 따로 들고 그 자리를 안 고침. 그래서 401 이 오면 HUD 가 CLI 를 백그라운드로 한 번 불러(훅을 끄고 세션 기록 없이 Haiku 로 한 낱말 `claude -p`, 10초쯤) 고치게 한 뒤 다시 받음. 30분에 한 번만 해 봄. 그래도 안 되면(로그아웃됐거나 PATH 에 `claude` 가 없음) 터미널에서 `claude` 를 한 번 열면 풀림
 - **동전**: `~/.claude/projects/**/*.jsonl` 의 assistant 줄 `usage` 를 요청마다 한 번씩 세어 모델별 단가를 곱함. 클라우드에서 돈 세션은 이 PC 에 없어 안 셈
 
 `python usage.py --check` 가 자체 점검을 돌림.

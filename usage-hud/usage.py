@@ -10,16 +10,22 @@
 요청 하나가 구독 한도에 1토큰씩 잡히므로 LIMIT_EVERY 초에 한 번만 받는다.
 
 토큰은 윈도우·리눅스면 `~/.claude/.credentials.json`, 맥이면 Keychain 의
-`Claude Code-credentials` 에 있다. 데스크톱 앱은 인증을 따로 들고 그 자리를 안 고친다. 앱만 쓴 날은
-토큰이 만료돼 있어 `expired` 가 된다. 터미널에서 `claude` 를 한 번 열면 풀린다.
+`Claude Code-credentials` 에 있다. 토큰은 8시간짜리이고, 데스크톱 앱은 인증을 따로 들고 그 자리를
+안 고친다. 그래서 401 이 오면 CLI 를 한 번(훅·세션 기록 없이 haiku `-p`) 불러 고치게 하고 다시 받는다.
+그래도 안 되면 `expired` 가 된다 — 터미널에서 `claude` 를 한 번 열면 풀린다.
 
 정가는 `~/.claude/projects/**/*.jsonl` 의 assistant 줄 `usage` 에 단가를 곱한 값이다.
 구독이면 실제로 나가는 돈은 아니지만, 모델과 캐시 종류를 한 단위로 합쳐 주는 자로 쓴다.
 """
+import contextlib
 import json
+import shutil
+import subprocess
 import sys
+import tempfile
 import threading
 import time
+import types
 import urllib.error
 import urllib.request
 from datetime import date, datetime, timedelta
@@ -30,6 +36,10 @@ CREDENTIALS = Path.home() / ".claude" / ".credentials.json"
 LIMIT_URL = "https://api.anthropic.com/v1/messages"
 LIMIT_EVERY = 5 * 60
 TIMEOUT = 5
+# 만료된 토큰을 CLI 가 고치게 하는 가장 가벼운 호출 (2026-10-05 13초). --bare 는 OAuth 를 안 써서 못 씀
+REVIVE = ["-p", ".", "--model", "haiku", "--no-session-persistence", "--strict-mcp-config",
+          "--settings", '{"disableAllHooks": true}']
+REVIVE_EVERY = 30 * 60  # 로그아웃된 채면 매번 실패하므로 이 초에 한 번만
 
 # 100만 토큰당 달러. (입력, 출력, 캐시 읽기, 캐시 쓰기 5분, 캐시 쓰기 1시간)
 # 규칙 저장소 turn-usage.py 의 표를 옮김 — 그쪽에서 기록의 cost-state 로 역산해 맞춘 값이다.
@@ -108,11 +118,30 @@ def fetch_limits():
             return {**windows_from(r.headers, now), "expired": False, "at": now}
     except urllib.error.HTTPError as e:
         if e.code == 401:
-            return {**empty, "expired": True}
+            # 고쳤으면 한 번 더 받음. 다시 401 이어도 revive 가 쉬는 중이라 되풀이되지 않음
+            return fetch_limits() if revive() else {**empty, "expired": True}
         # 429 여도 헤더는 붙어 온다 — 한도가 찼다는 것이 바로 보여 줄 값이다
         return {**windows_from(e.headers, now), "expired": False, "at": now}
     except (OSError, ValueError):
         return empty
+
+
+_revived = 0.0
+
+
+def revive():
+    """CLI 를 한 번 불러 만료된 토큰을 새로 고치게 함. 고쳤으면 True. REVIVE_EVERY 초에 한 번만."""
+    global _revived
+    exe = shutil.which("claude") or shutil.which(str(Path.home() / ".local" / "bin" / "claude"))
+    if not exe or time.time() - _revived < REVIVE_EVERY:
+        return False
+    _revived = time.time()
+    try:  # 임시 폴더에서 — 프로젝트 CLAUDE.md 를 싣지 않게. pythonw 아래서 콘솔 창이 뜨지 않게
+        r = subprocess.run([exe, *REVIVE], cwd=tempfile.gettempdir(), capture_output=True, timeout=120,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return r.returncode == 0
 
 
 _limits = None
@@ -302,6 +331,31 @@ def check():
     assert left(2 * 86400 + 6 * 3600 + 59) == "2D6H"
     assert left(3 * 3600 + 20 * 60) == "3H20M"
     assert left(-5) == "0M"
+
+    # 401 → CLI 로 고친 뒤 한 번 더 받음. 30분 안에 또 401 이면 CLI 를 다시 부르지 않고 만료
+    global _revived
+    real = urllib.request.urlopen, subprocess.run, oauth_token, _revived
+    answers, runs = [], []
+
+    def fake_open(req, timeout):
+        a = answers.pop(0)
+        if a == 401:
+            raise urllib.error.HTTPError(LIMIT_URL, 401, "", {}, None)
+        return contextlib.nullcontext(types.SimpleNamespace(headers=h))
+    try:
+        globals()["oauth_token"] = lambda: "t"
+        urllib.request.urlopen, _revived = fake_open, 0.0
+        subprocess.run = lambda *a, **k: runs.append(a) or types.SimpleNamespace(returncode=0)
+        answers[:] = [401, 200]
+        assert fetch_limits()["expired"] is False and len(runs) == 1 and not answers
+        answers[:] = [401]
+        assert fetch_limits()["expired"] is True and len(runs) == 1, "쉬는 동안은 CLI 를 안 부름"
+        _revived = 0.0
+        subprocess.run = lambda *a, **k: types.SimpleNamespace(returncode=1)
+        answers[:] = [401]
+        assert fetch_limits()["expired"] is True and not answers, "CLI 가 실패하면 다시 받지 않음"
+    finally:
+        urllib.request.urlopen, subprocess.run, globals()["oauth_token"], _revived = real
     print("ok")
 
 
