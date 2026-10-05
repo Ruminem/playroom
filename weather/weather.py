@@ -962,9 +962,12 @@ class Weather:
         self.commands = queue.Queue()  # 트레이 스레드 → 그리는 스레드
         write_ico(ICON_FILE, ICON, ICON_COLORS)
         self.panel = None  # 왼쪽 클릭으로 띄운 설정 창 프로세스
-        # 맥은 메뉴 막대를 누르면 메뉴가 뜨는 게 기본이라 메뉴만
-        left = {} if MAC else {"on_left": lambda: self.commands.put(PANEL)}
-        self.tray = Tray(TRAY_CLASS, ICON_FILE, "날씨", self.menu, self.commands.put, **left)
+        # 맥은 메뉴 막대를 누르면 메뉴가 뜨는 게 기본이라 메뉴만. 윈도우는 오른쪽 클릭도 같은 설정 창 — 메뉴와 창이
+        # 따로 있으면 한쪽에만 생기는 것(빗소리를 비·뇌우에서만 보이기 등)이 갈라졌음
+        if MAC:
+            self.tray = Tray(TRAY_CLASS, ICON_FILE, "날씨", self.menu, self.commands.put)
+        else:
+            self.tray = Tray(TRAY_CLASS, ICON_FILE, "날씨", None, self.commands.put, on_left=lambda: self.commands.put(PANEL))
         self.last = self.last_settle = self.last_topmost = time.perf_counter()
         self.reset()
         self.hear()
@@ -2604,6 +2607,14 @@ def check():
                                                         "fish %d\n" % (FISH_MAX + 1), "bubbles x\n", "fishy 3\n", "2\n",
                                                         "42\n", "43\n", "23\n", "77\n", "27\n", "hi\n"]))
     assert list(q.commands.queue) == [("amount", 30), ("fish", 0), 2, 42, 23, 27], "설정 창이 보낸 줄 중 아는 것만(43 은 뺀 180)"
+    if not MAC:  # 트레이 아이콘 왼쪽·오른쪽 클릭 — 메뉴 없이 만들면(weather) 둘 다 설정 창, 메뉴가 있으면(다른 도구) 오른쪽은 메뉴
+        import tray
+        for menu, want in ((None, ["창", "창"]), (lambda: [], ["창", "메뉴"])):
+            got = []
+            t = SimpleNamespace(on_left=lambda: got.append("창"), menu=menu, _popup=lambda: got.append("메뉴"))
+            for b in (tray.WM_LBUTTONUP, tray.WM_RBUTTONUP):
+                Tray._wndproc(t, 0, tray.WM_TRAY, 0, b)
+            assert got == want, (want, got)
     hz = SimpleNamespace(kind="snow", amount=50, tank={k: TANK[k][1] for k in TANK}, done=[])
     hz.reset, hz.retune, hz.save = [lambda w=w: hz.done.append(w) for w in ("reset", "retune", "save")]
     Weather.handle(hz, ("fish", 0))

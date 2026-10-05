@@ -7,7 +7,7 @@ Snow, rain, a thunderstorm, hail, fireflies, fireworks or an aquarium over every
 - **Snow** falls in three layers of depth — small dim flakes far away, large soft ones close up — swaying and drifting with a gusting wind. Near flakes pile up on top of the taskbar into a soft bank that slowly melts; far ones disappear behind it. With a taskbar theme that leaves the bar see-through and floats the buttons as pills, snow settles on the pills and falls through the gaps to the bottom of the screen
 - **Rain** falls in three depths of even, soft-ended streaks — faint and thin far away, bold up close. Gusts slowly tilt the rain back and forth, and drops landing up front kick up a little crown and a few droplets
 - **Storm** is heavier rain with a lightning bolt every few seconds — a jagged channel with side branches that flashes, goes dark, flashes again and fades. Gusts are stronger, the rain thickens and thins in waves, and the streaks light up while the bolt is brightest. The whole screen does not flash; that would get in the way of work
-- **Rain sound** (off by default) plays a soft hiss of rain against a window, like white noise, while rain or storm is showing — a box in the settings panel turns it on, and a volume slider (0–100%, 50% by default; the right-click menu has 10% steps) appears under it while rain or storm is picked. Storm uses the same sound, without thunder. Hiding the weather or switching to another kind silences it. It sounds like rain heard from indoors through a closed window — a muffled, steady wash with now and then a soft tap of a drop on stone outside. It is made up when it starts, not a recording, looped every 12 seconds with a crossfade so the seam does not click; the first time it is turned on the sound starts a couple of seconds late
+- **Rain sound** (off by default) plays a soft hiss of rain against a window, like white noise, while rain or storm is showing — a box in the settings panel turns it on, and a volume slider (0–100%, 50% by default) appears under it while rain or storm is picked. Storm uses the same sound, without thunder. Hiding the weather or switching to another kind silences it. It sounds like rain heard from indoors through a closed window — a muffled, steady wash with now and then a soft tap of a drop on stone outside. It is made up when it starts, not a recording, looped every 12 seconds with a crossfade so the seam does not click; the first time it is turned on the sound starts a couple of seconds late
 - **Hail** is fast white ice pellets in two sizes that bounce up to twice off the taskbar before settling into a bank like snow's, which melts four times faster. A pellet landing right next to the animal now and then startles it
 - **Fireflies** drift slowly around the lower two thirds of the screen, each glowing up, holding and fading on its own rhythm
 - **Fireworks**: rockets with a gold trail climb from the bottom and burst a third to half way up into a ring of 60–110 sparks in red, gold, green, blue, purple or white (sometimes two colours mixed). The sparks slow, droop and twinkle out
@@ -16,7 +16,7 @@ Snow, rain, a thunderstorm, hail, fireflies, fireworks or an aquarium over every
 
 ## Use
 
-Double-click [weather.bat](weather.bat) to start or stop it. A snowflake icon sits in the notification area. Left-click it for a small settings panel above the taskbar: kind buttons (or **No weather**), an amount slider from 0 to 100% that applies as you drag — snow already on the ground stays and only the number of flakes changes (in the aquarium also fish · bubbles · light rays sliders), a **Smoothness** row (30 · 60 · 120 fps), an **Animal** row of on/off buttons (cat · bird · dog · rabbit · penguin), boxes for rain sound (shown, with its volume slider, only while rain or storm is picked) and picking up animals with the mouse (both off by default), showing it and starting with Windows, and **Exit**. Clicking anywhere else closes it. The right-click menu does the same, with the amount in 10% steps (the old light · normal · heavy are 20 · 50 · 100%). Your choice is remembered in `%LOCALAPPDATA%\playroom\weather.json`, and starting with Windows uses it.
+Double-click [weather.bat](weather.bat) to start or stop it. A snowflake icon sits in the notification area. Left-click it for a small settings panel above the taskbar: kind buttons (or **No weather**), an amount slider from 0 to 100% that applies as you drag — snow already on the ground stays and only the number of flakes changes (in the aquarium also fish · bubbles · light rays sliders), a **Smoothness** row (30 · 60 · 120 fps), an **Animal** row of on/off buttons (cat · bird · dog · rabbit · penguin), boxes for rain sound (shown, with its volume slider, only while rain or storm is picked) and picking up animals with the mouse (both off by default), showing it and starting with Windows, and **Exit**. Clicking anywhere else closes it. Right-clicking the icon opens the same panel. Your choice is remembered in `%LOCALAPPDATA%\playroom\weather.json`, and starting with Windows uses it.
 
 ```bash
 python weather.py --toggle --kind rain --amount 80
@@ -26,7 +26,7 @@ python weather.py --toggle --kind rain --amount 80
 
 ## macOS
 
-The same script runs on a Mac with the system Python 3.9, nothing to install. It reaches AppKit through ctypes ([shared/mac](../shared/mac/)), the snowflake sits in the menu bar, and **Start at login** writes a LaunchAgent to `~/Library/LaunchAgents`. Your choice is remembered in `~/Library/Application Support/playroom/weather.json`.
+The same script runs on a Mac with the system Python 3.9, nothing to install. It reaches AppKit through ctypes ([shared/mac](../shared/mac/)), the snowflake sits in the menu bar with a menu instead of the panel (the amount and volume in 10% steps; the old light · normal · heavy are 20 · 50 · 100%), and **Start at login** writes a LaunchAgent to `~/Library/LaunchAgents`. Your choice is remembered in `~/Library/Application Support/playroom/weather.json`.
 
 Double-click [weather.command](weather.command) in Finder to start or stop it; the Terminal window it opens closes itself. From a terminal:
 
@@ -69,7 +69,7 @@ PIP 영상이든 지금 타이핑하는 앱이든 모든 창 위로 눈·비·�
 - **눈**은 원근 세 층으로 내림 — 멀리 있는 것은 작고 흐리고, 가까이 있는 것은 크고 번짐. 돌풍에 흔들리며 흘러가고, 가까운 눈송이는 작업 표시줄 위에 부드러운 눈더미로 쌓였다가 천천히 녹음. 먼 것은 그 뒤로 사라짐. 작업 표시줄 테마가 바탕을 투명하게 두고 단추만 알약으로 띄우면 눈은 알약 위에 쌓이고, 그 사이 틈으로는 화면 맨 아래까지 떨어짐
 - **비**는 양끝만 부드러운 고른 빗줄기가 세 겹 깊이로 내림 — 멀리는 가늘고 흐리게, 가까이는 굵게. 돌풍에 빗줄기가 천천히 기울었다 섰다 하고, 앞쪽 빗방울은 바닥에 닿을 때 작은 ㅅ자 튐과 물방울을 튀김
 - **뇌우**는 더 굵은 비에 몇 초마다 번개가 침. 곁가지가 붙은 지그재그 줄기가 번쩍–꺼짐–번쩍–사그라듦 순으로 깜빡임. 화면 전체를 번쩍이게 하지는 않음 — 일하는 데 방해가 됨. 돌풍이 더 세고, 빗발이 물결처럼 굵어졌다 가늘어지며, 번개가 가장 밝을 때 빗줄기도 번쩍 드러남
-- **빗소리**(기본 꺼짐)는 비나 뇌우가 보이는 동안 창밖에서 비 내리는 듯한 잔잔한 소리를 백색소음처럼 틂 — 설정 창 상자로 켜고, 비나 뇌우를 고른 동안 그 아래에 크기 막대(0–100%, 기본 50%. 오른쪽 클릭 메뉴는 10% 칸)가 뜸. 뇌우도 같은 소리이고 천둥은 없음. 날씨를 숨기거나 다른 종류로 바꾸면 멈춤. 닫힌 창 너머 방 안에서 듣는 비처럼 먹먹하고 고른 쏴아에, 가끔 바깥 돌바닥에 떨어지는 방울이 툭 하고 섞임. 녹음이 아니라 켤 때 만든 소리이고, 12초마다 되풀이하며 이음매는 크로스페이드로 이어 틱 소리가 안 남. 처음 켤 때는 소리가 2초쯤 늦게 남
+- **빗소리**(기본 꺼짐)는 비나 뇌우가 보이는 동안 창밖에서 비 내리는 듯한 잔잔한 소리를 백색소음처럼 틂 — 설정 창 상자로 켜고, 비나 뇌우를 고른 동안 그 아래에 크기 막대(0–100%, 기본 50%)가 뜸. 뇌우도 같은 소리이고 천둥은 없음. 날씨를 숨기거나 다른 종류로 바꾸면 멈춤. 닫힌 창 너머 방 안에서 듣는 비처럼 먹먹하고 고른 쏴아에, 가끔 바깥 돌바닥에 떨어지는 방울이 툭 하고 섞임. 녹음이 아니라 켤 때 만든 소리이고, 12초마다 되풀이하며 이음매는 크로스페이드로 이어 틱 소리가 안 남. 처음 켤 때는 소리가 2초쯤 늦게 남
 - **우박**은 크고 작은 흰 얼음 알이 빠르게 떨어져 작업 표시줄에서 두 번까지 튄 뒤 눈처럼 쌓이고, 더미는 눈보다 4배 빨리 녹음. 동물 바로 옆에 떨어지면 가끔 놀람
 - **반딧불이**는 화면 아래쪽 2/3 를 천천히 떠다니며, 마리마다 제 박자로 밝아졌다 머물렀다 사그라듦
 - **불꽃놀이**는 금빛 꼬리를 끄는 로켓이 아래에서 올라가 화면 위에서 1/5–1/2 쯤에서 터지며, 빨강·금·초록·파랑·보라·흰색(가끔 두 색 섞임) 불꽃 60–110개가 고리로 퍼짐. 불꽃은 느려지며 처지고 반짝이다 꺼짐
@@ -78,7 +78,7 @@ PIP 영상이든 지금 타이핑하는 앱이든 모든 창 위로 눈·비·�
 
 ### 쓰는 법
 
-[weather.bat](weather.bat) 을 더블클릭하면 켜지고 다시 누르면 꺼짐. 알림 영역에 눈송이 아이콘이 뜸. 왼쪽 클릭하면 작업 표시줄 위에 작은 설정 창이 떠서 종류 단추(또는 **날씨 없음**), 0–100% 양 막대(끄는 동안 바로 적용됨 — 쌓인 눈은 그대로 두고 눈송이 수만 바뀜, 어항이면 물고기·거품·빛줄기 막대도), **부드러움** 줄(30·60·120fps), **동물** 줄(고양이·새·강아지·토끼·펭귄, 하나씩 켜고 끄는 단추), 빗소리(비·뇌우를 골랐을 때만 크기 막대와 같이 보임)·마우스로 동물 집기(둘 다 기본 꺼짐)·보이기·윈도우 시작 시 실행 상자와 **끝내기** 가 있음. 다른 데를 누르면 닫힘. 오른쪽 클릭 메뉴로도 같은 걸 하고, 거기서 양은 10% 칸임(예전 적게·보통·많이는 20·50·100%). 고른 것은 `%LOCALAPPDATA%\playroom\weather.json` 에 남고, 윈도우와 같이 켜질 때도 이걸 따름.
+[weather.bat](weather.bat) 을 더블클릭하면 켜지고 다시 누르면 꺼짐. 알림 영역에 눈송이 아이콘이 뜸. 왼쪽 클릭하면 작업 표시줄 위에 작은 설정 창이 떠서 종류 단추(또는 **날씨 없음**), 0–100% 양 막대(끄는 동안 바로 적용됨 — 쌓인 눈은 그대로 두고 눈송이 수만 바뀜, 어항이면 물고기·거품·빛줄기 막대도), **부드러움** 줄(30·60·120fps), **동물** 줄(고양이·새·강아지·토끼·펭귄, 하나씩 켜고 끄는 단추), 빗소리(비·뇌우를 골랐을 때만 크기 막대와 같이 보임)·마우스로 동물 집기(둘 다 기본 꺼짐)·보이기·윈도우 시작 시 실행 상자와 **끝내기** 가 있음. 다른 데를 누르면 닫힘. 오른쪽 클릭해도 같은 창이 뜸. 고른 것은 `%LOCALAPPDATA%\playroom\weather.json` 에 남고, 윈도우와 같이 켜질 때도 이걸 따름.
 
 ```bash
 python weather.py --toggle --kind rain --amount 80
@@ -88,7 +88,7 @@ python weather.py --toggle --kind rain --amount 80
 
 ### 맥
 
-같은 스크립트가 맥 기본 파이썬 3.9 로 돌고, 깔 것은 없음. ctypes 로 AppKit 을 부르고([shared/mac](../shared/mac/)), 눈송이 아이콘은 메뉴 막대에 뜨며, **로그인 시 실행** 은 `~/Library/LaunchAgents` 에 LaunchAgent 를 씀. 고른 것은 `~/Library/Application Support/playroom/weather.json` 에 남음.
+같은 스크립트가 맥 기본 파이썬 3.9 로 돌고, 깔 것은 없음. ctypes 로 AppKit 을 부르고([shared/mac](../shared/mac/)), 눈송이 아이콘은 메뉴 막대에 뜨고 설정 창 대신 메뉴가 열리며(양과 소리 크기는 10% 칸, 예전 적게·보통·많이는 20·50·100%), **로그인 시 실행** 은 `~/Library/LaunchAgents` 에 LaunchAgent 를 씀. 고른 것은 `~/Library/Application Support/playroom/weather.json` 에 남음.
 
 Finder 에서 [weather.command](weather.command) 를 더블클릭하면 켜지고 다시 누르면 꺼짐. 그때 열리는 터미널 창은 저절로 닫힘. 터미널에서는 이렇게 함.
 
