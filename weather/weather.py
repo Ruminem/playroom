@@ -314,13 +314,31 @@ RUN_NAME = "PlayroomWeather"  # 시작할 때는 인자 없이 떠서 저장된 
 AMOUNTS = {10 + i: p for i, p in enumerate(range(10, 101, 10))}  # 메뉴 id → %. 트레이 메뉴엔 막대를 못 넣어 칸으로
 FULL = 300       # 양 100% 의 눈송이·빗방울 수 (꽃잎·반딧불이는 이 수에 종류별 비율을 곱함)
 OLD_AMOUNTS = {"few": 20, "normal": 50, "many": 100}  # 예전 세 단계. 설정 파일·--amount 에서 아직 읽음
-# 어항 막대: 설정 파일 키 → 설정 창 이름. 0–100% 이고 50% 가 FISH_N · 거품 30개 · RAY_COUNT, 100% 면 두 배.
-# 어항에서 양은 물빛 진하기만 정함
-TANK = {"fish": "물고기", "bubbles": "거품", "rays": "빛줄기"}
+# 어항 막대: 설정 파일 키 → (설정 창 이름, 기본값, 끝값, 단위). 물고기는 마릿수, 거품·빛줄기는 0–100% 이고 50% 가
+# 거품 30개 · RAY_COUNT, 100% 면 두 배. 어항에서 양은 물빛 진하기만 정함
+FISH_MAX = 20
+TANK = {"fish": ("물고기", FISH_N, FISH_MAX, "마리"), "bubbles": ("거품", 50, 100, "%"), "rays": ("빛줄기", 50, 100, "%")}
 
 
 def count(amount):
     return round(FULL * amount / 100)
+
+
+def parse_tank(key, v):
+    """어항 막대 key 의 0–끝값 정수. 아니면 None."""
+    return v if type(v) is int and 0 <= v <= TANK[key][2] else None
+
+
+def refit(items, want, make, layered=True):
+    """items 를 층마다 want[층] 개로 맞춤 — 앞에서부터 남기고 모자란 것만 make(층) 으로 새로. 층은 항목의 [3].
+    막대를 끄는 동안 다시 깔지 않게: 떠 있던 것은 제자리에 남음."""
+    have, keep = [0] * len(want), []
+    for it in items:
+        li = it[3] if layered else 0
+        if have[li] < want[li]:
+            have[li] += 1
+            keep.append(it)
+    return keep + [make(li) for li, n in enumerate(want) for _ in range(n - have[li])]
 
 
 def parse_amount(a):
@@ -761,8 +779,8 @@ def load_settings():
     if data.get("fps") in FPS_IDS.values():
         ok["fps"] = data["fps"]
     for k in TANK:
-        if parse_amount(data.get(k)) is not None:
-            ok[k] = parse_amount(data[k])
+        if parse_tank(k, data.get(k)) is not None:
+            ok[k] = data[k]
     if isinstance(data.get("drag"), bool):
         ok["drag"] = data["drag"]
     return ok
@@ -771,7 +789,7 @@ def load_settings():
 class Weather:
     def __init__(self, kind, amount, animals=(), fps=FPS, tank=None, drag=False):
         self.kind, self.amount, self.visible, self.fps = kind, amount, True, fps
-        self.tank = {k: (tank or {}).get(k, 50) for k in TANK}  # 어항 막대 %. 어항이 아닐 때 바꿔도 남겨 둠
+        self.tank = {k: (tank or {}).get(k, TANK[k][1]) for k in TANK}  # 어항 막대. 어항이 아닐 때 바꿔도 남겨 둠
         self.drag, self.catching = drag and not MAC, False  # 동물 집기를 켰나 · 지금 창이 클릭을 받나
         # ponytail: 시작할 때의 주 모니터 작업 영역에 고정. 해상도·작업 표시줄이 바뀌면 다시 켜야 함
         l, t, r, b = overlay.work_area()
@@ -877,15 +895,16 @@ class Weather:
                 ("끝내기", EXIT, False)]
 
     def handle(self, cid):
-        if isinstance(cid, tuple):  # 설정 창의 막대에서 손을 뗀 값 — 양이나 어항 막대
+        if isinstance(cid, tuple):  # 설정 창의 막대 값 — 양이나 어항 막대. 끄는 동안에도 0.1초마다 옴
             key, value = cid
             if key not in TANK:
                 self.amount = value
             else:
                 self.tank[key] = value
-                if self.kind != "aquarium":  # 다시 깔면 쌓인 눈이 날아감. 어항을 고를 때 씀
-                    self.save()
-                    return
+            if key not in TANK or self.kind == "aquarium":  # 어항이 아니면 어항 막대는 남기기만. 어항을 고를 때 씀
+                self.retune()
+            self.save()
+            return
         elif cid == PANEL:
             self.open_panel()
             return
@@ -945,7 +964,8 @@ class Weather:
     def read_panel(self, proc):
         for line in proc.stdout:
             word, _, arg = line.partition(" ")
-            if word in ("amount", *TANK) and arg.strip().isdigit() and parse_amount(int(arg)) is not None:
+            if arg.strip().isdigit() and (parse_amount(int(arg)) is not None if word == "amount" else
+                                          word in TANK and parse_tank(word, int(arg)) is not None):
                 self.commands.put((word, int(arg)))
             elif word.strip().isdigit() and int(word) in (*KINDS, *FPS_IDS, *PETS, DRAG, SHOW, AUTOSTART, EXIT):
                 self.commands.put(int(word))
@@ -1261,9 +1281,9 @@ class Weather:
 
     # ── 어항 ──
     def aquarium(self):
-        """어항을 깜. 그림과 모래·해초 자리는 처음 고를 때 한 번(sprite_cache), 물빛을 섞은 것은 양이 바뀔 때만
-        다시, 물고기·거품·빛줄기 자리는 고를 때마다 새로."""
-        w, h, s = self.w, self.h, self.stride
+        """어항을 깜. 그림과 모래·해초 자리는 처음 고를 때 한 번(sprite_cache), 물빛은 water_tint, 물고기·거품·빛줄기
+        수는 retune 이 맞춤."""
+        w, h = self.w, self.h
         if "aquarium" not in self.sprite_cache:
             rng, spots = random.Random(random.random()), []  # 전역 random 을 따름 — 검사(random.seed)에서 같은 자리
             x = rng.uniform(10, WEED_EVERY)
@@ -1299,31 +1319,11 @@ class Weather:
                 "weeds": [(x, weed(rng.randint(*WEED_H), rng), rng.uniform(0, math.tau), rng.uniform(0.6, 1.3))
                           for x in spots]}
         aq = self.aq = self.sprite_cache["aquarium"]
-        if self.aq_tint is None or self.aq_tint[0] != self.amount:  # 화면 크기 버퍼 하나라 지난 양 것은 안 남김
-            rows = water_rows(h, self.amount)
-            bands = [rows[int((b + 0.5) * h / AQ_BANDS)] for b in range(AQ_BANDS)]
-            self.aq_tint = (self.amount, {
-                "water": b"".join(p * w for p in rows), "strip": b"".join(rows[h - self.strip_h:]),
-                "bubbles": [[[[place(over(sp, under), s) for sp in subs] for subs in radii] for radii in aq["bubbles"]]
-                            for under in bands],
-                "rays": [[tint_ray(shape, rows, lv) for lv in RAY_LEVELS] for shape in aq["rays"]],
-                "jelly": [[tinted(art, JELLY_COLORS, under) for art in JELLY_ART] for under in bands]})
-        t = self.aq_tint[1]
-        self.water, self.bubble_sprites, self.ray_rows, self.jelly_sprites = t["water"], t["bubbles"], t["rays"], t["jelly"]
         self.sand = aq["sand_h"]
         self.pile.h = list(self.sand)  # 모래는 안 녹는 더미 — 동물이 그 위를 걷고 거품이 거기서 나옴
         self.sand_base = None  # 다음 프레임에 모래 띠를 그림
         self.vents = [x for x, *_ in random.sample(aq["weeds"], min(3, len(aq["weeds"])))]  # 거품 줄기가 나오는 해초 밑
-        n = count(self.tank["bubbles"])  # 막대 50% 가 예전 양 50% 의 거품 수
-        self.flakes = [self.new_bubble(li, False) for li, layer in enumerate(BUBBLE_LAYERS)
-                       for _ in range(round(n * BUBBLE_SHARE * layer[0]))]
-        reach, rays = int(h * RAY_REACH), round(RAY_COUNT * self.tank["rays"] / 50)
-        lo, hi = RAY_WIDTHS[-1], w - RAY_WIDTHS[-1] - (RAY_SLANT + RAY_SWAY) * reach  # 퍼진 아래 끝까지 화면 안
-        # [위 끝 가운데 x, 모양, 위상, 빠르기]
-        self.rays_at = [] if hi <= lo else [[lo + (i + random.uniform(0.15, 0.85)) * (hi - lo) / rays,
-                                             random.randrange(len(RAY_WIDTHS)), random.uniform(0, math.tau),
-                                             random.uniform(0.08, 0.16)] for i in range(rays)]
-        self.fish = [self.new_fish() for _ in range(round(FISH_N * self.tank["fish"] / 50))]
+        self.fish, self.rays_at = [], []  # 물빛과 물고기·거품·빛줄기 수는 retune 이 맞춤
         cw = aq["crab_size"][0]
         # 게 [x, 1 오른쪽 · -1 왼쪽, 지금 짓이 끝나는 시각, 걷는 중, 화면 y] · 해파리 [x, y, 오르내리는 px/초, 다음에
         # 오므릴 시각, 오므린 시각, 위상, 가려는 높이] · 상자 [열리는 시각, 다음 거품 시각]. 시각은 첫 프레임에 정함
@@ -1543,37 +1543,74 @@ class Weather:
 
     # ── 돌리기 ──
     def reset(self):
-        n, kind = count(self.amount), self.kind
+        kind = self.kind
         self.full_clear = True
-        self.flakes, self.drops, self.splashes, self.flies, self.breaths = [], [], [], [], []
+        self.flakes, self.drops, self.splashes, self.flies, self.breaths = [], [], [], [], []  # 수는 끝에 retune 이 채움
         self.crowns, self.gust_phase = [], random.uniform(0, math.tau)
         self.bolt, self.next_bolt = None, time.perf_counter() + random.uniform(2, 5)
         self.pile = Pile(self.w, self.base)
         self.strip = memoryview(bytearray(self.stride * self.strip_h))
         self.pile_last = [-1] * self.w  # 처음엔 모든 열을 그림 — 빈 열이어도 틀 높이가 들어감
         self.pile_edges, self.pile_body = self.snow_pile
-        if kind == "snow":
-            self.flakes = [self.new_flake(li, False) for li, layer in enumerate(SNOW_LAYERS)
-                           for _ in range(round(n * layer[0]))]
-        elif kind in ("rain", "storm"):
-            mult = RAIN_MULT * (STORM_MULT if kind == "storm" else 1)
+        if kind in ("rain", "storm"):
             self.rain_sprites = self.rain_set()
-            self.drops = [self.new_drop(li, False) for li, layer in enumerate(RAIN_LAYERS)
-                          for _ in range(round(n * mult * layer[0]))]
         elif kind == "fireflies":
             self.flies_sprites = self.fly_sprites()
-            self.flies = [self.new_fly() for _ in range(round(n * FLY_SHARE))]
         elif kind == "hail":
             if "hail" not in self.sprite_cache:
                 self.sprite_cache["hail"] = [place(disc(r, soft, a, HAIL_COLOR, HAIL_RIM), self.stride)
                                              for r, soft, a in HAIL_SIZES]
-            self.hail_sprites = self.sprite_cache["hail"]
-            self.stones = [self.new_stone(False) for _ in range(round(n * HAIL_SHARE))]
+            self.hail_sprites, self.stones = self.sprite_cache["hail"], []
         elif kind == "fireworks":
             self.fw = self.fw_sprites()
         elif kind == "aquarium":
             self.aquarium()
         self.rockets, self.sparks, self.next_launch = [], [], math.inf
+        self.retune()
+
+    def retune(self):
+        """양·어항 막대에 수를 맞춤 — 다시 깔지 않아 쌓인 눈·모래와 떠 있던 것은 제자리, 모자라면 새로 띄우고 남으면
+        버림. 설정 창이 막대를 끄는 동안 0.1초마다 부름. 불꽃놀이·뇌우 번개는 그릴 때 양을 바로 읽어 할 게 없음."""
+        n, kind, layer = count(self.amount), self.kind, lambda layers, k: [round(n * k * l[0]) for l in layers]
+        if kind == "snow":
+            self.flakes = refit(self.flakes, layer(SNOW_LAYERS, 1), lambda li: self.new_flake(li, False))
+        elif kind in ("rain", "storm"):
+            mult = RAIN_MULT * (STORM_MULT if kind == "storm" else 1)
+            self.drops = refit(self.drops, layer(RAIN_LAYERS, mult), lambda li: self.new_drop(li, False))
+        elif kind == "fireflies":
+            self.flies = refit(self.flies, [round(n * FLY_SHARE)], lambda _: self.new_fly(), False)
+        elif kind == "hail":
+            self.stones = refit(self.stones, [round(n * HAIL_SHARE)], lambda _: self.new_stone(False), False)
+        elif kind == "aquarium":
+            self.water_tint()
+            n = count(self.tank["bubbles"])  # 막대 50% 가 예전 양 50% 의 거품 수
+            self.flakes = refit(self.flakes, layer(BUBBLE_LAYERS, BUBBLE_SHARE), lambda li: self.new_bubble(li, False))
+            self.fish = refit(self.fish, [self.tank["fish"]], lambda _: self.new_fish(), False)
+            rays = round(RAY_COUNT * self.tank["rays"] / 50)
+            if len(self.rays_at) != rays:  # 고르게 벌려 놓으므로 수가 바뀌면 다시 놓음
+                h, w = self.h, self.w
+                reach = int(h * RAY_REACH)
+                lo, hi = RAY_WIDTHS[-1], w - RAY_WIDTHS[-1] - (RAY_SLANT + RAY_SWAY) * reach  # 퍼진 아래 끝까지 화면 안
+                # [위 끝 가운데 x, 모양, 위상, 빠르기]
+                self.rays_at = [] if hi <= lo else [[lo + (i + random.uniform(0.15, 0.85)) * (hi - lo) / rays,
+                                                     random.randrange(len(RAY_WIDTHS)), random.uniform(0, math.tau),
+                                                     random.uniform(0.08, 0.16)] for i in range(rays)]
+
+    def water_tint(self):
+        """어항 물빛과 그 위에 섞어 둔 거품·빛줄기·해파리 그림을 양에 맞춤. 2560×1440 에서 30–40ms 라 양이 바뀔 때만."""
+        if self.aq_tint is None or self.aq_tint[0] != self.amount:  # 화면 크기 버퍼 하나라 지난 양 것은 안 남김
+            h, aq = self.h, self.aq
+            rows = water_rows(h, self.amount)
+            bands = [rows[int((b + 0.5) * h / AQ_BANDS)] for b in range(AQ_BANDS)]
+            self.aq_tint = (self.amount, {
+                "water": b"".join(p * self.w for p in rows), "strip": b"".join(rows[h - self.strip_h:]),
+                "bubbles": [[[[place(over(sp, under), self.stride) for sp in subs] for subs in radii]
+                             for radii in aq["bubbles"]] for under in bands],
+                "rays": [[tint_ray(shape, rows, lv) for lv in RAY_LEVELS] for shape in aq["rays"]],
+                "jelly": [[tinted(art, JELLY_COLORS, under) for art in JELLY_ART] for under in bands]})
+            self.sand_base = None  # 모래 띠 바탕도 물빛이라 다음 프레임에 다시 그림
+        t = self.aq_tint[1]
+        self.water, self.bubble_sprites, self.ray_rows, self.jelly_sprites = t["water"], t["bubbles"], t["rays"], t["jelly"]
 
     # ── 동물 ──
     def react(self, now):
@@ -1838,7 +1875,7 @@ def check():
     Weather.rain(wf, 1 / 60, 0.0)
     assert [c[2] for c in wf.crowns] == [152] and wf.drops[1][1] > 0, "빗방울도 틀 위에선 틀 윗변에서 튀고, 틈에선 계속"
     zf = big(kind="none", amount=0, strip_h=PILE_STRIP + 48, snow_pile=pile_column_parts(PILE_STRIP + 48),
-             base=[0] * 100 + [48] * 100, pets={})
+             base=[0] * 100 + [48] * 100, pets={}, retune=lambda: None)
     Weather.reset(zf)
     assert zf.pile.base is zf.base, "종류를 바꿔 더미를 새로 깔아도 틀 모양을 앎"
     zf.pile.h = [5.0] * 90 + [50.0] * 10 + [5.0] * 100  # 틈 90..99 엔 틀 높이를 넘는 언덕
@@ -2041,7 +2078,7 @@ def check():
     a.w, a.h, a.stride, a.rise, a.amount, a.kind, a.strip_h = aw, ah, aw * 4, rise, 50, "aquarium", PILE_STRIP + rise
     a.base, a.snow_pile, a.sprite_cache, a.aq_tint = [0] * 200 + [rise] * 200, pile_column_parts(PILE_STRIP + rise), {}, None
     a.next_base, a.full_clear, a.pets, a.on_top, a.last_settle = None, False, {}, False, 0
-    a.goal, a.fall, a.crumble, a.tank = a.base, None, crumble(aw), {k: 50 for k in TANK}
+    a.goal, a.fall, a.crumble, a.tank = a.base, None, crumble(aw), {k: TANK[k][1] for k in TANK}
     a.surface = types.SimpleNamespace(pixels=bytearray(aw * ah * 4), clear=lambda top=0: None, present=lambda top=0: None)
     a.surface.fill = lambda src: a.surface.pixels.__setitem__(slice(None), src)
     a.reset()
@@ -2199,7 +2236,7 @@ def check():
     datas = [d for band in a.jelly_sprites for fr in band for _, _, d in fr]
     assert all(d[i + c] <= d[i + 3] for d in datas for i in range(0, len(d), 4) for c in range(3)), "해파리는 premultiplied"
     assert any(d[i + 3] < 255 for d in datas for i in range(0, len(d), 4)), "해파리는 비침"
-    # 어항 막대: 0% 면 없고 100% 면 두 배. 양은 물빛만 — 거품 수와 무관
+    # 어항 막대: 물고기는 마릿수, 거품·빛줄기는 0% 면 없고 100% 면 두 배. 양은 물빛만 — 거품 수와 무관
     a.amount, a.tank = 100, {"fish": 0, "bubbles": 100, "rays": 100}
     a.reset()
     reach = int(ah * RAY_REACH)
@@ -2207,13 +2244,30 @@ def check():
         ("막대 0·100% 면 없음·두 배, 양과 무관", len(a.fish), len(a.flakes), len(a.rays_at))
     assert all(RAY_WIDTHS[-1] <= x0 and x0 + (RAY_SLANT + RAY_SWAY) * reach + RAY_WIDTHS[-1] <= aw for x0, *_ in a.rays_at), \
         "빛줄기가 두 배여도 퍼진 아래 끝까지 화면 안"
-    a.tank = {"fish": 100, "bubbles": 0, "rays": 0}
+    a.tank = {"fish": FISH_MAX, "bubbles": 0, "rays": 0}
     a.reset()
-    assert (len(a.fish), len(a.flakes), a.rays_at) == (2 * FISH_N, 0, []), "물고기 두 배, 거품·빛줄기 없음"
+    assert (len(a.fish), len(a.flakes), a.rays_at) == (FISH_MAX, 0, []), "물고기는 고른 마릿수, 거품·빛줄기 없음"
     a.fish, a.jelly = [], []  # 물고기·해파리는 화면 위 10% 아래로만 — 20 행은 그래도 비지만 다른 배치에서도 확실히
     a.frame(1 / 60, 300.0)
     assert all(at(x, 20) == water_rows(ah, 100)[20] for x in range(aw)), "빛줄기 0% 면 위쪽이 물빛만"
-    a.amount, a.tank = 50, {k: 50 for k in TANK}
+    # 막대를 끄는 동안(retune): 다시 깔지 않고 수만 맞춤 — 있던 물고기·거품·게는 제자리, 양이 바뀌면 물빛만 다시
+    a.amount, a.tank = 50, {k: TANK[k][1] for k in TANK}
+    a.reset()
+    fish, flakes, crab, rays = a.fish[:3], list(a.flakes), a.crab, a.rays_at
+    a.tank["fish"] = 3
+    a.retune()
+    assert len(a.fish) == 3 and all(f is g for f, g in zip(a.fish, fish)), "물고기를 줄이면 있던 것 중에서 남음"
+    a.tank["fish"], a.tank["bubbles"], a.amount = FISH_MAX, 100, 80
+    a.frame(1 / 60, 400.0)  # 모래 띠를 그려 둠 — 물빛이 바뀌면 띠 바탕도 다시 그려야 함
+    assert a.sand_base is not None
+    a.retune()
+    assert a.sand_base is None, "양을 끌면 모래 띠도 새 물빛으로 다시 그림"
+    same = lambda now, was: all(f is g for f, g in zip(now, was))
+    assert len(a.fish) == FISH_MAX and same(a.fish, fish) and len(a.flakes) == 60 and same(a.flakes, flakes), \
+        "늘리면 있던 것은 그대로 두고 모자란 것만 새로"
+    assert a.crab is crab and a.rays_at is rays, "다시 깔지 않음 — 게·빛줄기 자리 그대로"
+    assert a.aq_tint[0] == 80 and a.water == b"".join(p * aw for p in water_rows(ah, 80)), "양을 끌면 물빛이 바로 바뀜"
+    a.amount, a.tank = 50, {k: TANK[k][1] for k in TANK}
 
     # 전체 화면 앱이 작업 표시줄을 가리면 틀이 사라짐 — 바닥이 무너지듯 떨어지고, 다시 나타나면 바로 솟음
     up = [0] * 100 + [rise] * 300
@@ -2252,6 +2306,21 @@ def check():
         a.next_base = up
         a.frame(1 / 60, 510.0)
         assert a.base == up and a.fall is None, ("틀이 다시 나타나면 바로 솟음", kind)
+    a.reset()  # 눈(위 고리가 눈으로 끝남): 양을 끄는 동안 쌓인 눈은 그대로 두고 층마다 수만 맞춤
+    a.pile.h, flakes = [3.0] * aw, list(a.flakes)
+    for amt in (100, 10):
+        a.amount = amt
+        a.retune()
+        per = [sum(f[3] == li for f in a.flakes) for li in range(len(SNOW_LAYERS))]
+        now_ids, old = {id(f) for f in a.flakes}, {id(f) for f in flakes}
+        assert per == [round(count(amt) * l[0]) for l in SNOW_LAYERS] and a.pile.h == [3.0] * aw, ("눈 수만 맞춤", amt, per)
+        assert old <= now_ids if amt == 100 else now_ids <= old, ("있던 눈송이는 제자리", amt)
+    a.amount, a.kind, junk = 50, "hail", [[0.0] * 7]
+    a.stones = junk * 500  # 지난번 우박 — 종류를 다시 고르면 새로 깔아야 함
+    a.reset()
+    assert len(a.stones) == round(count(50) * HAIL_SHARE) and not any(s is junk[0] for s in a.stones), "우박을 고르면 돌을 새로"
+    a.kind = "snow"
+    a.reset()
     if not MAC:  # 전체 화면이면 틀을 안 읽고 바닥 0, 바뀌면 FRAMES_EVERY 를 안 기다리고 바로 다시 냄
         states, got, a.left, a.top = iter([False, False, True, True, False]), [], 0, 0
 
@@ -2284,8 +2353,10 @@ def check():
                             (["penguin", "cat", "fox", "cat", [1]], ["cat", "penguin"])):
             SETTINGS.write_text(json.dumps({"pet": saved}), encoding="utf-8")
             assert load_settings().get("pet") == want, (saved, "예전 true 는 고양이, 모르는 이름은 버림")
-        SETTINGS.write_text(json.dumps({"fish": 0, "bubbles": 150, "rays": "x"}), encoding="utf-8")
-        assert load_settings() == {"fish": 0}, "어항 막대는 0–100 만"
+        SETTINGS.write_text(json.dumps({"fish": FISH_MAX, "bubbles": 150, "rays": "x"}), encoding="utf-8")
+        assert load_settings() == {"fish": FISH_MAX}, "거품·빛줄기는 0–100 만"
+        SETTINGS.write_text(json.dumps({"fish": FISH_MAX + 1, "bubbles": 0, "rays": True}), encoding="utf-8")
+        assert load_settings() == {"bubbles": 0}, "물고기는 0–FISH_MAX 마리만"
         Weather.save(types.SimpleNamespace(kind="aquarium", amount=40, pets={"cat": None}, fps=60,
                                            tank={"fish": 10, "bubbles": 0, "rays": 90}, drag=True))
         assert load_settings() == {"kind": "aquarium", "amount": 40, "pet": ["cat"], "fps": 60, "fish": 10, "bubbles": 0,
@@ -2305,18 +2376,20 @@ def check():
     assert list(z.pets) == ["cat"], "다시 누르면 꺼짐"
     q = SimpleNamespace(commands=queue.Queue())
     Weather.read_panel(q, SimpleNamespace(stdout=["amount 30\n", "amount x\n", "amount 150\n", "fish 0\n", "rays 101\n",
-                                                        "bubbles x\n", "fishy 3\n", "2\n", "43\n", "23\n", "77\n", "27\n",
-                                                        "hi\n"]))
+                                                        "fish %d\n" % (FISH_MAX + 1), "bubbles x\n", "fishy 3\n", "2\n",
+                                                        "43\n", "23\n", "77\n", "27\n", "hi\n"]))
     assert list(q.commands.queue) == [("amount", 30), ("fish", 0), 2, 43, 23, 27], "설정 창이 보낸 줄 중 아는 것만"
-    hz = SimpleNamespace(kind="snow", amount=50, tank={k: 50 for k in TANK}, done=[])
-    hz.reset, hz.save = (lambda: hz.done.append("reset")), (lambda: hz.done.append("save"))
+    hz = SimpleNamespace(kind="snow", amount=50, tank={k: TANK[k][1] for k in TANK}, done=[])
+    hz.reset, hz.retune, hz.save = [lambda w=w: hz.done.append(w) for w in ("reset", "retune", "save")]
     Weather.handle(hz, ("fish", 0))
-    assert hz.tank["fish"] == 0 and hz.amount == 50 and hz.done == ["save"], "어항이 아니면 남기기만 — 다시 깔면 쌓인 눈이 날아감"
+    assert hz.tank["fish"] == 0 and hz.amount == 50 and hz.done == ["save"], "어항이 아니면 어항 막대는 남기기만"
+    Weather.handle(hz, ("amount", 40))
+    assert hz.amount == 40 and hz.done == ["save", "retune", "save"], "양은 다시 깔지 않고 수만 — 쌓인 눈이 안 날아감"
     hz.kind, hz.done = "aquarium", []
     Weather.handle(hz, ("rays", 80))
     Weather.handle(hz, ("amount", 30))
-    assert hz.tank == {"fish": 0, "bubbles": 50, "rays": 80} and hz.amount == 30 and hz.done == ["reset", "save"] * 2, \
-        "어항이면 어항을 새로 깔고, 양은 양에"
+    assert hz.tank == {"fish": 0, "bubbles": 50, "rays": 80} and hz.amount == 30 and hz.done == ["retune", "save"] * 2, \
+        "어항이면 수만 맞추고, 양은 양에"
 
     # 동물 집어 옮기기 (커서·단추는 흉내): 커서가 동물 위일 때만 클릭을 받고, 누르면 집어 커서를 따라가고, 떼면 떨어짐
     dw, dh, rise = 600, 500, 40
@@ -2443,20 +2516,32 @@ def panel(state):
     bars.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(px(12), px(6)))
     bars.columnconfigure(1, weight=1)
 
-    def bar(r, label, value, word):
-        """0–100% 막대 한 줄 → (이름, 막대, 숫자). 손을 떼면 `word 값` 을 보냄 — 끄는 동안 매번 다시 뿌리지 않게."""
-        val = tk.DoubleVar(value=value)
-        pct = ttk.Label(bars, width=5, anchor="e", text="%d%%" % value)
-        show = lambda *_: pct.configure(text="%d%%" % round(val.get()))
-        scale = ttk.Scale(bars, from_=0, to=100, variable=val, command=show)
+    def bar(r, label, value, word, top=100, unit="%"):
+        """0–top 막대 한 줄 → (이름, 막대, 숫자). 끄는 동안 바뀐 값을 0.1초에 한 번 `word 값` 으로 보내 바로 보이게 —
+        어항 물빛은 다시 만드는 데 30–40ms 라 칸마다 보내면 화면이 멈칫거림. 손을 떼면 마지막 값을 바로 보냄."""
+        val, sent, later = tk.DoubleVar(value=value), [value], []
+        pct = ttk.Label(bars, width=6, anchor="e", text="%d%s" % (value, unit))
+
+        def push():  # 바뀐 값만
+            later.clear()
+            if round(val.get()) != sent[0]:
+                sent[0] = round(val.get())
+                send(word, sent[0])
+
+        def show(*_):
+            pct.configure(text="%d%s" % (round(val.get()), unit))
+            if not later:
+                later.append(root.after(100, push))
+
+        scale = ttk.Scale(bars, from_=0, to=top, variable=val, command=show)
 
         def jump(e):  # 볼륨 막대처럼 누른 자리로 바로 감 (ttk 기본은 한 칸씩)
-            val.set(max(0.0, min(100.0, e.x / max(1, scale.winfo_width()) * 100)))
+            val.set(max(0.0, min(top, e.x / max(1, scale.winfo_width()) * top)))
             show()
 
         scale.bind("<Button-1>", jump, add="+")
-        scale.bind("<ButtonRelease-1>", lambda _: send(word, round(val.get())))
-        scale.bind("<KeyRelease>", lambda _: send(word, round(val.get())))
+        scale.bind("<ButtonRelease-1>", lambda _: push())
+        scale.bind("<KeyRelease>", lambda _: push())
         name = ttk.Label(bars, text=label)
         name.grid(row=r, column=0, sticky="w", pady=px(1))
         scale.grid(row=r, column=1, sticky="ew", padx=(px(10), px(4)), pady=px(1))
@@ -2465,7 +2550,8 @@ def panel(state):
 
     bar(0, "양", state["amount"], "amount")
     tank = state.get("tank", {})  # 예전 weather 가 띄우면 없음 — 설정 창은 디스크의 새 파일로 뜸
-    tank_bars = [wd for r, (key, label) in enumerate(TANK.items(), start=1) for wd in bar(r, label, tank.get(key, 50), key)]
+    tank_bars = [wd for r, (key, (label, default, top, unit)) in enumerate(TANK.items(), start=1)
+                 for wd in bar(r, label, tank.get(key, default), key, top, unit)]
 
     smooth = ttk.Frame(f)
     smooth.grid(row=4, column=0, columnspan=4, sticky="ew", pady=(0, px(8)))
