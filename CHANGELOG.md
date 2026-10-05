@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.8 — 2026-10-05
+
+- weather: right-clicking the tray icon on Windows now opens the same settings panel as a left click, instead of a separate menu that could fall out of step with it. The macOS menu bar keeps its menu
+- weather: the settings panel now opens at once (about 10–40 ms instead of 0.35–0.57 s) — it waits hidden from the start, using about 54 MB
+- weather: the settings panel now sits right above the tray icon instead of wherever the mouse was, and no longer flashes in the top-left corner first. If the icon is tucked into the hidden icons, it opens above the mouse as before
+
+**한국어**
+
+- weather: 윈도우에서 트레이 아이콘을 오른쪽 클릭해도 왼쪽 클릭과 같은 설정 창이 뜸. 전에는 따로 있는 메뉴가 떠서 설정 창과 어긋날 수 있었음. 맥 메뉴 막대는 메뉴 그대로임
+- weather: 설정 창이 바로 뜸(0.35–0.57초에서 10–40ms 쯤으로). 켤 때부터 숨은 채 떠 있고 54MB 쯤 씀
+- weather: 설정 창이 마우스 자리가 아니라 트레이 아이콘 바로 위에 뜨고, 왼쪽 위에 잠깐 떴다 옮겨 가던 것이 없어짐. 아이콘이 숨긴 아이콘 칸에 들어가 있으면 예전처럼 마우스 자리 위에 뜸
+
 ## 0.2.7 — 2026-10-05
 
 - weather: **Smoothness** now offers 30 · 60 · 120 fps; 180 is gone because it took a whole CPU core. If 180 was picked before, it is read as 120
