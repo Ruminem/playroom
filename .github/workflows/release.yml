@@ -1,6 +1,7 @@
 # 윈도우 도구 다섯을 PyInstaller 로 exe 하나씩 굳혀 띄워 보고, 그 버전 태그의 릴리스에 붙임.
 # 노트는 CHANGELOG.md 의 그 버전 절을 그대로 씀 — 그 절이 없으면 굽기 전에 멈춤.
 # exe 이름은 스크립트 이름을 따름(hud.py → hud.exe). startup.command 와 런처가 이 이름으로 옆의 exe 를 찾음
+# 굳힌 exe 는 PYTHONUTF8 환경 변수를 안 읽어서, 한글을 찍으면 cp1252 로 죽음(2026-10-05 CI). 그래서 UTF-8 모드를 exe 에 박음
 name: release
 on:
   workflow_dispatch:
@@ -40,7 +41,7 @@ jobs:
           foreach ($name in $tools.Keys) {
             $extra = if ($name -eq 'hud') { @('--add-data', "$PWD/usage-hud/page.html;.") } else { @() }
             # --specpath 를 build 로 옮기면 상대 경로가 그쪽 기준이 되므로 절대 경로로 넘김
-            python -m PyInstaller --noconfirm --onefile --windowed --log-level WARN --name $name `
+            python -m PyInstaller --noconfirm --onefile --windowed --log-level WARN --name $name --python-option 'X utf8_mode=1' `
               --paths "$PWD/shared" --distpath dist --workpath build --specpath build @extra $tools[$name]
             if ($LASTEXITCODE) { throw "$name 굽기 실패" }
           }
@@ -48,7 +49,7 @@ jobs:
       # 창 없는 exe 는 잡히지 않은 예외를 대화상자로만 보이고 멈춤. 오류를 읽으려고 콘솔판을 따로 구워(릴리스엔 안 붙임) 점검함
       - name: 콘솔판 weather.exe --check
         run: |
-          python -m PyInstaller --noconfirm --onefile --console --log-level WARN --name weather `
+          python -m PyInstaller --noconfirm --onefile --console --log-level WARN --name weather --python-option 'X utf8_mode=1' `
             --paths "$PWD/shared" --distpath build/console --workpath build/console-work --specpath build/console-work weather/weather.py
           if ($LASTEXITCODE) { throw "콘솔판 굽기 실패" }
           build/console/weather.exe --check
