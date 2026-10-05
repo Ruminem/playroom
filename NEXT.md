@@ -3,7 +3,7 @@
 - 막힌 것: 없음
 
 - 여기까지 됨 (2026-10-05 — 드라이브 업로드를 자체 rclone client 로, yt-pip 세션에서): rclone 공용 client id 가 2026 년 중 끊겨 구글 클라우드에 rclone-ci client(앱 게시·미인증)를 만들고 PC rclone 원격 gdrive 를 scope drive 로 다시 인증. 비밀값 RCLONE_CONFIG_GDRIVE_TOKEN·_CLIENT_ID·_CLIENT_SECRET 을 넣고 release.yml 이 셋과 scope drive 를 씀(c73f171). drive 범위라 드라이브 전체가 보임 — 대신 옛 파일 ID 가 그대로. rclone zip 은 SHA256 이 다르면 멈춤(2ac658a, rclone 버전을 올리면 해시도 같이). CI 와 같은 환경 변수로 Apps/playroom 을 읽는 것까지 봤고 yt-pip 0.1.12 는 이 방식으로 올라감
-- 다음 할 것: 0.2.8 릴리스 로그에서 드라이브 단계가 통과하고 다섯 exe 의 ID 가 그대로인지 보기(아래 v0.1.1 때 ID). 토큰은 반년 안 쓰면 끊김 — 그때는 PC 에서 rclone config reconnect gdrive: 뒤 TOKEN 비밀값만 다시 넣기
+- 다음 할 것: 없음 — 0.2.8 릴리스(3분 58초)에서 해시 검사·드라이브 단계 통과, 공용 client id 경고 0줄, 다섯 exe 의 ID 가 아래 v0.1.1 때와 같음을 확인. 토큰은 반년 안 쓰면 끊김 — 그때는 PC 에서 rclone config reconnect gdrive: 뒤 TOKEN 비밀값만 다시 넣기
 - 막힌 것: 없음
 
 - 여기까지 됨 (2026-10-05 — 사용자 결정, 아직 릴리스 전): 설정 창을 weather 가 켤 때 숨긴 채 띄워 두고, 누르면 stdin 으로 상태 JSON 한 줄을 보내 보이게 함(492d452). 누를 때마다 새로 띄우면 0.35–0.57초(파이썬 시작·import weather·tk·위젯·첫 그리기가 고루 나눠 먹음)였고, 미리 띄운 창에 보내면 8–36ms. 숨은 동안 CPU 0.08%(20초), 메모리 54MB. 창은 마우스 자리 대신 tray.icon_rect(Shell_NotifyIconGetRect)로 아이콘 가운데 위에 놓고, 아이콘이 숨긴 아이콘 칸이면 누른 자리 위. 자리를 잡은 뒤에 보여서 왼쪽 위 (0,0)에 잠깐 뜨던 것도 없어짐. 열린 창의 아이콘을 또 누르면 그 누름에 숨으므로 숨은 지 0.3초 안의 열기는 무시해 닫힌 채로 둠. 시험은 scratchpad warm.py(보내기→보이기 시간·자리·Esc·stdin 닫으면 끝남·0.3초 무시 — 0.3을 0으로 바꾸면 걸림). 한 번은 창이 아이콘이 아니라 마우스 쪽(x 920)에 떴는데 그때 아이콘 자리가 2135→2167 로 바뀌는 중이었음 — 원인 모름
