@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.6 — 2026-10-05
+
+- weather: rain and storm now draw at most 120 frames a second even when **Smoothness** is set to 180, as the aquarium already did in 0.2.5 — at 180 they took a whole CPU core. On one PC, a full-strength storm with all five animals went from 100% of a core to about 50–58%. Other kinds still use 180 when it is picked
+- weather: also in 0.2.5 but not listed there — the aquarium light rays are redrawn only where they move, which makes an aquarium frame about 30% cheaper, and leaving the aquarium hands back about 22 MB of memory
+
+**한국어**
+
+- weather: **부드러움** 을 180 으로 둬도 비와 뇌우는 1초에 120번까지만 그림. 어항은 0.2.5 부터 그랬음 — 180 이면 CPU 한 코어를 다 썼음. PC 한 대에서 뇌우 100% 에 동물 다섯을 켜 두면 한 코어의 100% 에서 50–58% 쯤으로 줄었음. 다른 종류는 180 을 고르면 180 그대로임
+- weather: 0.2.5 에 들어갔는데 거기 안 적은 것 — 어항 빛줄기를 움직인 자리만 다시 그려 어항 한 프레임이 30% 쯤 가벼워졌고, 어항에서 다른 종류로 바꾸면 메모리를 22MB 쯤 돌려줌
+
 ## 0.2.5 — 2026-10-05
 
 - weather: picking rain or storm in 0.2.4 stopped the animation for good (a name clash with the new rain sound); fixed
