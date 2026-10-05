@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.3 — 2026-10-05
+
+- weather: the aquarium fish are redrawn to look like real tropical fish — the clownfish gets black-edged white bands, the blue tang its yellow tail and black marking, the neon tetra a cyan stripe and red belly, the pufferfish spots, the angelfish long fins and stripes — and they are about twice as big as before
+- weather: the aquarium light rays are made of several thin shafts instead of one smooth bar, fan out as if the sun were up to one side, and brighten and dim smoothly instead of in jumps; the faint dark edge around each ray is gone
+- weather: snow, rain, hail, bubbles and fireflies get a faint dark-blue shadow so they show on white web pages too; on dark windows they look the same as before
+
+**한국어**
+
+- weather: 어항 물고기를 진짜 열대어처럼 다시 그렸음 — 흰동가리는 검은 테를 두른 흰 띠, 블루탱은 노란 꼬리와 검은 무늬, 네온테트라는 청록 줄과 빨간 배, 복어는 점박이, 엔젤피시는 긴 지느러미와 줄무늬 — 크기도 예전의 두 배쯤임
+- weather: 어항 빛줄기가 매끈한 막대 하나가 아니라 가는 빛살 여러 가닥으로 이루어지고, 해가 한쪽 위에 있는 듯 부채꼴로 벌어지며, 밝기가 뚝뚝 끊기지 않고 부드럽게 오감. 줄기 둘레의 옅은 어두운 테두리도 없어짐
+- weather: 눈·비·우박·거품·반딧불에 옅은 남색 그림자가 생겨 흰 웹 페이지 위에서도 보임. 어두운 창 위에서는 예전과 같아 보임
+
 ## 0.2.2 — 2026-10-05
 
 - layers: if putting the windows in order failed once (a window closing at that very moment), it stopped ordering them for good until restarted — the taskbar could then stay above weather, and with a see-through taskbar the animals standing in it could not be grabbed. It now tries again next time and keeps the last error in `%LOCALAPPDATA%\playroom\layers-error.txt`
