@@ -1,3 +1,7 @@
+- 여기까지 됨 (2026-10-05 — 첫 릴리스 v0.1.0): .github/workflows/release.yml(수동 실행, 입력 version)이 윈도우 도구 다섯(launcher·hud·weather·sysmon·layers)을 PyInstaller onefile·창 없는 exe 로 굽고, weather --check 를 콘솔판·창 없는 판으로 돌리고, 넷의 트레이 창과 런처 창이 30초 안에 뜨는지·--stop 으로 꺼지는지 본 뒤 CHANGELOG.md 의 그 버전 절을 노트로 릴리스를 만든다. 릴리스 exe 는 옆의 <스크립트 이름>.exe 를 띄우고(startup.command·launcher.argv·weather 설정 창) 시작 시 실행도 그 exe 를 가리킨다. 함정 셋: 굳힌 exe 는 PYTHONUTF8 를 안 읽어 --python-option 'X utf8' 로 박음(utf8_mode=1 은 조용히 무시됨), PowerShell 은 .NET string 인자로 넘긴 $null 을 "" 로 바꿔 FindWindow(class, $null) 이 제목 있는 창을 못 찾음, onefile 은 뜨는 데 2–5초. 크기 합 64.6MB(sysmon 10.2 · 나머지 13.5–13.7). https://github.com/Ruminem/playroom/releases/tag/v0.1.0
+- 다음 할 것: 받은 exe 를 실제 PC 에서 띄워 보기. 런처의 설치·시작 시 실행이 exe 를 가리키는지, SmartScreen 경고, 아이콘(지금은 PyInstaller 기본)
+- 막힌 것: 구글 드라이브 'Apps' 폴더에 올리기. 커넥터 create_file 이 내용을 base64 로 통째로 받아서 다섯 개면 8,600만 자(제일 작은 sysmon 도 1,350만 자)를 출력해야 함 — 사람이 릴리스에서 받아 끌어 넣는 쪽
+
 - 여기까지 됨 (2026-10-05 — weather 바람에 날린 눈 언덕): Pile.blow 가 settle 마다 더미 겉 LOOSE(3px)의 일부를 Weather.wind 쪽 옆 열로 옮긴다(DRIFT 0.12 × 바람 px/초 × 초, 한 번에 0.9 까지). 옆 표면이 LIFT(2px) 넘게 높으면 못 넘어 틀 옆면 앞에 언덕이 되고, 틀 위 눈은 바람 아래 모서리로 떨어지고, 화면 끝으로 날린 눈은 사라진다. 눈만, 우박은 안 날림. 이 작업 표시줄 모양으로 20분 흉내: 틀 옆이 보통 양 10–28px(트인 틈 5px), 3배 양 30–46px. 바람이 48초쯤마다 돌아서 언덕이 틀 양쪽을 오간다. DRIFT 0.03 이면 5–16px 였다. 한 번 1.25ms(0.5%). 변이 21개 다 걸림
 - 다음 할 것: 언덕 크기·오가는 빠르기를 눈으로 보기. 키우려면 DRIFT, 덜 오가게 하려면 LOOSE 를 줄이기
 - 막힌 것: 없음
