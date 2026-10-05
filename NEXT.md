@@ -1,3 +1,7 @@
+- 여기까지 됨 (2026-10-05 — v0.2.8): 0.2.8 릴리스 끝남(23:55:10–23:58:59, 3분 49초, exe 다섯). 오른쪽 클릭도 설정 창, 미리 띄운 설정 창, 아이콘 위 자리가 들어감. 자체 rclone client 로 바꾼 드라이브 단계가 처음 돌아 통과했고, rclone lsjson 으로 본 다섯 exe 의 ID 가 아래 v0.1.1 때 ID 와 다 같음. 이 PC 의 weather 는 58e7124 소스로 떠 있음(사용자가 아이콘 위에 뜨는 걸 보고 릴리스를 시킴)
+- 다음 할 것: 굳힌 weather.exe 에서 설정 창이 뜨는지 보기 (직접) — 이번에 설정 창이 stdin 파이프로 상태를 받게 바뀌었는데 exe 로는 안 띄워 봄. 0.2.x 가 옛 exe 를 갈아 끼우는지 다른 PC 에서 보기 (직접, 노션 6af9)
+- 막힌 것: 없음
+
 - 여기까지 됨 (2026-10-05 — 드라이브 업로드를 자체 rclone client 로, yt-pip 세션에서): rclone 공용 client id 가 2026 년 중 끊겨 구글 클라우드에 rclone-ci client(앱 게시·미인증)를 만들고 PC rclone 원격 gdrive 를 scope drive 로 다시 인증. 비밀값 RCLONE_CONFIG_GDRIVE_TOKEN·_CLIENT_ID·_CLIENT_SECRET 을 넣고 release.yml 이 셋과 scope drive 를 씀(c73f171). drive 범위라 드라이브 전체가 보임 — 대신 옛 파일 ID 가 그대로. rclone zip 은 SHA256 이 다르면 멈춤(2ac658a, rclone 버전을 올리면 해시도 같이). CI 와 같은 환경 변수로 Apps/playroom 을 읽는 것까지 봤고 yt-pip 0.1.12 는 이 방식으로 올라감
 - 다음 할 것: 0.2.8 릴리스 로그에서 드라이브 단계가 통과하고 다섯 exe 의 ID 가 그대로인지 보기(아래 v0.1.1 때 ID). 토큰은 반년 안 쓰면 끊김 — 그때는 PC 에서 rclone config reconnect gdrive: 뒤 TOKEN 비밀값만 다시 넣기
 - 막힌 것: 없음
