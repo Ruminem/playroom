@@ -2,6 +2,8 @@
 
 **English** · [한국어](#korean)
 
+[![mac](https://github.com/Ruminem/playroom/actions/workflows/mac.yml/badge.svg)](https://github.com/Ruminem/playroom/actions/workflows/mac.yml) [![windows](https://github.com/Ruminem/playroom/actions/workflows/windows.yml/badge.svg)](https://github.com/Ruminem/playroom/actions/workflows/windows.yml) [![weather](https://github.com/Ruminem/playroom/actions/workflows/weather.yml/badge.svg)](https://github.com/Ruminem/playroom/actions/workflows/weather.yml) [![launcher](https://github.com/Ruminem/playroom/actions/workflows/launcher.yml/badge.svg)](https://github.com/Ruminem/playroom/actions/workflows/launcher.yml) [![sysmon](https://github.com/Ruminem/playroom/actions/workflows/sysmon.yml/badge.svg)](https://github.com/Ruminem/playroom/actions/workflows/sysmon.yml) [![layers](https://github.com/Ruminem/playroom/actions/workflows/layers.yml/badge.svg)](https://github.com/Ruminem/playroom/actions/workflows/layers.yml)
+
 A hobby playroom. One folder per experiment, each with its own short README.
 
 ## Contents
@@ -22,6 +24,8 @@ Apache-2.0. See [LICENSE](LICENSE).
 ## Korean
 
 [English](#playroom) · **한국어**
+
+[![mac](https://github.com/Ruminem/playroom/actions/workflows/mac.yml/badge.svg)](https://github.com/Ruminem/playroom/actions/workflows/mac.yml) [![windows](https://github.com/Ruminem/playroom/actions/workflows/windows.yml/badge.svg)](https://github.com/Ruminem/playroom/actions/workflows/windows.yml) [![weather](https://github.com/Ruminem/playroom/actions/workflows/weather.yml/badge.svg)](https://github.com/Ruminem/playroom/actions/workflows/weather.yml) [![launcher](https://github.com/Ruminem/playroom/actions/workflows/launcher.yml/badge.svg)](https://github.com/Ruminem/playroom/actions/workflows/launcher.yml) [![sysmon](https://github.com/Ruminem/playroom/actions/workflows/sysmon.yml/badge.svg)](https://github.com/Ruminem/playroom/actions/workflows/sysmon.yml) [![layers](https://github.com/Ruminem/playroom/actions/workflows/layers.yml/badge.svg)](https://github.com/Ruminem/playroom/actions/workflows/layers.yml)
 
 취미용 놀이방. 실험 하나당 폴더 하나로 두고, 폴더마다 짧은 README 를 붙임.
 
