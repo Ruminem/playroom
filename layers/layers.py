@@ -21,7 +21,10 @@ import queue
 import subprocess
 import sys
 import tempfile
+import time
 import tkinter as tk
+import traceback
+import types
 import tkinter.font as tkfont
 from tkinter import ttk
 from ctypes import wintypes
@@ -35,6 +38,7 @@ from tray import Tray, write_ico
 PID_FILE = Path(tempfile.gettempdir()) / "playroom-layers.pid"
 ICON_FILE = Path(tempfile.gettempdir()) / "playroom-layers.ico"
 SETTINGS = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "playroom" / "layers.json"
+ERROR_LOG = SETTINGS.with_name("layers-error.txt")  # 순서 맞추기가 마지막으로 터진 자리
 OPEN, AUTOSTART, EXIT = 1, 50, 99
 RUN_NAME = "PlayroomLayers"
 ENFORCE_MS = 500
@@ -172,8 +176,10 @@ def rule_name(rule):
 
 def plan_moves(zorder, ranked):
     """ranked(앞이 위)가 zorder(앞이 위)에서 그 순서가 되게 할 (창, 바로 위에 둘 창) 목록.
-    틀린 창을 윗 순위 창 바로 밑으로 내리기만 하므로 목록 밖 창보다 위로 올라가는 일은 없다."""
+    틀린 창을 윗 순위 창 바로 밑으로 내리기만 하므로 목록 밖 창보다 위로 올라가는 일은 없다.
+    ranked 를 읽은 뒤 zorder 를 읽기 전에 닫힌 창은 건너뜀."""
     z, moves = list(zorder), []
+    ranked = [h for h in ranked if h in z]
     for above, h in zip(ranked, ranked[1:]):
         if z.index(h) < z.index(above):
             z.remove(h)
@@ -253,6 +259,18 @@ class Layers:
         return out
 
     def enforce(self):
+        """순서 맞추기. 한 번 터져도 다음 차례는 늘 걸어 둠 — 안 걸면 그 뒤로 순서가 조용히 안 맞음(pythonw 라
+        오류도 안 보임). 마지막 오류는 ERROR_LOG 에 남김."""
+        try:
+            self.restack()
+        except Exception:
+            try:
+                ERROR_LOG.write_text(time.strftime("%Y-%m-%d %H:%M:%S\n") + traceback.format_exc(), encoding="utf-8")
+            except OSError:
+                pass
+        self.root.after(ENFORCE_MS, self.enforce)
+
+    def restack(self):
         wins = windows()
         ranked = self.ranked(wins)
         for w in ranked:
@@ -270,7 +288,6 @@ class Layers:
         for h, above in plan_moves(all_windows(), order):
             user32.SetWindowPos(h, above, 0, 0, 0, 0, SWP_KEEP)
         self.unpin({w["hwnd"] for w in ranked})
-        self.root.after(ENFORCE_MS, self.enforce)
 
     def unpin(self, keep):
         for h in self.pinned - keep:
@@ -438,6 +455,18 @@ def check():
         z.remove(h)
         z.insert(z.index(above) + 1, h)
     assert [h for h in z if h in ranked] == ranked and z[0] == "x", "목록 밖 창보다 위로 안 올라감"
+    assert plan_moves(["c", "a"], ["a", "b", "c"]) == [("c", "a")], "그 사이 닫힌 창(b)은 건너뜀"
+    # 순서 맞추기가 터져도 다음 차례는 걸리고 오류는 파일로
+    global ERROR_LOG
+    real, ERROR_LOG = ERROR_LOG, Path(tempfile.mkdtemp()) / "layers-error.txt"
+    later = []
+    me = types.SimpleNamespace(restack=lambda: 1 / 0, enforce=None,
+                               root=types.SimpleNamespace(after=lambda ms, f: later.append(ms)))
+    try:
+        Layers.enforce(me)
+        assert later == [ENFORCE_MS] and "ZeroDivisionError" in ERROR_LOG.read_text(encoding="utf-8")
+    finally:
+        ERROR_LOG = real
     w = {"exe": "pythonw.exe", "cls": "TkTopLevel", "title": "usage-hud"}
     assert matches(DEFAULT_RULES[0], w) and not matches(DEFAULT_RULES[1], w)
     assert not matches({"exe": "python.exe", "cls": "TkTopLevel"}, w)

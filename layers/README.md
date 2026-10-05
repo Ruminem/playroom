@@ -25,7 +25,8 @@ Twice a second it walks the window list. Measured on one PC: 0.03 s of CPU over 
 
 - While it is running, the overlays stop re-asserting topmost themselves (`overlay.layers_running()` looks for its tray window) and this is the only thing that orders them
 - Every half second it fixes only the relative order of the listed windows: a window that is above the one ranked over it is moved to just below that one. Nothing is ever lifted, so windows not in the list — the snipping tool, Task Manager — are never buried
-- The taskbar is treated as the last entry, because clicking it brings it to the front and would hide sysmon
+- The taskbar is treated as the last entry, because clicking it brings it to the front and would hide sysmon (and, with a see-through taskbar, take the clicks meant for the weather animals standing in it)
+- If ordering fails once (a window closing at that moment), it tries again next time; the last error is kept in `%LOCALAPPDATA%\playroom\layers-error.txt`
 - A normal window you add is made always-on-top; remove it or exit and it goes back
 - Windows of a program running as administrator cannot be reordered from here and are skipped
 
@@ -58,6 +59,7 @@ Twice a second it walks the window list. Measured on one PC: 0.03 s of CPU over 
 
 - 이게 떠 있는 동안 오버레이들은 스스로 맨 위로 올리지 않음(`overlay.layers_running()` 이 트레이 창을 찾아 봄). 순서를 정하는 것은 이것 하나뿐임
 - 0.5초마다 목록에 든 창끼리의 상대 순서만 맞춤. 바로 윗 순위 창보다 위에 있는 창을 그 창 바로 밑으로 내림. 끌어올리는 일은 없어서 목록 밖 창(캡처 도구·작업 관리자)은 묻히지 않음
-- 작업 표시줄은 목록 맨 아래 칸으로 다룸. 누르면 앞으로 와서 sysmon 을 가리기 때문임
+- 작업 표시줄은 목록 맨 아래 칸으로 다룸. 누르면 앞으로 와서 sysmon 을 가리기 때문임(작업 표시줄이 투명하면 그 안에 선 weather 동물을 누른 클릭도 가져감)
+- 순서 맞추기가 한 번 실패해도(그 순간 창이 닫히는 등) 다음 차례에 다시 함. 마지막 오류는 `%LOCALAPPDATA%\playroom\layers-error.txt` 에 남음
 - 직접 넣은 일반 창은 맨 위로 고정되고, 빼거나 끝내면 풀림
 - 관리자 권한으로 도는 프로그램의 창은 여기서 순서를 못 바꿔 건너뜀
