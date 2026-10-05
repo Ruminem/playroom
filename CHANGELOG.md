@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.4 — 2026-10-05
+
+- weather: a new **rain sound** box in the settings panel and right-click menu (off by default) plays a soft hiss of rain against a window, like white noise, while rain or storm is showing, with a volume slider (50% by default). Storm uses the same sound, without thunder. It stops when the weather is hidden or another kind is picked, and works on macOS too
+
+**한국어**
+
+- weather: 설정 창과 오른쪽 클릭 메뉴에 **빗소리** 상자(기본 꺼짐)가 생김 — 비나 뇌우가 보이는 동안 창밖에서 비 내리는 듯한 잔잔한 소리를 백색소음처럼 틀고, 크기 막대(기본 50%)로 조절함. 뇌우도 같은 소리이고 천둥은 없음. 날씨를 숨기거나 다른 종류로 바꾸면 멈추고, 맥에서도 남
+
 ## 0.2.3 — 2026-10-05
 
 - weather: the aquarium fish are redrawn to look like real tropical fish — the clownfish gets black-edged white bands, the blue tang its yellow tail and black marking, the neon tetra a cyan stripe and red belly, the pufferfish spots, the angelfish long fins and stripes — and they are about twice as big as before

@@ -13,7 +13,8 @@
 비는 세 겹 깊이의 빗줄기가 돌풍에 기울며 내리고 바닥에서 튀며, 뇌우는 거기에 번개와 빗발의 물결을 더한다.
 반딧불이는 화면 아래쪽을 떠다니며 깜빡인다. 어항은 화면을 옅은 물빛으로 덮고 빛줄기·거품·물고기·모래·해초를 그린다. 고양이(pet.py)를 켜면 바닥이나 쌓인 더미 위를 돌아다닌다.
 트레이의 눈송이 메뉴에서 종류·양·고양이·숨기기·끝내기를 하고(양은 10% 칸으로 0–100%), 왼쪽 클릭 설정 창에서는
-어항의 물고기·거품·빛줄기 수도 막대로 고른다. 고른 것은 SETTINGS 에 남는다.
+어항의 물고기·거품·빛줄기 수도 막대로 고른다. 빗소리(rain_sound.py)를 켜면 비·뇌우일 때 창밖 빗소리가 난다.
+고른 것은 SETTINGS 에 남는다.
 """
 import argparse
 import ctypes
@@ -40,6 +41,7 @@ import overlay
 import startup
 from surface import Surface
 import pet
+import rain_sound
 from tray import Tray, write_ico
 if not MAC:
     import taskbar
@@ -360,6 +362,9 @@ PET_NAMES = {"cat": "고양이", "bird": "새", "dog": "강아지", "rabbit": "�
 PET_CLASS = {"cat": pet.Cat, "bird": pet.Bird, "dog": pet.Dog, "rabbit": pet.Rabbit, "penguin": pet.Penguin}
 RUN_NAME = "PlayroomWeather"  # 시작할 때는 인자 없이 떠서 저장된 종류·양을 따름
 AMOUNTS = {10 + i: p for i, p in enumerate(range(10, 101, 10))}  # 메뉴 id → %. 트레이 메뉴엔 막대를 못 넣어 칸으로
+SOUND = 60  # 비·뇌우에 빗소리 켜고 끄기
+VOLUMES = {61 + i: p for i, p in enumerate(range(10, 101, 10))}  # 메뉴 id → 빗소리 크기 %
+VOLUME = 50
 FULL = 300       # 양 100% 의 눈송이·빗방울 수 (꽃잎·반딧불이는 이 수에 종류별 비율을 곱함)
 OLD_AMOUNTS = {"few": 20, "normal": 50, "many": 100}  # 예전 세 단계. 설정 파일·--amount 에서 아직 읽음
 # 어항 막대: 설정 파일 키 → (설정 창 이름, 기본값, 끝값, 단위). 물고기는 마릿수, 거품·빛줄기는 0–100% 이고 50% 가
@@ -400,6 +405,11 @@ def amount_arg(s):
     if a is None:
         raise argparse.ArgumentTypeError("0–100 이나 few·normal·many")
     return a
+
+
+def hearing(kind, visible, sound, volume):
+    """지금 울릴 빗소리 크기, 조용해야 하면 None. 비·뇌우가 보이는 동안만 — 숨기면 소리도 멈춤."""
+    return volume if sound and visible and kind in ("rain", "storm") and volume else None
 
 ICON_COLORS = {"b": "#0099db", "w": "#ffffff"}
 ICON = ("...b...",
@@ -899,12 +909,17 @@ def load_settings():
             ok[k] = data[k]
     if isinstance(data.get("drag"), bool):
         ok["drag"] = data["drag"]
+    if isinstance(data.get("sound"), bool):
+        ok["sound"] = data["sound"]
+    if isinstance(data.get("volume"), int) and parse_amount(data["volume"]) is not None:
+        ok["volume"] = data["volume"]
     return ok
 
 
 class Weather:
-    def __init__(self, kind, amount, animals=(), fps=FPS, tank=None, drag=False):
+    def __init__(self, kind, amount, animals=(), fps=FPS, tank=None, drag=False, sound=False, volume=VOLUME):
         self.kind, self.amount, self.visible, self.fps = kind, amount, True, fps
+        self.sound, self.volume, self.rain = sound, volume, rain_sound.Player()  # 빗소리 켰나 · 크기 % · 트는 것
         self.tank = {k: (tank or {}).get(k, TANK[k][1]) for k in TANK}  # 어항 막대. 어항이 아닐 때 바꿔도 남겨 둠
         self.drag, self.catching = drag and not MAC, False  # 동물 집기를 켰나 · 지금 창이 클릭을 받나
         # ponytail: 시작할 때의 주 모니터 작업 영역에 고정. 해상도·작업 표시줄이 바뀌면 다시 켜야 함
@@ -949,6 +964,7 @@ class Weather:
         self.tray = Tray(TRAY_CLASS, ICON_FILE, "날씨", self.menu, self.commands.put, **left)
         self.last = self.last_settle = self.last_topmost = time.perf_counter()
         self.reset()
+        self.hear()
         self.surface.show(True)
         if self.rise:
             threading.Thread(target=self.watch_frames, daemon=True).start()
@@ -1005,6 +1021,8 @@ class Weather:
                 None,
                 ("동물", [*((PET_NAMES[a], cid, a in self.pets) for cid, a in PETS.items()),
                           *(() if MAC else (None, ("집어서 옮기기", DRAG, self.drag)))]),
+                ("빗소리", [("비·뇌우에 켜기", SOUND, self.sound), None,
+                          *(("%d%%" % p, cid, p == self.volume) for cid, p in VOLUMES.items())]),
                 ("보이기", SHOW, self.visible),
                 ("로그인 시 실행" if MAC else "Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)),
                 None,
@@ -1013,6 +1031,10 @@ class Weather:
     def handle(self, cid):
         if isinstance(cid, tuple):  # 설정 창의 막대 값 — 양이나 어항 막대. 끄는 동안에도 0.1초마다 옴
             key, value = cid
+            if key == "volume":
+                self.volume = value
+                self.save()
+                return
             if key not in TANK:
                 self.amount = value
             else:
@@ -1028,6 +1050,13 @@ class Weather:
             self.kind = KINDS[cid][0]
         elif cid in AMOUNTS:
             self.amount = AMOUNTS[cid]
+        elif cid in (SOUND, *VOLUMES):  # 소리는 poll 이 handle 다음에 hear 로 맞춤
+            if cid == SOUND:
+                self.sound = not self.sound
+            else:
+                self.volume = VOLUMES[cid]
+            self.save()
+            return
         elif cid in FPS_IDS:  # 움직임은 시간으로 셈해 빠르기는 그대로, 다시 깔 필요 없음
             self.fps = FPS_IDS[cid]
             self.save()
@@ -1061,7 +1090,8 @@ class Weather:
         try:
             SETTINGS.parent.mkdir(parents=True, exist_ok=True)
             SETTINGS.write_text(json.dumps({"kind": self.kind, "amount": self.amount, "pet": list(self.pets),
-                                            "fps": self.fps, **self.tank, "drag": self.drag}), encoding="utf-8")
+                                            "fps": self.fps, **self.tank, "drag": self.drag,
+                                            "sound": self.sound, "volume": self.volume}), encoding="utf-8")
         except OSError:
             pass  # 못 남겨도 지금 화면은 바뀌었으니 넘어감
 
@@ -1070,7 +1100,8 @@ class Weather:
         if self.panel and self.panel.poll() is None:
             return  # 이미 떠 있음
         state = {"kind": self.kind, "amount": self.amount, "pet": list(self.pets), "show": self.visible,
-                 "auto": startup.is_on(RUN_NAME, __file__), "fps": self.fps, "tank": self.tank, "drag": self.drag}
+                 "auto": startup.is_on(RUN_NAME, __file__), "fps": self.fps, "tank": self.tank, "drag": self.drag,
+                 "sound": self.sound, "volume": self.volume}
         ctypes.windll.user32.AllowSetForegroundWindow(-1)  # 방금 트레이를 누른 건 이 프로세스라 앞으로 올릴 권한을 넘김
         me = [] if getattr(sys, "frozen", False) else [str(Path(__file__).resolve())]  # 릴리스 exe 는 스크립트 없이 자기 자신
         self.panel = subprocess.Popen([sys.executable, *me, "--panel", json.dumps(state)],
@@ -1080,10 +1111,10 @@ class Weather:
     def read_panel(self, proc):
         for line in proc.stdout:
             word, _, arg = line.partition(" ")
-            if arg.strip().isdigit() and (parse_amount(int(arg)) is not None if word == "amount" else
+            if arg.strip().isdigit() and (parse_amount(int(arg)) is not None if word in ("amount", "volume") else
                                           word in TANK and parse_tank(word, int(arg)) is not None):
                 self.commands.put((word, int(arg)))
-            elif word.strip().isdigit() and int(word) in (*KINDS, *FPS_IDS, *PETS, DRAG, SHOW, AUTOSTART, EXIT):
+            elif word.strip().isdigit() and int(word) in (*KINDS, *FPS_IDS, *PETS, DRAG, SOUND, SHOW, AUTOSTART, EXIT):
                 self.commands.put(int(word))
 
     def poll(self):
@@ -1094,8 +1125,13 @@ class Weather:
                 if cid is None:
                     return True
                 self.handle(cid)
+                self.hear()
         except queue.Empty:
             return False
+
+    def hear(self):
+        """빗소리를 지금 종류·보이기·설정에 맞춤. 같으면 아무것도 안 함 — 명령마다 불러도 됨."""
+        self.rain.set(hearing(self.kind, self.visible, self.sound, self.volume))
 
     # ── 눈 ──
     def new_flake(self, li, top, layers=SNOW_LAYERS):
@@ -1927,6 +1963,7 @@ class Weather:
             if delay < -period:  # 많이 밀렸으면 따라잡으려 몰아 그리지 말고 다시 맞춤
                 nxt, delay = time.perf_counter(), 0
             time.sleep(max(0.0, delay))
+        self.rain.close()
         self.surface.close()
 
 
@@ -2472,31 +2509,11 @@ def check():
     assert all(parse_amount(a) is None for a in (101, -1, True, "x", [1], None, 2.5))
     assert amount_arg("normal") == 50 and amount_arg("7") == 7
     assert {20, 50, 100} <= set(AMOUNTS.values()), "예전 세 단계가 메뉴 칸에 있음"
-    ids = [*AMOUNTS, *FPS_IDS, SHOW, *PETS, DRAG, PANEL, AUTOSTART, EXIT, *KINDS]
+    ids = [*AMOUNTS, *FPS_IDS, SHOW, *PETS, DRAG, PANEL, AUTOSTART, EXIT, *KINDS, SOUND, *VOLUMES]
     assert len(ids) == len(set(ids)), "메뉴 id 가 겹치지 않음"
     assert FPS in FPS_IDS.values()
     assert list(PETS.values()) == list(PET_CLASS) == list(PET_NAMES)
-    global SETTINGS
-    real, SETTINGS = SETTINGS, Path(tempfile.mkdtemp()) / "weather.json"
-    try:
-        for saved, want in ((True, ["cat"]), (False, []), ("bird", ["bird"]), ("", []), ("fox", []), (1, None),
-                            (["penguin", "cat", "fox", "cat", [1]], ["cat", "penguin"])):
-            SETTINGS.write_text(json.dumps({"pet": saved}), encoding="utf-8")
-            assert load_settings().get("pet") == want, (saved, "예전 true 는 고양이, 모르는 이름은 버림")
-        SETTINGS.write_text(json.dumps({"fish": FISH_MAX, "bubbles": 150, "rays": "x"}), encoding="utf-8")
-        assert load_settings() == {"fish": FISH_MAX}, "거품·빛줄기는 0–100 만"
-        SETTINGS.write_text(json.dumps({"fish": FISH_MAX + 1, "bubbles": 0, "rays": True}), encoding="utf-8")
-        assert load_settings() == {"bubbles": 0}, "물고기는 0–FISH_MAX 마리만"
-        Weather.save(types.SimpleNamespace(kind="aquarium", amount=40, pets={"cat": None}, fps=60,
-                                           tank={"fish": 10, "bubbles": 0, "rays": 90}, drag=True))
-        assert load_settings() == {"kind": "aquarium", "amount": 40, "pet": ["cat"], "fps": 60, "fish": 10, "bubbles": 0,
-                                   "rays": 90, "drag": True}, "남긴 그대로 다시 읽힘"
-        for saved, want in ((True, True), (False, False), (1, None), ("yes", None)):
-            SETTINGS.write_text(json.dumps({"drag": saved}), encoding="utf-8")
-            assert load_settings().get("drag") == want, (saved, "집기는 참·거짓만")
-    finally:
-        shutil.rmtree(SETTINGS.parent, ignore_errors=True)
-        SETTINGS = real
+    check_settings()
     from types import SimpleNamespace
     z = SimpleNamespace(pets={}, w=300, save=lambda: None)
     Weather.handle(z, 24)
@@ -2606,7 +2623,77 @@ def check():
             surface.user32 = real
         assert calls == [("ex", surface.EX_STYLE & ~0x20), ("ex", surface.EX_STYLE), "default", "capture", True,
                          "release", False, False], ("받을 땐 클릭 통과 비트만 빼고, 누르면 붙잡고, 떼면 놓음", calls)
+    check_sound()
     print("자체 점검 통과")
+
+
+def check_settings():
+    """설정 파일: 이상한 값은 버리고, 남긴 것은 그대로 다시 읽힘."""
+    global SETTINGS
+    real, SETTINGS = SETTINGS, Path(tempfile.mkdtemp()) / "weather.json"
+    try:
+        for saved, want in ((True, ["cat"]), (False, []), ("bird", ["bird"]), ("", []), ("fox", []), (1, None),
+                            (["penguin", "cat", "fox", "cat", [1]], ["cat", "penguin"])):
+            SETTINGS.write_text(json.dumps({"pet": saved}), encoding="utf-8")
+            assert load_settings().get("pet") == want, (saved, "예전 true 는 고양이, 모르는 이름은 버림")
+        SETTINGS.write_text(json.dumps({"fish": FISH_MAX, "bubbles": 150, "rays": "x"}), encoding="utf-8")
+        assert load_settings() == {"fish": FISH_MAX}, "거품·빛줄기는 0–100 만"
+        SETTINGS.write_text(json.dumps({"fish": FISH_MAX + 1, "bubbles": 0, "rays": True}), encoding="utf-8")
+        assert load_settings() == {"bubbles": 0}, "물고기는 0–FISH_MAX 마리만"
+        Weather.save(types.SimpleNamespace(kind="aquarium", amount=40, pets={"cat": None}, fps=60,
+                                           tank={"fish": 10, "bubbles": 0, "rays": 90}, drag=True, sound=True, volume=30))
+        assert load_settings() == {"kind": "aquarium", "amount": 40, "pet": ["cat"], "fps": 60, "fish": 10, "bubbles": 0,
+                                   "rays": 90, "drag": True, "sound": True, "volume": 30}, "남긴 그대로 다시 읽힘"
+        for saved, want in ((True, True), (False, False), (1, None), ("yes", None)):
+            SETTINGS.write_text(json.dumps({"drag": saved, "sound": saved}), encoding="utf-8")
+            assert load_settings().get("drag") == load_settings().get("sound") == want, (saved, "집기·빗소리는 참·거짓만")
+        for saved, want in ((0, 0), (100, 100), (101, None), (-1, None), (True, None), ("many", None), (2.5, None)):
+            SETTINGS.write_text(json.dumps({"volume": saved}), encoding="utf-8")
+            assert load_settings().get("volume") == want, (saved, "빗소리 크기는 0–100 정수만")
+    finally:
+        shutil.rmtree(SETTINGS.parent, ignore_errors=True)
+        SETTINGS = real
+
+
+def check_sound():
+    """빗소리: 언제 울리나 · 트레이·설정 창 명령 · 합성·이음매·크기. 실제 장치로 트는 것은 안 함."""
+    import io
+    import wave
+    from array import array
+    assert hearing("rain", True, True, 40) == hearing("storm", True, True, 40) == 40
+    for off in (("snow", True, True, 40), ("aquarium", True, True, 40), ("none", True, True, 40),
+                ("rain", False, True, 40), ("rain", True, False, 40), ("rain", True, True, 0)):
+        assert hearing(*off) is None, (off, "비·뇌우가 보이고 켰고 크기가 있을 때만")
+    played = []
+    pl = rain_sound.Player(play=lambda v, base: played.append(v), stop=lambda: played.append(None), spawn=lambda fn: fn())
+    pl.base = [0.0]  # 합성은 아래에서 따로
+    for v in (50, 50, 30, None, None, 70):
+        pl.set(v)
+    pl.close()
+    assert played == [50, 30, None, 70, None], ("같은 값은 다시 안 틀고, 끄면 멈춤", played)
+    sw = types.SimpleNamespace(kind="rain", visible=True, sound=False, volume=VOLUME, commands=queue.Queue(),
+                               save=lambda: None, rain=pl)
+    sw.handle, sw.hear = lambda cid: Weather.handle(sw, cid), lambda: Weather.hear(sw)
+    played.clear()
+    for cid in (SOUND, ("volume", 20), min(VOLUMES), SOUND):
+        sw.commands.put(cid)
+    assert not Weather.poll(sw) and played == [VOLUME, 20, 10, None], ("켜기·막대·메뉴 칸·끄기가 바로 들림", played)
+    out = [float(i) for i in range(30)]
+    loop = rain_sound.seam(out, 20, 10)
+    assert len(loop) == 20 and loop[0] == out[20] and loop[5] == 15.0 and loop[10:] == out[10:20], \
+        ("되풀이하면 [19] 다음이 원래 이웃 [20]", loop)
+    a = rain_sound.synth(2, seed=3)
+    assert a == rain_sound.synth(2, seed=3) and len(a) == 2 * rain_sound.RATE and max(map(abs, a)) == 1.0
+    assert a != rain_sound.synth(2, seed=4)
+
+    def peak(volume):
+        with wave.open(io.BytesIO(rain_sound.wav(a, volume))) as wf:
+            assert (wf.getnchannels(), wf.getsampwidth(), wf.getframerate(), wf.getnframes()) == \
+                (1, 2, rain_sound.RATE, len(a))
+            return max(map(abs, array("h", wf.readframes(len(a)))))
+    loud = peak(100)
+    assert peak(0) == 0 and loud == int(rain_sound.PEAK * 32767) and abs(peak(50) - loud / 4) <= 1, \
+        "100% 는 끝 바로 아래, 50% 는 4분의 1(−12dB)"
 
 
 def panel(state):
@@ -2683,6 +2770,7 @@ def panel(state):
     tank = state.get("tank", {})  # 예전 weather 가 띄우면 없음 — 설정 창은 디스크의 새 파일로 뜸
     tank_bars = [wd for r, (key, (label, default, top, unit)) in enumerate(TANK.items(), start=1)
                  for wd in bar(r, label, tank.get(key, default), key, top, unit)]
+    volume_bar = bar(len(TANK) + 1, "빗소리", state.get("volume", VOLUME), "volume")
 
     smooth = ttk.Frame(f)
     smooth.grid(row=4, column=0, columnspan=4, sticky="ew", pady=(0, px(8)))
@@ -2702,14 +2790,15 @@ def panel(state):
         ttk.Checkbutton(animals, text=PET_NAMES[a], variable=keep[-1], style="Toolbutton",
                         command=lambda cid=cid: send(cid)).pack(side="left", padx=px(2))
 
-    for r, (key, cid, label) in enumerate((("drag", DRAG, "동물을 왼쪽 단추로 집어서 옮기기"),
+    for r, (key, cid, label) in enumerate((("sound", SOUND, "비·뇌우에 빗소리"),
+                                          ("drag", DRAG, "동물을 왼쪽 단추로 집어서 옮기기"),
                                           ("show", SHOW, "보이기"),
                                           ("auto", AUTOSTART, "Windows 시작 시 실행")), start=6):
         keep.append(tk.BooleanVar(value=state.get(key, False)))
         ttk.Checkbutton(f, text=label, variable=keep[-1], command=lambda cid=cid: send(cid)).grid(
             row=r, column=0, columnspan=4, sticky="w", pady=px(1))
     ttk.Button(f, text="끝내기", command=lambda: (send(EXIT), root.destroy())).grid(
-        row=9, column=3, sticky="e", pady=(px(10), 0))
+        row=10, column=3, sticky="e", pady=(px(10), 0))
 
     f.columnconfigure((0, 1, 2, 3), uniform="kind")
     root.bind("<Escape>", lambda _: root.destroy())
@@ -2739,9 +2828,12 @@ def panel(state):
     at, _ = root.winfo_pointerxy()  # 트레이를 누른 자리 위, 작업 표시줄 바로 위
 
     def fit():
-        """어항일 때만 어항 막대를 보이고, 창 밑변을 작업 표시줄 위에 다시 맞춤 — 줄이 늘면 창은 아래로 자람."""
+        """어항일 때만 어항 막대를, 비·뇌우일 때만 빗소리 막대를 보이고, 창 밑변을 작업 표시줄 위에 다시 맞춤 —
+        줄이 늘면 창은 아래로 자람."""
         for wd in tank_bars:
             wd.grid() if kind.get() == "aquarium" else wd.grid_remove()
+        for wd in volume_bar:
+            wd.grid() if kind.get() in ("rain", "storm") else wd.grid_remove()
         root.update_idletasks()
         w, h = root.winfo_reqwidth(), root.winfo_reqheight()
         root.geometry("+%d+%d" % (max(l, min(at - w // 2, r - w - px(12))), b - h - px(12)))
@@ -2802,7 +2894,7 @@ def main():
     PID_FILE.write_text(str(os.getpid()))
     try:
         Weather(args.kind, args.amount, saved.get("pet", []), saved.get("fps", FPS), saved,
-                saved.get("drag", False)).run()
+                saved.get("drag", False), saved.get("sound", False), saved.get("volume", VOLUME)).run()
     finally:
         if not MAC:
             ctypes.windll.winmm.timeEndPeriod(1)
