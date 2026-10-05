@@ -2854,7 +2854,7 @@ def panel(state):
     tank = state.get("tank", {})  # 예전 weather 가 띄우면 없음 — 설정 창은 디스크의 새 파일로 뜸
     tank_bars = [wd for r, (key, (label, default, top, unit)) in enumerate(TANK.items(), start=1)
                  for wd in bar(r, label, tank.get(key, default), key, top, unit)]
-    volume_bar = bar(len(TANK) + 1, "빗소리", state.get("volume", VOLUME), "volume")
+    volume_bar = bar(len(TANK) + 1, "소리 크기", state.get("volume", VOLUME), "volume")
 
     smooth = ttk.Frame(f)
     smooth.grid(row=4, column=0, columnspan=4, sticky="ew", pady=(0, px(8)))
@@ -2874,13 +2874,14 @@ def panel(state):
         ttk.Checkbutton(animals, text=PET_NAMES[a], variable=keep[-1], style="Toolbutton",
                         command=lambda cid=cid: send(cid)).pack(side="left", padx=px(2))
 
-    for r, (key, cid, label) in enumerate((("sound", SOUND, "비·뇌우에 빗소리"),
+    boxes = {}
+    for r, (key, cid, label) in enumerate((("sound", SOUND, "빗소리"),
                                           ("drag", DRAG, "동물을 왼쪽 단추로 집어서 옮기기"),
                                           ("show", SHOW, "보이기"),
                                           ("auto", AUTOSTART, "Windows 시작 시 실행")), start=6):
         keep.append(tk.BooleanVar(value=state.get(key, False)))
-        ttk.Checkbutton(f, text=label, variable=keep[-1], command=lambda cid=cid: send(cid)).grid(
-            row=r, column=0, columnspan=4, sticky="w", pady=px(1))
+        boxes[key] = ttk.Checkbutton(f, text=label, variable=keep[-1], command=lambda cid=cid: send(cid))
+        boxes[key].grid(row=r, column=0, columnspan=4, sticky="w", pady=px(1))
     ttk.Button(f, text="끝내기", command=lambda: (send(EXIT), root.destroy())).grid(
         row=10, column=3, sticky="e", pady=(px(10), 0))
 
@@ -2912,11 +2913,11 @@ def panel(state):
     at, _ = root.winfo_pointerxy()  # 트레이를 누른 자리 위, 작업 표시줄 바로 위
 
     def fit():
-        """어항일 때만 어항 막대를, 비·뇌우일 때만 빗소리 막대를 보이고, 창 밑변을 작업 표시줄 위에 다시 맞춤 —
-        줄이 늘면 창은 아래로 자람."""
+        """어항일 때만 어항 막대를, 비·뇌우일 때만 빗소리 상자·크기 막대를 보이고, 창 밑변을 작업 표시줄 위에 다시
+        맞춤 — 줄이 늘면 창은 아래로 자람."""
         for wd in tank_bars:
             wd.grid() if kind.get() == "aquarium" else wd.grid_remove()
-        for wd in volume_bar:
+        for wd in (*volume_bar, boxes["sound"]):
             wd.grid() if kind.get() in ("rain", "storm") else wd.grid_remove()
         root.update_idletasks()
         w, h = root.winfo_reqwidth(), root.winfo_reqheight()
