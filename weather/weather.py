@@ -57,6 +57,12 @@ SURFACE_CLASS = "PlayroomWeatherSurface"
 FPS = 60           # 기본. 13fps 는 끊겨 보였음. 타이머 해상도를 1ms 로 올려야 청한 만큼 나옴
 # 메뉴 id → 초당 그리는 횟수. 2560×1392 에서 잰 한 코어 대비 CPU: 눈 100% 9·16·46%(30·60·180), 비 100% 13·27·77%
 FPS_IDS = {40: 30, 41: 60, 42: 120, 43: 180}
+AQUARIUM_FPS = 120  # 어항은 아무것도 안 그려도 프레임마다 3.6ms(물빛 복사 1.3 + 내보내기 2.3)라 180 이면 한 코어를 다 씀
+
+
+def frame_rate(kind, fps):
+    """실제로 그릴 횟수. 고른 값(fps)은 그대로 저장해 두고 어항일 때만 낮춰 그림 — 다른 종류로 바꾸면 돌아옴."""
+    return min(fps, AQUARIUM_FPS) if kind == "aquarium" else fps
 SNOW_COLOR, SNOW_RIM = (248, 250, 255), (165, 176, 198)  # 테두리를 옅은 회청색으로 — 흰 창 위에서도 보이게
 RAIN_COLOR = (200, 214, 236)
 RAIN_LIT, RAIN_LIT_COLOR = 1.7, (236, 242, 255)  # 번개가 번쩍일 때 빗줄기 — 알파 배수, 색
@@ -1989,10 +1995,10 @@ class Weather:
     def run(self):
         if MAC:  # 메뉴 막대 메뉴를 연 동안엔 아래 루프가 pump 에 묶이므로 런 루프 타이머가 대신 그림
             from cocoa import while_tracking
-            while_tracking(self.step, 1 / self.fps)  # ponytail: 시작할 때 값에 고정. 메뉴를 연 동안만 쓰임
+            while_tracking(self.step, 1 / frame_rate(self.kind, self.fps))  # ponytail: 시작할 때 값에 고정. 메뉴를 연 동안만 쓰임
         nxt = time.perf_counter()
         while True:
-            period = 1 / self.fps  # 메뉴에서 바꾸면 다음 프레임부터
+            period = 1 / frame_rate(self.kind, self.fps)  # 메뉴에서 바꾸면 다음 프레임부터
             self.surface.pump()
             if self.poll():
                 break
@@ -2010,10 +2016,11 @@ class Weather:
 
 
 def check():
-    hidden = {n for line in Path(__file__).read_text(encoding="utf-8").splitlines()
-              if re.match(r"\s*self\.\w+(\s*,\s*self\.\w+)*\s*=[^=]", line)
-              for n in re.findall(r"self\.(\w+)", line.split("=")[0]) if callable(Weather.__dict__.get(n))}
-    assert not hidden, ("속성이 메서드를 가림 — 부르면 TypeError", hidden)
+    if not getattr(sys, "frozen", False):  # 굳힌 exe 엔 소스 파일이 없음 — 같은 소스를 weather.yml 이 파이썬으로 봄
+        hidden = {n for line in Path(__file__).read_text(encoding="utf-8").splitlines()
+                  if re.match(r"\s*self\.\w+(\s*,\s*self\.\w+)*\s*=[^=]", line)
+                  for n in re.findall(r"self\.(\w+)", line.split("=")[0]) if callable(Weather.__dict__.get(n))}
+        assert not hidden, ("속성이 메서드를 가림 — 부르면 TypeError", hidden)
     fake =types.SimpleNamespace(surface=types.SimpleNamespace(pixels=bytearray(40 * 40 * 4)), stride=40 * 4, w=40, h=40,
                                  base=[0] * 40, splashes=[], crowns=[],
                                  droplet=place(disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR), 40 * 4),
@@ -2585,6 +2592,8 @@ def check():
     ids = [*AMOUNTS, *FPS_IDS, SHOW, *PETS, DRAG, PANEL, AUTOSTART, EXIT, *KINDS, SOUND, *VOLUMES]
     assert len(ids) == len(set(ids)), "메뉴 id 가 겹치지 않음"
     assert FPS in FPS_IDS.values()
+    assert [frame_rate("aquarium", n) for n in FPS_IDS.values()] == [30, 60, 120, 120], "어항은 120fps 까지"
+    assert [frame_rate("snow", n) for n in FPS_IDS.values()] == list(FPS_IDS.values()), "어항 밖은 고른 그대로"
     assert list(PETS.values()) == list(PET_CLASS) == list(PET_NAMES)
     check_settings()
     from types import SimpleNamespace
