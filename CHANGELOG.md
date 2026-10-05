@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.3 — 2026-10-05
+
+- weather: the aquarium gets coral, a shell, a starfish and rocks on the sand, a treasure chest that opens now and then and lets out a stream of bubbles, two crabs walking sideways along the bottom, three see-through jellyfish that squeeze their way up and slowly sink, and a pufferfish and an angelfish among the fish
+- weather: when a full-screen app (a browser after F11, a video, a game) hides the taskbar, the floor that stood on it now caves in — the snow, sand, decorations and animals on it crumble down to the bottom of the screen — and rises back at once when the taskbar returns
+
+**한국어**
+
+- weather: 어항 모래 위에 산호·조개·불가사리·돌이 놓이고, 가끔 열려 거품을 뿜는 보물상자, 바닥을 옆걸음으로 걷는 게 두 마리, 오므렸다 펴며 오르고 천천히 가라앉는 반투명 해파리 세 마리가 생기고, 물고기에 복어와 엔젤피시가 더해짐
+- weather: 전체 화면 앱(F11 을 누른 브라우저, 동영상, 게임)이 작업 표시줄을 가리면 그 위에 있던 바닥이 무너져 내림 — 그 위의 눈·모래·장식·동물이 화면 맨 아래로 무너지듯 내려오고, 작업 표시줄이 돌아오면 바로 다시 솟음
+
 ## 0.1.2 — 2026-10-05
 
 - The files in Google Drive now carry the version in their names (`hud-0.1.2.exe`); the launcher and start-with-Windows find a tool as `hud.exe` or, failing that, the highest `hud-<version>.exe` next to them
