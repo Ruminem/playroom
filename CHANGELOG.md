@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.7 — 2026-10-05
+
+- weather: **Smoothness** now offers 30 · 60 · 120 fps; 180 is gone because it took a whole CPU core. If 180 was picked before, it is read as 120
+- weather: dragging the rain sound volume slider on Windows now just turns the sound up or down, like a video player, instead of starting it over each time
+- weather: the settings panel's rain sound box is now called just **Rain sound**, and it shows — with its volume slider, now named **Volume** — only while rain or storm is picked
+
+**한국어**
+
+- weather: **부드러움** 은 이제 30·60·120fps 만 고를 수 있음. 180 은 CPU 한 코어를 다 써서 뺐음. 전에 180 을 골라 뒀으면 120 으로 읽음
+- weather: 윈도우에서 빗소리 크기 막대를 끌면 동영상 볼륨처럼 소리가 끊기지 않고 커지고 작아짐. 전에는 끌 때마다 소리를 처음부터 다시 틀었음
+- weather: 설정 창의 빗소리 상자 이름을 **빗소리** 로 줄였고, 비·뇌우를 골랐을 때만 크기 막대(이름은 **소리 크기**)와 같이 보임
+
 ## 0.2.6 — 2026-10-05
 
 - weather: rain and storm now draw at most 120 frames a second even when **Smoothness** is set to 180, as the aquarium already did in 0.2.5 — at 180 they took a whole CPU core. On one PC, a full-strength storm with all five animals went from 100% of a core to about 50–58%. Other kinds still use 180 when it is picked
