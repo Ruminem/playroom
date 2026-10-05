@@ -57,12 +57,13 @@ SURFACE_CLASS = "PlayroomWeatherSurface"
 FPS = 60           # 기본. 13fps 는 끊겨 보였음. 타이머 해상도를 1ms 로 올려야 청한 만큼 나옴
 # 메뉴 id → 초당 그리는 횟수. 2560×1392 에서 잰 한 코어 대비 CPU: 눈 100% 9·16·46%(30·60·180), 비 100% 13·27·77%
 FPS_IDS = {40: 30, 41: 60, 42: 120, 43: 180}
-AQUARIUM_FPS = 120  # 어항은 아무것도 안 그려도 프레임마다 3.6ms(물빛 복사 1.3 + 내보내기 2.3)라 180 이면 한 코어를 다 씀
+CAP_FPS = 120  # 무거운 종류의 상한. 180 이면 어항 98%(물빛 복사 1.3 + 내보내기 2.3ms 가 고정), 뇌우 100% 가 한 코어를 다 씀
+CAPPED = {"aquarium", "rain", "storm"}  # 비 100% 는 180fps 에 77%. 뇌우는 같은 비에 번개를 얹음
 
 
 def frame_rate(kind, fps):
-    """실제로 그릴 횟수. 고른 값(fps)은 그대로 저장해 두고 어항일 때만 낮춰 그림 — 다른 종류로 바꾸면 돌아옴."""
-    return min(fps, AQUARIUM_FPS) if kind == "aquarium" else fps
+    """실제로 그릴 횟수. 고른 값(fps)은 그대로 저장해 두고 무거운 종류일 때만 낮춰 그림 — 다른 종류로 바꾸면 돌아옴."""
+    return min(fps, CAP_FPS) if kind in CAPPED else fps
 SNOW_COLOR, SNOW_RIM = (248, 250, 255), (165, 176, 198)  # 테두리를 옅은 회청색으로 — 흰 창 위에서도 보이게
 RAIN_COLOR = (200, 214, 236)
 RAIN_LIT, RAIN_LIT_COLOR = 1.7, (236, 242, 255)  # 번개가 번쩍일 때 빗줄기 — 알파 배수, 색
@@ -2592,8 +2593,10 @@ def check():
     ids = [*AMOUNTS, *FPS_IDS, SHOW, *PETS, DRAG, PANEL, AUTOSTART, EXIT, *KINDS, SOUND, *VOLUMES]
     assert len(ids) == len(set(ids)), "메뉴 id 가 겹치지 않음"
     assert FPS in FPS_IDS.values()
-    assert [frame_rate("aquarium", n) for n in FPS_IDS.values()] == [30, 60, 120, 120], "어항은 120fps 까지"
-    assert [frame_rate("snow", n) for n in FPS_IDS.values()] == list(FPS_IDS.values()), "어항 밖은 고른 그대로"
+    for k in ("aquarium", "rain", "storm"):
+        assert [frame_rate(k, n) for n in FPS_IDS.values()] == [30, 60, 120, 120], ("120fps 까지", k)
+    assert CAPPED <= {k for k, _ in KINDS.values()}, "상한 목록의 이름이 실제 종류"
+    assert [frame_rate("snow", n) for n in FPS_IDS.values()] == list(FPS_IDS.values()), "나머지는 고른 그대로"
     assert list(PETS.values()) == list(PET_CLASS) == list(PET_NAMES)
     check_settings()
     from types import SimpleNamespace
