@@ -68,6 +68,9 @@ jobs:
         run: |
           Add-Type -Namespace U -Name W -MemberDefinition @'
           [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string n);
+          // PowerShell 은 string 인자로 넘긴 $null 을 "" 로 바꿔서, 제목 없는 창만 찾게 됨(2026-10-05 CI). null 은 여기서 넘김
+          public static bool HasClass(string c) { return FindWindow(c, null) != IntPtr.Zero; }
+          public static bool HasTitle(string t) { return FindWindow(null, t) != IntPtr.Zero; }
           public delegate bool EnumProc(IntPtr h, IntPtr l);
           [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc f, IntPtr l);
           [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
@@ -82,10 +85,10 @@ jobs:
             return r;
           }
           '@
-          function Wait-Window($class, $title) {
+          function Wait-Window([scriptblock]$found) {
             $t = [Diagnostics.Stopwatch]::StartNew()
             while ($t.Elapsed.TotalSeconds -lt 30) {
-              if ([U.W]::FindWindow($class, $title) -ne [IntPtr]::Zero) { return $t.Elapsed.TotalSeconds }
+              if (& $found) { return $t.Elapsed.TotalSeconds }
               Start-Sleep 1
             }
             return $null
@@ -99,14 +102,14 @@ jobs:
           foreach ($name in $tray.Keys) {
             $p = Start-Process "dist/$name.exe" -PassThru
             $null = $p.Handle  # 먼저 잡아 두지 않으면 끝난 뒤 ExitCode 가 빈다
-            $sec = Wait-Window $tray[$name] $null
+            $sec = Wait-Window { [U.W]::HasClass($tray[$name]) }
             if ($p.HasExited) { throw "$name.exe 가 뜨다 죽음 (종료 코드 $($p.ExitCode))" }
             if ($null -eq $sec) {
               Show-Windows $name
               # 기준선: 같은 도구를 굳히지 않은 파이썬으로 띄워도 트레이가 없는지
               $src = @{ hud = 'usage-hud/hud.py'; weather = 'weather/weather.py'; sysmon = 'sysmon/sysmon.py'; layers = 'layers/layers.py' }[$name]
               $q = Start-Process python -ArgumentList $src -PassThru
-              $base = Wait-Window $tray[$name] $null
+              $base = Wait-Window { [U.W]::HasClass($tray[$name]) }
               "파이썬으로 띄운 $src 의 트레이: $(if ($null -eq $base) { '30초 안에 없음' } else { '{0:N1}초' -f $base })"
               if (-not $q.HasExited) { Stop-Process -Id $q.Id -Force }
               throw "$name.exe 의 트레이 창이 30초 안에 안 뜸"
@@ -119,7 +122,7 @@ jobs:
           }
           $p = Start-Process dist/launcher.exe -PassThru
           $null = $p.Handle
-          $sec = Wait-Window $null 'playroom'
+          $sec = Wait-Window { [U.W]::HasTitle('playroom') }
           if ($p.HasExited) { throw "launcher.exe 가 뜨다 죽음 (종료 코드 $($p.ExitCode))" }
           if ($null -eq $sec) { Show-Windows launcher; throw "launcher.exe 창이 30초 안에 안 뜸" }
           "launcher.exe 창 {0:N1}초" -f $sec
