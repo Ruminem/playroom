@@ -77,6 +77,7 @@ PILE_PER_FLAKE = 10.0  # 눈송이 하나가 보태는 부피 = 이 값 × 반�
                        # 반지름²에 비례시키면 큰 눈송이 하나에 둔덕이 툭 솟음
 SLOPE = 0.8        # 이웃 열과의 높이 차가 이보다 크면 흘러내림 (안식각)
 DIFFUSE = 0.12     # 표면을 매끈하게 퍼뜨리는 정도
+DRIFT, LOOSE, LIFT = 0.12, 3.0, 2.0  # 바람에 날리는 눈: 바람 px/초 × 초당 옮기는 비율 · 겉의 날리는 두께 px · 넘는 턱 px
 MELT_PER_SEC = 0.0045  # 높이에 비례해 녹는 비율. 넣는 양 ÷ 이 값에서 높이가 멈춤 ('보통' 이면 5px 쯤)
 SETTLE_SEC = 0.25
 FRAMES_EVERY = 3   # 작업 표시줄 틀을 다시 읽는 간격 초. 한 번 55ms(UI 자동화)라 다른 스레드에서
@@ -379,6 +380,20 @@ class Pile:
         if melt:
             k = 1 - melt
             self.h = [v * k if v > 0.01 else 0.0 for v in h]
+
+    def blow(self, f):
+        """바람: 겉의 날리는 눈(LOOSE px 까지)의 |f| 만큼을 바람 아래(f 부호 쪽) 옆 열로 옮김. 옆 표면이 LIFT 넘게
+        높으면(틀 옆면) 못 넘고 그 앞에 쌓여 언덕이 되고, 언덕이 틀 윗변 가까이 차면 넘어감. 틀 위 눈은 바람 아래
+        모서리로 날려 떨어짐. 화면 끝으로 날린 눈은 사라짐. 옮길 양은 옛 높이로 한꺼번에 셈."""
+        h, base, n = self.h, self.base, len(self.h)
+        s, k = (1 if f > 0 else -1), min(abs(f), 0.9)
+        move = [0.0 if 0 <= i + s < n and h[i + s] + base[i + s] > v + b + LIFT else k * min(v, LOOSE)
+                for i, (v, b) in enumerate(zip(h, base))]
+        for i, m in enumerate(move):
+            if m:
+                h[i] -= m
+                if 0 <= i + s < n:
+                    h[i + s] += m
 
 
 def floor_heights(w, bottom, left, rise, frames):
@@ -951,8 +966,10 @@ class Weather:
         piled = kind in ("snow", "hail")
         if piled:
             if now - self.last_settle >= SETTLE_SEC:
-                melt = MELT_PER_SEC * (HAIL_MELT if kind == "hail" else 1)
-                self.pile.settle(melt * (now - self.last_settle))
+                melt, el = MELT_PER_SEC * (HAIL_MELT if kind == "hail" else 1), now - self.last_settle
+                self.pile.settle(melt * el)
+                if kind == "snow":  # 우박 알은 무거워 안 날림
+                    self.pile.blow(DRIFT * self.wind(now) * el)
                 self.last_settle = now
                 self.render_pile()
             self.surface.pixels[(self.h - self.strip_h) * self.stride:] = self.strip
@@ -1175,6 +1192,27 @@ def check():
         g = high.h[::-1] if flip else high.h
         assert abs(sum(g) - 100) < 1e-6 and min(g) >= 0, "틀에서 흘러내려도 부피 그대로, 음수 없음"
         assert g[9] > g[5] > 0 and g[9] > SLOPE * 4, "틀 위 눈이 모서리에서 틈으로 흘러 옆면에 언덕으로 붙음"
+    for f in (0.5, -0.5):  # 바람이 틀 쪽으로 붊 → 틀 옆면 앞에 언덕, 틀 위로는 못 넘음
+        windward = Pile(20, step if f > 0 else step[::-1])
+        windward.h = [5.0] * 10 + [0.0] * 10 if f > 0 else [0.0] * 10 + [5.0] * 10
+        for _ in range(60):
+            windward.blow(f)
+            windward.settle(0)
+        g = windward.h if f > 0 else windward.h[::-1]
+        assert g[10:] == [0.0] * 10 and abs(sum(g) - 50) < 1e-6, ("벽은 못 넘고 부피 그대로", f)
+        assert g[9] > g[0] + 5, ("바람 아래 벽 앞에 언덕", f, g[:10])
+    lee = Pile(20, step[::-1])
+    lee.h[:10] = [5.0] * 10
+    lee.blow(0.5)
+    assert lee.h[10] > 0 and lee.h[11] == 0, "틀 위 눈은 바람 아래 모서리로 날려 떨어짐"
+    over = Pile(10, [0] * 5 + [10] * 5)
+    over.h[:5] = [9.0] * 5
+    over.blow(0.5)
+    assert over.h[5] > 0, "언덕이 틀 윗변 가까이 차면 넘어감"
+    edge = Pile(5)
+    edge.h = [10.0] * 5
+    edge.blow(0.5)
+    assert edge.h == [8.5] + [10.0] * 4, "겉 LOOSE px 만 날림. 평평하면 그대로, 화면 끝으로 날린 눈은 사라지고 바람 위 끝은 받을 데가 없음"
     rise = PILE_STRIP + 4
     edges, body = pile_column_parts(rise + PILE_STRIP)
     rf = types.SimpleNamespace(w=4, strip_h=PILE_STRIP + rise, base=[0, rise, 1, 0],
