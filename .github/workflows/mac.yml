@@ -1,22 +1,53 @@
-# usage-hud 맥 메뉴 막대판이 빌드되고 자체 점검을 통과하는지 봄.
-# private 저장소에서 macOS 러너는 1분이 무료 한도 10분으로 잡혀서, 맥판이 읽는 파일이 바뀔 때만 돈다
+# 맥에서 도는 것 전부: usage-hud 메뉴 막대판 빌드, weather·sysmon·공용 모듈 점검, 실제로 띄워 보기.
+# 파이썬은 .command 와 메뉴 막대판이 부르는 /usr/bin/python3 로 — 그 판에서 안 도는 문법이면 여기서 걸린다.
+# private 저장소에서 macOS 러너는 1분이 무료 한도 10분으로 잡혀서, 맥에서 도는 파일이 바뀔 때만 돈다
 name: mac
 on:
   push:
-    paths: [usage-hud/mac/**, usage-hud/usage.py, .github/workflows/mac.yml]
+    paths: [usage-hud/mac/**, usage-hud/*.py, usage-hud/*.html, weather/**, sysmon/**, shared/**,
+            .github/workflows/mac.yml]
   pull_request:
-    paths: [usage-hud/mac/**, usage-hud/usage.py, .github/workflows/mac.yml]
+    paths: [usage-hud/mac/**, usage-hud/*.py, usage-hud/*.html, weather/**, sysmon/**, shared/**,
+            .github/workflows/mac.yml]
   workflow_dispatch:
 env:
   PYTHONUTF8: '1'
 jobs:
-  build:
+  mac:
     runs-on: macos-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - run: swiftc --version
+      - run: swiftc --version && /usr/bin/python3 --version
       - run: usage-hud/mac/build.sh
       - run: usage-hud/mac/UsageBar --check
-      # 메뉴 막대판이 부르는 것과 같은 /usr/bin/python3 로
       - run: /usr/bin/python3 usage-hud/usage.py --check
+      - run: /usr/bin/python3 shared/mac/startup.py
+      - run: /usr/bin/python3 weather/pet.py
+      - run: /usr/bin/python3 weather/weather.py --check
+      - run: /usr/bin/python3 sysmon/sysmon.py --check
+      - name: weather·sysmon 띄워 보기
+        run: |
+          smoke() {  # 8초 띄워 둔 뒤 살아 있으면 --stop 으로 치우고 10초 안에 꺼져야 함
+            /usr/bin/python3 "$1" 2> run.err & pid=$!
+            sleep 8
+            if ! kill -0 $pid 2>/dev/null; then
+              code=0; wait $pid || code=$?
+              cat run.err; echo "$1 이 뜨다 죽음 (종료 코드 $code)"; exit 1
+            fi
+            /usr/bin/python3 "$1" --stop
+            for i in $(seq 20); do kill -0 $pid 2>/dev/null || break; sleep 0.5; done
+            if kill -0 $pid 2>/dev/null; then echo "$1 이 --stop 으로 안 꺼짐"; exit 1; fi
+            cat run.err
+          }
+          smoke weather/weather.py
+          smoke sysmon/sysmon.py
+      # 메뉴 막대판의 '페이지 열기' 가 띄우는 서버
+      - name: 페이지 서버 띄워 보기
+        run: |
+          /usr/bin/python3 usage-hud/page.py --no-open --port 8765 2> page.err & pid=$!
+          sleep 4
+          trap 'kill $pid 2>/dev/null' EXIT
+          curl -fsS http://127.0.0.1:8765/ -o page.html || { cat page.err; exit 1; }
+          curl -fsS http://127.0.0.1:8765/data.json -o data.json || { cat page.err; exit 1; }
+          /usr/bin/python3 -c "import json; d = json.load(open('data.json')); assert 'bars' in d, d; print('페이지', len(open('page.html').read()), '자 · 데이터 칸', sorted(d))"

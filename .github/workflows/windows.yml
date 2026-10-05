@@ -33,3 +33,16 @@ jobs:
           python usage-hud/hud.py --stop
           if (-not $p.WaitForExit(10000)) { throw "--stop 으로 안 꺼짐" }
           Get-Content hud.err
+      # HUD 메뉴의 '페이지 열기' 가 띄우는 서버
+      - name: 페이지 서버 띄워 보기
+        run: |
+          $p = Start-Process python -ArgumentList 'usage-hud/page.py', '--no-open', '--port', '8765' -PassThru -RedirectStandardError page.err
+          $null = $p.Handle
+          Start-Sleep 4
+          if ($p.HasExited) { Get-Content page.err; throw "페이지 서버가 뜨다 죽음 (종료 코드 $($p.ExitCode))" }
+          try {
+            $html = Invoke-WebRequest http://127.0.0.1:8765/ -UseBasicParsing
+            $data = Invoke-RestMethod http://127.0.0.1:8765/data.json
+            if ($null -eq $data.bars) { throw "data.json 에 bars 가 없음" }
+            "페이지 $($html.Content.Length)자 · 데이터 칸 $(($data.PSObject.Properties.Name | Sort-Object) -join ', ')"
+          } finally { Stop-Process -Id $p.Id }
