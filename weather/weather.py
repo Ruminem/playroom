@@ -56,14 +56,8 @@ SURFACE_CLASS = "PlayroomWeatherSurface"
 
 FPS = 60           # 기본. 13fps 는 끊겨 보였음. 타이머 해상도를 1ms 로 올려야 청한 만큼 나옴
 # 메뉴 id → 초당 그리는 횟수. 2560×1392 에서 잰 한 코어 대비 CPU: 눈 100% 9·16·46%(30·60·180), 비 100% 13·27·77%
-FPS_IDS = {40: 30, 41: 60, 42: 120, 43: 180}
-CAP_FPS = 120  # 무거운 종류의 상한. 180 이면 어항 98%(물빛 복사 1.3 + 내보내기 2.3ms 가 고정), 뇌우 100% 가 한 코어를 다 씀
-CAPPED = {"aquarium", "rain", "storm"}  # 비 100% 는 180fps 에 77%. 뇌우는 같은 비에 번개를 얹음
-
-
-def frame_rate(kind, fps):
-    """실제로 그릴 횟수. 고른 값(fps)은 그대로 저장해 두고 무거운 종류일 때만 낮춰 그림 — 다른 종류로 바꾸면 돌아옴."""
-    return min(fps, CAP_FPS) if kind in CAPPED else fps
+# 180(id 43)은 0.2.7 에서 뺐음 — 어항 98%, 뇌우 100% 에 동물 다섯이 한 코어를 다 썼음. 저장된 180 은 120 으로 읽음
+FPS_IDS = {40: 30, 41: 60, 42: 120}
 SNOW_COLOR, SNOW_RIM = (248, 250, 255), (165, 176, 198)  # 테두리를 옅은 회청색으로 — 흰 창 위에서도 보이게
 RAIN_COLOR = (200, 214, 236)
 RAIN_LIT, RAIN_LIT_COLOR = 1.7, (236, 242, 255)  # 번개가 번쩍일 때 빗줄기 — 알파 배수, 색
@@ -910,8 +904,9 @@ def load_settings():
     p = ["cat"] if p is True else [] if p is False else [p] if isinstance(p, str) else p
     if isinstance(p, list):
         ok["pet"] = [a for a in PET_CLASS if a in p]  # 모르는 이름·겹친 이름은 버림
-    if data.get("fps") in FPS_IDS.values():
-        ok["fps"] = data["fps"]
+    fps = 120 if data.get("fps") == 180 else data.get("fps")  # 0.2.6 까지 있던 180
+    if fps in FPS_IDS.values():
+        ok["fps"] = fps
     for k in TANK:
         if parse_tank(k, data.get(k)) is not None:
             ok[k] = data[k]
@@ -1996,10 +1991,10 @@ class Weather:
     def run(self):
         if MAC:  # 메뉴 막대 메뉴를 연 동안엔 아래 루프가 pump 에 묶이므로 런 루프 타이머가 대신 그림
             from cocoa import while_tracking
-            while_tracking(self.step, 1 / frame_rate(self.kind, self.fps))  # ponytail: 시작할 때 값에 고정. 메뉴를 연 동안만 쓰임
+            while_tracking(self.step, 1 / self.fps)  # ponytail: 시작할 때 값에 고정. 메뉴를 연 동안만 쓰임
         nxt = time.perf_counter()
         while True:
-            period = 1 / frame_rate(self.kind, self.fps)  # 메뉴에서 바꾸면 다음 프레임부터
+            period = 1 / self.fps  # 메뉴에서 바꾸면 다음 프레임부터
             self.surface.pump()
             if self.poll():
                 break
@@ -2593,10 +2588,7 @@ def check():
     ids = [*AMOUNTS, *FPS_IDS, SHOW, *PETS, DRAG, PANEL, AUTOSTART, EXIT, *KINDS, SOUND, *VOLUMES]
     assert len(ids) == len(set(ids)), "메뉴 id 가 겹치지 않음"
     assert FPS in FPS_IDS.values()
-    for k in ("aquarium", "rain", "storm"):
-        assert [frame_rate(k, n) for n in FPS_IDS.values()] == [30, 60, 120, 120], ("120fps 까지", k)
-    assert CAPPED <= {k for k, _ in KINDS.values()}, "상한 목록의 이름이 실제 종류"
-    assert [frame_rate("snow", n) for n in FPS_IDS.values()] == list(FPS_IDS.values()), "나머지는 고른 그대로"
+    assert max(FPS_IDS.values()) == 120, "180 은 뺐음"
     assert list(PETS.values()) == list(PET_CLASS) == list(PET_NAMES)
     check_settings()
     from types import SimpleNamespace
@@ -2610,8 +2602,8 @@ def check():
     q = SimpleNamespace(commands=queue.Queue())
     Weather.read_panel(q, SimpleNamespace(stdout=["amount 30\n", "amount x\n", "amount 150\n", "fish 0\n", "rays 101\n",
                                                         "fish %d\n" % (FISH_MAX + 1), "bubbles x\n", "fishy 3\n", "2\n",
-                                                        "43\n", "23\n", "77\n", "27\n", "hi\n"]))
-    assert list(q.commands.queue) == [("amount", 30), ("fish", 0), 2, 43, 23, 27], "설정 창이 보낸 줄 중 아는 것만"
+                                                        "42\n", "43\n", "23\n", "77\n", "27\n", "hi\n"]))
+    assert list(q.commands.queue) == [("amount", 30), ("fish", 0), 2, 42, 23, 27], "설정 창이 보낸 줄 중 아는 것만(43 은 뺀 180)"
     hz = SimpleNamespace(kind="snow", amount=50, tank={k: TANK[k][1] for k in TANK}, done=[])
     hz.reset, hz.retune, hz.save = [lambda w=w: hz.done.append(w) for w in ("reset", "retune", "save")]
     Weather.handle(hz, ("fish", 0))
@@ -2725,6 +2717,9 @@ def check_settings():
         assert load_settings() == {"fish": FISH_MAX}, "거품·빛줄기는 0–100 만"
         SETTINGS.write_text(json.dumps({"fish": FISH_MAX + 1, "bubbles": 0, "rays": True}), encoding="utf-8")
         assert load_settings() == {"bubbles": 0}, "물고기는 0–FISH_MAX 마리만"
+        for saved, want in ((180, 120), (120, 120), (90, None)):
+            SETTINGS.write_text(json.dumps({"fps": saved}), encoding="utf-8")
+            assert load_settings().get("fps") == want, (saved, "0.2.6 까지의 180 은 120 으로, 모르는 값은 버림")
         Weather.save(types.SimpleNamespace(kind="aquarium", amount=40, pets={"cat": None}, fps=60,
                                            tank={"fish": 10, "bubbles": 0, "rays": 90}, drag=True, sound=True, volume=30))
         assert load_settings() == {"kind": "aquarium", "amount": 40, "pet": ["cat"], "fps": 60, "fish": 10, "bubbles": 0,

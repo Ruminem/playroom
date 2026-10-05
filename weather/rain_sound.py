@@ -219,12 +219,16 @@ _win_buf = None  # 비동기로 울리는 동안 버퍼가 살아 있어야 함
 
 
 def win_play(volume, base):
+    """처음 한 번만 최대 크기로 구워 틀고, 그 뒤엔 크기만 바꿈 — 막대를 끌 때마다 처음부터 다시 틀면 툭툭 끊겨 들렸음.
+    waveOutSetVolume 은 이 프로세스의 소리(볼륨 믹서의 weather 칸)에 걸리고 값을 로그로 들으므로 막대 값을 그대로 넘김."""
     global _win_buf
-    buf = ctypes.create_string_buffer(wav(base, volume))
-    win_stop()  # 옛 버퍼를 놓기 전에 멈춤
-    ctypes.windll.winmm.PlaySoundW(ctypes.c_void_p(ctypes.addressof(buf)), None,
-                                   SND_MEMORY | SND_ASYNC | SND_LOOP | SND_NODEFAULT)
-    _win_buf = buf
+    v = round(0xFFFF * volume / 100)
+    ctypes.windll.winmm.waveOutSetVolume(None, v | v << 16)  # 틀기 전에 — 최대 크기로 한 번 튀지 않게
+    if _win_buf is None:
+        buf = ctypes.create_string_buffer(wav(base, 100))
+        ctypes.windll.winmm.PlaySoundW(ctypes.c_void_p(ctypes.addressof(buf)), None,
+                                       SND_MEMORY | SND_ASYNC | SND_LOOP | SND_NODEFAULT)
+        _win_buf = buf
 
 
 def win_stop():
