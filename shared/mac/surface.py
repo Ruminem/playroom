@@ -81,6 +81,11 @@ class Surface:
         IOS.IOSurfaceLock(self.bufs[self.back], 0, None)
         C.memset(self._addr, 0, self.nbytes)
 
+    def fill(self, src):
+        """clear 대신 미리 칠해 둔 같은 크기 버퍼(bytes)로 통째로 덮어씀. 잠그는 것은 clear 와 같음."""
+        IOS.IOSurfaceLock(self.bufs[self.back], 0, None)
+        C.memmove(self._addr, src, self.nbytes)
+
     def present(self):
         s = self.bufs[self.back]
         IOS.IOSurfaceUnlock(s, 0, None)

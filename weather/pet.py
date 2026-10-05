@@ -203,6 +203,7 @@ POUNCE_V, CALM = 320, (4, 10)  # 반딧불이로 폴짝: 처음 위로 px/초 ·
 WET = ("rain", "storm")
 HOP_EVERY, HOP_DX, HOP_UP = 0.32, 14, 7  # 새 콩콩 뛰기: 간격 초, 한 번에 px, 높이 px
 FLY, FLY_ALT, FLAP = 170, 60, 0.09  # 새가 날 때 px/초, 높이 px(weather 가 다시 그리는 바닥 띠 안), 날갯짓 간격 초
+SWIM, SWIM_DEPTH, SWIM_BOB = 60, (50, 180), 6  # 어항에서 펭귄 헤엄: px/초 · 바닥 위로 뜨는 높이 px · 오르내림 px
 LEDGE, CLIMB = 8, 400  # 발밑이 한 번에 이 px 넘게 바뀌면(작업 표시줄 틀 단) 뜀 · 작은 굴곡(눈 더미)을 따라가는 px/초
 
 
@@ -214,8 +215,9 @@ def leap_height(g0, g1, apex, p):
     return g0 + d * p + u * p * (1 - p)
 
 
-def segments(rows, flip):
-    """글자 판 → [(dy, 앞에서 건너뛸 바이트, 바이트), …]. 행 안의 투명한 틈은 끊어서 밑의 눈을 안 지움."""
+def segments(rows, flip, colors=COLORS):
+    """글자 판 → [(dy, 앞에서 건너뛸 바이트, 바이트), …]. 행 안의 투명한 틈은 끊어서 밑의 눈을 안 지움.
+    colors 는 글자 → 색 — weather 어항의 물고기가 제 색표로 씀."""
     out = []
     for y, line in enumerate(rows):
         line = line[::-1] if flip else line
@@ -228,7 +230,7 @@ def segments(rows, flip):
                 start = x
                 while x < len(line) and line[x] != ".":
                     x += 1
-                data = b"".join(bytes((COLORS[c][2], COLORS[c][1], COLORS[c][0], 255)) * SCALE for c in line[start:x])
+                data = b"".join(bytes((colors[c][2], colors[c][1], colors[c][0], 255)) * SCALE for c in line[start:x])
                 out.append((y * SCALE + sy, start * SCALE * 4, data))
     return out
 
@@ -388,8 +390,9 @@ class Cat(Pet):
             return
         if now >= self.until:
             self.next_state(now, rainy)
-        if self.state in ("walk", "run", "slide"):
-            speed = RUN if self.state != "walk" else RUN / 2 if rainy else self.WALK_V
+        if self.state in ("walk", "run", "slide", "swim"):
+            speed = (SWIM if self.state == "swim" else RUN if self.state != "walk" else
+                     RUN / 2 if rainy else self.WALK_V)
             self.x += speed * dt * (1 if self.right else -1)
             if self.x <= 0 or self.x >= self.width - self.W:  # 끝에 닿으면 돌아섬
                 self.x = min(max(self.x, 0), max(0, self.width - self.W))
@@ -545,15 +548,35 @@ class Dog(Cat):
 
 
 class Penguin(Cat):
-    """뒤뚱뒤뚱 걷다 서고, 눈·우박이 쌓인 날엔 가끔 배를 깔고 미끄러짐. 앉거나 자지 않음."""
+    """뒤뚱뒤뚱 걷다 서고, 눈·우박이 쌓인 날엔 가끔 배를 깔고 미끄러짐. 앉거나 자지 않음.
+    어항에선 걷다가 자주 떠올라 배를 깔고 헤엄침(swim) — 1초에 걸쳐 떠오르고 끝나기 1초 전부터 내려옴."""
     PRE, W, H, FOOT, WALK_V = "peng_", 14 * SCALE, 16 * SCALE, (4 * SCALE, 10 * SCALE), 22
-    DUR = {**Cat.DUR, "slide": (0.8, 1.6)}
+    DUR = {**Cat.DUR, "slide": (0.8, 1.6), "swim": (5, 12)}
     # 오를 땐 낮게 뒤뚱 뛰고, 내려올 땐 배를 깔고 미끄러져 내려옴(위로 안 뜸)
     LEAP, LEAP_POSE = {"up": (0.5, 4), "down": (0.6, 0)}, ("slide", "stand")
+    NO_LEAP = ("hop", "swim")  # 헤엄치는 동안 밑의 틀 단은 뛰지 않고 따라감
+    depth = 0.0  # 이번 헤엄의 높이 px
+
+    def update(self, dt, now, rainy):
+        if self.state == "swim":
+            if self.kind != "aquarium":  # 물이 빠짐 — 바로 바닥에. weather 가 동물 띠만 지우는 날씨면 떠 있던 자리가 남음
+                self.hop = 0.0
+                self.go("stand", now)
+            else:
+                k = max(0.0, min(1.0, now - self.since, self.until - now))
+                self.hop = k * (self.depth + SWIM_BOB * math.sin(now * 2.1))
+        super().update(dt, now, rainy)
+
+    def pose(self, now, rainy):
+        return "peng_slide" if self.state == "swim" else super().pose(now, rainy)
 
     def next_state(self, now, rainy):
         r = self.rng.random()
-        if self.state == "walk":
+        if self.state == "walk" and self.kind == "aquarium" and r < 0.6:
+            self.go("swim", now)
+            self.depth = self.rng.uniform(*SWIM_DEPTH)
+            self.emote("♪", now)
+        elif self.state == "walk":
             self.go("slide" if self.snowy and r < 0.3 else "stand", now)
             if self.state == "slide":
                 self.emote("♪", now, self.until - now)
@@ -741,11 +764,12 @@ def check():
     band = BAND
     px = bytearray(500 * 4 * 200)
     # 날씨를 1분마다 바꾸며 반딧불이·불꽃도 계속 알려 줌 — 머리 위 표시까지 띠 안이어야 함
-    kinds = ("none", "snow", "rain", "fireflies", "fireworks")
+    # 어항에서 헤엄치는 펭귄은 띠보다 높이 뜨지만, 어항은 늘 화면을 통째로 다시 그려서 띠를 안 씀 — 그 프레임만 뺌
+    kinds = ("none", "snow", "rain", "fireflies", "fireworks", "aquarium")
     for cls, want, moods in ((Cat, {"walk", "stand", "sit", "sleep"}, {"♥", "♪", "!"}),
                              (Dog, {"walk", "stand", "sit", "sleep", "run"}, {"♪", "!"}),
                              (Rabbit, {"hop", "stand", "sniff"}, {"…", "!"}),
-                             (Penguin, {"walk", "stand", "slide"}, {"♪", "!"})):
+                             (Penguin, {"walk", "stand", "slide", "swim"}, {"♪", "!"})):
         a = cls(500, random.Random(4))
         a.snowy, now, seen, top, felt = True, 0.0, set(), 200, set()
         for i in range(30 * 600):
@@ -760,7 +784,7 @@ def check():
             assert a.state != "slide" or a.mood[0] == "♪", "미끄러지며 ♪"
             seen.add(a.state)
             felt |= {a.mood[0]} if a.mood else set()
-            if i % 7 == 0 or a.state in ("hop", "run") or a.mood:
+            if (i % 7 == 0 or a.state in ("hop", "run") or a.mood) and a.state != "swim":
                 px[:] = bytes(len(px))
                 a.draw(px, 2000, 200, sp, 0, now, False)
                 top = min(top, (len(px) - len(px.lstrip(b"\0"))) // 2000)
@@ -782,6 +806,21 @@ def check():
         now += 1 / 30
         peng.update(1 / 30, now, False)
         assert peng.state != "slide", "눈 없는 날엔 안 미끄러짐"
+    peng.kind, high, swam = "aquarium", 0.0, 0
+    for _ in range(30 * 120):
+        now += 1 / 30
+        peng.update(1 / 30, now, False)
+        high = max(high, peng.hop)
+        swam += peng.state == "swim"
+        assert peng.state == "swim" or peng.hop == 0, "헤엄이 끝나면 바닥에"
+        assert peng.state != "swim" or peng.pose(now, False) == "peng_slide", "배를 깔고 헤엄"
+    assert swam > 30 * 20 and SWIM_DEPTH[0] < high <= SWIM_DEPTH[1] + SWIM_BOB, ("어항에선 자주 떠서 헤엄", swam, high)
+    while peng.state != "swim" or now - peng.since < 1.5:  # 다 떠오른 뒤
+        now += 1 / 30
+        peng.update(1 / 30, now, False)
+    peng.kind = "none"
+    peng.update(1 / 30, now + 1 / 30, False)
+    assert peng.state != "swim" and peng.hop == 0, "어항이 아니게 되면 바로 바닥에 섬(띠 위에 자국이 남지 않게)"
 
     def tally(a, kind, minutes=10):
         """kind 날씨에서 상태별 머문 프레임 수와 가장 높이 뜬 px."""

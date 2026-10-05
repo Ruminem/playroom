@@ -96,6 +96,10 @@ class Surface:
         """top 행부터 아래를 지움."""
         ctypes.memset(self._bits + top * self.w * 4, 0, self.nbytes - top * self.w * 4)
 
+    def fill(self, src):
+        """clear 대신 미리 칠해 둔 같은 크기 버퍼(bytes)로 통째로 덮어씀 — weather 어항의 물빛."""
+        ctypes.memmove(self._bits, src, self.nbytes)
+
     def present(self, top=0):
         """top 을 주면 그 행부터 아래만 바뀌었다고 알림 — 위쪽은 화면에 남은 그대로 두고, 넘기는 양이 그만큼 줆
         (2560×1392 통째 한 번 1.2ms CPU, 작은 사각형은 거의 0)."""
