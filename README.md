@@ -17,7 +17,7 @@ A hobby playroom. One folder per experiment, each with its own short README.
 
 ## Download
 
-The Windows tools come as standalone `.exe` files on the [Releases](https://github.com/Ruminem/playroom/releases) page, no Python needed: `launcher.exe`, `hud.exe` (usage-hud), `weather.exe`, `sysmon.exe` and `layers.exe`. Keep them in one folder — the launcher runs and installs the `.exe` next to it. Names with the version on them (`hud-0.1.2.exe`) work too; with several, the highest version is used. They are not code-signed, so SmartScreen may warn the first time. What changed in each release is in [CHANGELOG.md](CHANGELOG.md).
+The Windows tools come as standalone `.exe` files on the [Releases](https://github.com/Ruminem/playroom/releases) page, no Python needed: `launcher.exe`, `hud.exe` (usage-hud), `weather.exe`, `sysmon.exe` and `layers.exe`. Keep them in one folder — the launcher runs and installs the `.exe` next to it. Names with the version on them (`hud-0.1.2.exe`) work too; with several, the highest version is used. Open a newer download while an older copy of the same tool is running and it closes the old one and takes over, and if start-with-Windows pointed at the old file it now points at the new one. They are not code-signed, so SmartScreen may warn the first time. What changed in each release is in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
@@ -44,7 +44,7 @@ Apache-2.0. See [LICENSE](LICENSE).
 
 ### 받기
 
-윈도우 도구는 [Releases](https://github.com/Ruminem/playroom/releases) 페이지에 파이썬 없이 도는 `.exe` 로 있음: `launcher.exe`, `hud.exe`(usage-hud), `weather.exe`, `sysmon.exe`, `layers.exe`. 한 폴더에 둘 것 — 런처가 옆에 있는 `.exe` 를 실행하고 설치함. 이름에 버전이 붙어 있어도(`hud-0.1.2.exe`) 되고, 여럿이면 버전이 가장 높은 것을 씀. 코드 서명이 없어서 처음엔 SmartScreen 이 경고할 수 있음. 릴리스마다 무엇이 바뀌었는지는 [CHANGELOG.md](CHANGELOG.md) 에 있음.
+윈도우 도구는 [Releases](https://github.com/Ruminem/playroom/releases) 페이지에 파이썬 없이 도는 `.exe` 로 있음: `launcher.exe`, `hud.exe`(usage-hud), `weather.exe`, `sysmon.exe`, `layers.exe`. 한 폴더에 둘 것 — 런처가 옆에 있는 `.exe` 를 실행하고 설치함. 이름에 버전이 붙어 있어도(`hud-0.1.2.exe`) 되고, 여럿이면 버전이 가장 높은 것을 씀. 같은 도구의 옛 exe 가 떠 있는 채로 새로 받은 것을 띄우면 옛 것을 끄고 이어 뜨고, 윈도우 시작 시 실행이 옛 파일을 가리켰으면 새 파일로 고침. 코드 서명이 없어서 처음엔 SmartScreen 이 경고할 수 있음. 릴리스마다 무엇이 바뀌었는지는 [CHANGELOG.md](CHANGELOG.md) 에 있음.
 
 ### 라이선스
 

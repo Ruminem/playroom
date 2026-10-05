@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.0 — 2026-10-05
+
+- Opening a newer download of a tool while an older copy is running now closes the old one and takes over instead of quietly doing nothing, and start with Windows moves to the new file if it pointed at the old one
+- weather: the aquarium settings panel gets fish, bubbles and light-ray sliders (0–100%, 50% is how it looked until now); in the aquarium the amount slider now sets only the tint
+- weather: a new box in the settings panel (off by default) lets you grab an animal with the left button and carry it; let go and it falls to the floor, the bird fluttering down slowly
+- weather: when the taskbar rises under an animal (leaving full screen), the animal is buried behind it, peeks out, looks both ways and jumps out
+- weather: in the aquarium the floor sinks slowly as through water when it caves in, and decorations and the chest no longer hang off the edge of a ledge
+
+**한국어**
+
+- 옛 exe 가 떠 있는 채로 새로 받은 같은 도구를 띄우면 그냥 끝나지 않고 옛 것을 끄고 이어 뜸. 윈도우 시작 시 실행이 옛 파일을 가리켰으면 새 파일로 옮김
+- weather: 어항 설정 창에 물고기·거품·빛줄기 막대가 생김(0–100%, 50% 가 지금까지 모습). 어항에서 양 막대는 물빛만 정함
+- weather: 설정 창의 **동물을 왼쪽 단추로 집어서 옮기기**(기본 꺼짐)를 켜면 동물을 집어 옮길 수 있고, 놓으면 바닥으로 떨어짐 — 새는 천천히 팔랑이며 내려옴
+- weather: 동물 밑에서 작업 표시줄이 솟으면(전체 화면이 끝날 때) 동물이 그 뒤에 묻혔다가 빼꼼 내밀어 두리번거린 뒤 뛰어나옴
+- weather: 어항에서 바닥이 무너질 때 물속처럼 천천히 가라앉고, 장식과 보물상자가 턱 끝에 걸쳐 떠 있지 않음
+
 ## 0.1.3 — 2026-10-05
 
 - weather: the aquarium gets coral, a shell, a starfish and rocks on the sand, a treasure chest that opens now and then and lets out a stream of bubbles, two crabs walking sideways along the bottom, three see-through jellyfish that squeeze their way up and slowly sink, and a pufferfish and an angelfish among the fish
