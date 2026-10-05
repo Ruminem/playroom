@@ -24,6 +24,7 @@ import math
 import os
 import queue
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -919,7 +920,7 @@ def load_settings():
 class Weather:
     def __init__(self, kind, amount, animals=(), fps=FPS, tank=None, drag=False, sound=False, volume=VOLUME):
         self.kind, self.amount, self.visible, self.fps = kind, amount, True, fps
-        self.sound, self.volume, self.rain = sound, volume, rain_sound.Player()  # 빗소리 켰나 · 크기 % · 트는 것
+        self.sound, self.volume, self.rain_player = sound, volume, rain_sound.Player()  # 빗소리 켰나 · 크기 % · 트는 것
         self.tank = {k: (tank or {}).get(k, TANK[k][1]) for k in TANK}  # 어항 막대. 어항이 아닐 때 바꿔도 남겨 둠
         self.drag, self.catching = drag and not MAC, False  # 동물 집기를 켰나 · 지금 창이 클릭을 받나
         # ponytail: 시작할 때의 주 모니터 작업 영역에 고정. 해상도·작업 표시줄이 바뀌면 다시 켜야 함
@@ -1131,7 +1132,7 @@ class Weather:
 
     def hear(self):
         """빗소리를 지금 종류·보이기·설정에 맞춤. 같으면 아무것도 안 함 — 명령마다 불러도 됨."""
-        self.rain.set(hearing(self.kind, self.visible, self.sound, self.volume))
+        self.rain_player.set(hearing(self.kind, self.visible, self.sound, self.volume))
 
     # ── 눈 ──
     def new_flake(self, li, top, layers=SNOW_LAYERS):
@@ -1475,7 +1476,7 @@ class Weather:
         self.pile.h = list(self.sand)  # 모래는 안 녹는 더미 — 동물이 그 위를 걷고 거품이 거기서 나옴
         self.sand_base = None  # 다음 프레임에 모래 띠를 그림
         self.vents = [x for x, *_ in random.sample(aq["weeds"], min(3, len(aq["weeds"])))]  # 거품 줄기가 나오는 해초 밑
-        self.fish, self.rays_at = [], []  # 물빛과 물고기·거품·빛줄기 수는 retune 이 맞춤
+        self.fish, self.rays_at, self.rays_drawn = [], [], None  # 물빛과 물고기·거품·빛줄기 수는 retune 이 맞춤
         cw = aq["crab_size"][0]
         # 게 [x, 1 오른쪽 · -1 왼쪽, 지금 짓이 끝나는 시각, 걷는 중, 화면 y] · 해파리 [x, y, 오르내리는 px/초, 다음에
         # 오므릴 시각, 오므린 시각, 위상, 가려는 높이] · 상자 [열리는 시각, 다음 거품 시각]. 시각은 첫 프레임에 정함
@@ -1590,16 +1591,51 @@ class Weather:
 
     def rays(self, now):
         """빛줄기: 위 끝을 축으로 아래가 천천히 좌우로 흔들리고, 줄기마다 제 범위(lo–hi) 안에서 밝기가 오감.
-        행마다 그 행 물빛이 섞인 조각을 덮어씀."""
-        px, stride = self.surface.pixels, self.stride
-        for x0, shape, ph, sp, slant, lo, hi in self.rays_at:
-            slant += RAY_SWAY * math.sin(now * sp * 3 + ph)
+        행마다 그 행 물빛이 섞인 조각을 물빛 버퍼(self.water)에 구워 둠 — 프레임은 그 버퍼로 화면을 덮음. 흔들림은 아래
+        끝이 1px 움직일 때만 갱신하므로(초당 많아야 15번) 대개의 프레임엔 할 게 없음. 바뀐 줄기는 자리·밝기가 바뀐 행만
+        고침: 그 행에서 옛·새 자리를 감싼 범위를 물빛으로 되돌리고, 범위에 걸친 줄기를 놓인 차례대로 잘라 다시 씀(겹친
+        줄기는 뒤의 것이 위). 프레임마다 통째로 다시 쓰던 때는 10줄기 × 648행이 2560×1440 에서 3ms — 한 프레임의 절반."""
+        water, stride, rows = self.water, self.stride, self.aq_tint[1]["rows"]
+        if self.rays_drawn is None:  # 처음이거나 줄기 수가 바뀜 — 남은 줄기를 지우고 다 그림
+            reach = max((len(lv[0]) for lv in self.ray_rows), default=0)
+            water[:reach * stride] = b"".join(p * self.w for p in rows[:reach])
+            self.rays_drawn = [None] * len(self.rays_at)
+        drawn, dirty = self.rays_drawn, {}  # 줄기마다 (아래 끝 흔들림 px, 밝기, 행마다 x) · 행 → (왼, 오른) 바이트
+        for i, (x0, shape, ph, sp, slant, lo, hi) in enumerate(self.rays_at):
+            sh = self.ray_rows[shape]
+            n = len(sh[0])
+            sway = round(RAY_SWAY * (n - 1) * math.sin(now * sp * 3 + ph))
             lv = ray_level(lo, hi, math.sin(now * sp * 2 + 2 * ph))
-            o = 0
-            for j, (lead, data) in enumerate(self.ray_rows[shape][lv]):
-                a = o + (int(x0 + j * slant) + lead) * 4
-                px[a:a + len(data)] = data
-                o += stride
+            old = drawn[i]
+            if old is not None and old[0] == sway and old[1] == lv:
+                continue
+            slant += sway / max(1, n - 1)
+            xs, new = [int(x0 + j * slant) for j in range(n)], sh[lv]
+            drawn[i] = (sway, lv, xs)
+            was = None if old is None else sh[old[1]]
+            for j, (x, (lead, data)) in enumerate(zip(xs, new)):
+                a = (x + lead) * 4
+                b = a + len(data)
+                if was is not None:
+                    if old[1] == lv and old[2][j] == x:
+                        continue
+                    pl, pd = was[j]
+                    pa = (old[2][j] + pl) * 4
+                    a, b = min(a, pa), max(b, pa + len(pd))
+                d = dirty.get(j)
+                dirty[j] = (a, b) if d is None else (min(a, d[0]), max(b, d[1]))
+        if not dirty:
+            return
+        spans = [(r[1], d) for r, d in zip(self.rays_at, drawn)]
+        for j, (a, b) in dirty.items():
+            o = j * stride
+            water[o + a:o + b] = rows[j] * ((b - a) // 4)
+            for shape, (_, lv, xs) in spans:
+                lead, data = self.ray_rows[shape][lv][j]
+                s = (xs[j] + lead) * 4
+                lo, hi = max(a, s), min(b, s + len(data))
+                if lo < hi:
+                    water[o + lo:o + hi] = data[lo - s:hi - s]
 
     def render_sand(self):
         """모래 띠: 띠 높이의 물빛 위에, 열마다 그 열 바닥(틀 윗변) 바로 위로 모래. 틀 모양이 바뀔 때만, 바뀐 열만
@@ -1718,6 +1754,8 @@ class Weather:
             self.fw = self.fw_sprites()
         elif kind == "aquarium":
             self.aquarium()
+        if kind != "aquarium":  # 화면 크기 물빛·빛줄기 조각(2560×1440 에서 20MB)을 돌려줌. 다시 고르면 water_tint 가 40ms 에 만듦
+            self.aq_tint = self.water = self.ray_rows = self.bubble_sprites = self.jelly_sprites = None
         self.rockets, self.sparks, self.next_launch = [], [], math.inf
         self.retune()
 
@@ -1750,6 +1788,7 @@ class Weather:
                 self.rays_at = [[x, random.randrange(len(RAY_WIDTHS)), random.uniform(0, math.tau),
                                  random.uniform(0.08, 0.16), RAY_SLANT[0] + (RAY_SLANT[1] - RAY_SLANT[0]) * (x - lo) / (hi - lo),
                                  random.uniform(0.2, 0.45), random.uniform(0.7, 1.0)] for x in xs]
+                self.rays_drawn = None  # 물빛에 구워 둔 옛 줄기를 지우고 다시 그림
 
     def water_tint(self):
         """어항 물빛과 그 위에 섞어 둔 거품·빛줄기·해파리 그림을 양에 맞춤. 2560×1440 에서 30–40ms 라 양이 바뀔 때만."""
@@ -1757,13 +1796,16 @@ class Weather:
             h, aq = self.h, self.aq
             rows = water_rows(h, self.amount)
             bands = [rows[int((b + 0.5) * h / AQ_BANDS)] for b in range(AQ_BANDS)]
+            water = bytearray(b"".join(p * self.w for p in rows))  # rays 가 빛줄기를 구워 넣음
             self.aq_tint = (self.amount, {
-                "water": b"".join(p * self.w for p in rows), "strip": b"".join(rows[h - self.strip_h:]),
+                "water": water, "water_c": (ctypes.c_char * len(water)).from_buffer(water), "rows": rows,
+                "strip": b"".join(rows[h - self.strip_h:]),
                 "bubbles": [[[[place(over(sp, under), self.stride) for sp in subs] for subs in radii]
                              for radii in aq["bubbles"]] for under in bands],
                 "rays": tint_rays(aq["rays"], rows),
                 "jelly": [[tinted(art, JELLY_COLORS, under) for art in JELLY_ART] for under in bands]})
             self.sand_base = None  # 모래 띠 바탕도 물빛이라 다음 프레임에 다시 그림
+            self.rays_drawn = None  # 새 물빛엔 빛줄기가 없음
         t = self.aq_tint[1]
         self.water, self.bubble_sprites, self.ray_rows, self.jelly_sprites = t["water"], t["bubbles"], t["rays"], t["jelly"]
 
@@ -1874,7 +1916,8 @@ class Weather:
         top = 0 if MAC or self.full_clear or kind != "none" or lifted else self.h - pet.BAND - self.rise
         self.full_clear = False
         if kind == "aquarium":  # 지우는 대신 미리 칠한 물빛으로 덮음 (2560×1440 memset 0.89 · memmove 1.15ms)
-            self.surface.fill(self.water)
+            self.rays(now)  # 빛줄기는 물빛 버퍼에 구움
+            self.surface.fill(self.aq_tint[1]["water_c"])
         elif top:
             self.surface.clear(top)
         else:
@@ -1896,7 +1939,6 @@ class Weather:
                 self.pile.h = list(self.sand)  # set_base 가 솟은 틀만큼 묻은 모래를 되살림
                 self.render_sand()
                 self.place_decor()
-            self.rays(now)
             self.surface.pixels[(self.h - self.strip_h) * self.stride:] = self.strip
             self.decor(now)
             self.weeds(now)
@@ -1963,12 +2005,16 @@ class Weather:
             if delay < -period:  # 많이 밀렸으면 따라잡으려 몰아 그리지 말고 다시 맞춤
                 nxt, delay = time.perf_counter(), 0
             time.sleep(max(0.0, delay))
-        self.rain.close()
+        self.rain_player.close()
         self.surface.close()
 
 
 def check():
-    fake = types.SimpleNamespace(surface=types.SimpleNamespace(pixels=bytearray(40 * 40 * 4)), stride=40 * 4, w=40, h=40,
+    hidden = {n for line in Path(__file__).read_text(encoding="utf-8").splitlines()
+              if re.match(r"\s*self\.\w+(\s*,\s*self\.\w+)*\s*=[^=]", line)
+              for n in re.findall(r"self\.(\w+)", line.split("=")[0]) if callable(Weather.__dict__.get(n))}
+    assert not hidden, ("속성이 메서드를 가림 — 부르면 TypeError", hidden)
+    fake =types.SimpleNamespace(surface=types.SimpleNamespace(pixels=bytearray(40 * 40 * 4)), stride=40 * 4, w=40, h=40,
                                  base=[0] * 40, splashes=[], crowns=[],
                                  droplet=place(disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR), 40 * 4),
                                  crown=[place(crown(k), 40 * 4) for k in range(3)])
@@ -2250,6 +2296,33 @@ def check():
     assert any(at(x, 40) != tint[40] for x in range(aw)), "위쪽에 빛줄기"
     assert all(all(d[i + c] <= d[i + 3] for i in range(0, len(d), 4) for c in range(3))
                for rows in a.ray_rows for lv in rows for _, d in lv), "빛줄기는 premultiplied"
+
+    def baked():  # 지금 자리·밝기의 빛줄기를 새 물빛에 처음부터 통째로 그린 것
+        want = bytearray(b"".join(p * aw for p in a.aq_tint[1]["rows"]))
+        for (x0, shape, _, _, slant, *_), (sway, lv, xs) in zip(a.rays_at, a.rays_drawn):
+            n = len(xs)
+            assert xs == [int(x0 + j * (slant + sway / (n - 1))) for j in range(n)]
+            for j, (lead, d) in enumerate(a.ray_rows[shape][lv]):
+                want[j * st + (xs[j] + lead) * 4:j * st + (xs[j] + lead) * 4 + len(d)] = d
+        return want
+    moved, t, keep = set(), 0.0, (random.getstate(), a.flakes, a.crab)  # 아래 검사들이 보는 난수·거품·게는 그대로
+    for i in range(1500):  # 바뀐 행만 고쳐 온 물빛이 통째로 다시 그린 것과 같음 — 줄기 수·양이 바뀌어도
+        t += random.choice((1 / 180, 1 / 60, 0.4, 7.0))
+        if i in (500, 750, 1000):
+            a.tank["rays"], a.amount = {500: (100, 70), 750: (100, 30), 1000: (30, 50)}[i]
+            a.retune()
+        a.frame(1 / 60, t)
+        moved.add(tuple(map(tuple, (d[:2] for d in a.rays_drawn))))
+        assert all((sway, lv) == (round(RAY_SWAY * (len(xs) - 1) * math.sin(t * sp * 3 + ph)),
+                                  ray_level(lo, hi, math.sin(t * sp * 2 + 2 * ph)))
+                   for (_, _, ph, sp, _, lo, hi), (sway, lv, xs) in zip(a.rays_at, a.rays_drawn)), "지금 시각의 자리·밝기"
+        if i % 50 == 0 or i in (501, 751, 1001):
+            assert a.water == baked(), ("구워 둔 빛줄기가 통째로 그린 것과 다름", i)
+    assert len(moved) > 100, "빛줄기는 흔들리고 밝기가 오감"
+    a.tank, a.amount = {k: TANK[k][1] for k in TANK}, 50
+    a.retune()
+    state, a.flakes, a.crab = keep
+    random.setstate(state)
     sand_top = pixel(SAND_COLORS[0], 255)
     for nb in (None, [rise] * aw):  # 틀이 왼쪽까지 넓어져도
         if nb:
@@ -2672,7 +2745,7 @@ def check_sound():
     pl.close()
     assert played == [50, 30, None, 70, None], ("같은 값은 다시 안 틀고, 끄면 멈춤", played)
     sw = types.SimpleNamespace(kind="rain", visible=True, sound=False, volume=VOLUME, commands=queue.Queue(),
-                               save=lambda: None, rain=pl)
+                               save=lambda: None, rain_player=pl)
     sw.handle, sw.hear = lambda cid: Weather.handle(sw, cid), lambda: Weather.hear(sw)
     played.clear()
     for cid in (SOUND, ("volume", 20), min(VOLUMES), SOUND):
