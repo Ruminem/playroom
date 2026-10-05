@@ -56,6 +56,10 @@ FPS_IDS = {40: 30, 41: 60, 42: 120, 43: 180}
 SNOW_COLOR, SNOW_RIM = (248, 250, 255), (165, 176, 198)  # 테두리를 옅은 회청색으로 — 흰 창 위에서도 보이게
 RAIN_COLOR = (200, 214, 236)
 RAIN_LIT, RAIN_LIT_COLOR = 1.7, (236, 242, 255)  # 번개가 번쩍일 때 빗줄기 — 알파 배수, 색
+# 밝은 알갱이(눈·비·우박·거품·반딧불) 둘레의 그림자 색 · 알갱이 알파에 곱하는 비율. 흰 웹 페이지 위에서도 보이게 하는 것이고
+# 어두운 창 위에선 어둠에 묻힘. 밝기를 화면에서 재 바꾸는 방식은 프레임마다 캡처가 비싸서 안 함
+SHADE, SHADE_K = (22, 32, 64), 0.4
+SHADES = {}  # k 별 알파 → 그림자 픽셀 표
 
 # 눈 층: (비율, 반지름들 px, 속도 px/초, 알파, 번짐 px, 흔들림 px, 바람을 받는 정도, 바닥에 쌓이나)
 SNOW_LAYERS = ((0.45, (0.7, 0.9, 1.1), (16, 28), 150, 0.8, 4, 0.4, False),   # 멀리
@@ -384,6 +388,36 @@ def trim(row):
     return lead * 4, b"".join(px[lead:end])
 
 
+def shade(sprite, k=SHADE_K):
+    """흰 글씨에 그림자를 주듯 그림의 양옆·아래 1px 에 남색 그림자를 깔아 밝은 창 위에서도 보이게. 그림자 알파는
+    둘레 픽셀 알파 × k 라 옅은 알갱이엔 옅게. 어두운 창 위에선 어둠에 묻혀 거의 그대로임.
+    그림은 폭 2px·높이 1px 커지고 원래 그림은 1px 오른쪽에 앉음.
+    ponytail: 픽셀마다 파이썬이라 비 그림 만들기가 106 → 212ms(종류를 처음 고를 때 한 번). 거슬리면 bytes.translate 표로"""
+    n, rows = sprite
+    w = n + 2
+    full = [bytes(4 * w)]  # 맨 위는 그림자도 없는 빈 줄 — 아래 dilation 이 y-1 을 볼 때 씀
+    for skip, d in rows:
+        full.append(bytes(skip + 4) + d + bytes(4 * w - skip - 4 - len(d)))
+    full.append(bytes(4 * w))
+    near = []  # 행마다 양옆 1px 까지 넓힌 알파
+    for row in full:
+        a = row[3::4]
+        near.append([max(a[max(0, x - 1):x + 2]) for x in range(w)])
+    sh = SHADES.get(k) or SHADES.setdefault(k, [pixel(SHADE, v * k) for v in range(256)])  # 둘레 알파 → 그림자 픽셀
+    out = []
+    for y in range(1, len(full)):
+        src, up, here = full[y], near[y - 1], near[y]
+        px = bytearray(src)
+        for x in range(w):
+            s = sh[max(up[x], here[x])]
+            if s[3]:
+                i, keep = 4 * x, 255 - src[4 * x + 3]
+                for c in range(4):
+                    px[i + c] = src[i + c] + s[c] * keep // 255
+        out.append(trim(bytes(px)))
+    return w, out
+
+
 def disc(r, soft, alpha, core, rim, fx=0.0, fy=0.0):
     """부드러운 원판. fx, fy 는 픽셀 아래 단위의 중심 이동 — 느린 눈송이가 1px 씩 덜컥거리지 않게."""
     n = int(math.ceil(2 * (r + soft))) + 2
@@ -399,7 +433,7 @@ def disc(r, soft, alpha, core, rim, fx=0.0, fy=0.0):
             color = tuple(int(core[i] + (rim[i] - core[i]) * t) for i in range(3))
             row += pixel(color, alpha * cov)
         rows.append(trim(row))
-    return n, rows
+    return shade((n, rows))
 
 
 def streak(length, alpha, width, slant=SLANT, color=RAIN_COLOR):
@@ -413,7 +447,7 @@ def streak(length, alpha, width, slant=SLANT, color=RAIN_COLOR):
         row = b"".join(pixel(color, a * min(1.0, max(0.0, width / 2 + 0.5 - abs(x - xc))))
                        for x in range(sw))
         rows.append(trim(row))
-    return sw, rows
+    return shade((sw, rows))
 
 
 def crown(k):
@@ -426,7 +460,7 @@ def crown(k):
             for gy in range(max(0, int(y)), min(n, int(y) + 2)):  # 점 하나를 둘레 네 칸에 나눠 칠함
                 for gx in range(max(0, int(x)), min(n, int(x) + 2)):
                     grid[gy][gx] = max(grid[gy][gx], (1 - abs(gx - x)) * (1 - abs(gy - y)))
-    return n, [trim(b"".join(pixel(RAIN_COLOR, 200 * (1 - k / 3) * v) for v in row)) for row in grid]
+    return shade((n, [trim(b"".join(pixel(RAIN_COLOR, 200 * (1 - k / 3) * v) for v in row)) for row in grid]))
 
 
 def place(sprite, stride):
@@ -685,7 +719,7 @@ def bubble(r, alpha, fx=0.0, fy=0.0):
             shine = max(0.0, 1 - math.hypot(dx + r * 0.4, dy + r * 0.4) / max(0.7, r * 0.35))
             row += pixel(BUBBLE_COLOR, alpha * cov * max(0.15, rim, shine))
         rows.append(trim(row))
-    return n, rows
+    return shade((n, rows))
 
 
 def ray_shape(top_w, length):
@@ -1031,7 +1065,7 @@ class Weather:
         """[크기][밝기 단계 1..8][1/4 픽셀 위치 16벌]."""
         if "fireflies" not in self.sprite_cache:
             self.sprite_cache["fireflies"] = [
-                [[place(glow(core, halo, lv / FLY_LEVELS, fx / 4, fy / 4), self.stride)
+                [[place(shade(glow(core, halo, lv / FLY_LEVELS, fx / 4, fy / 4)), self.stride)
                   for fy in range(4) for fx in range(4)]
                  for lv in range(1, FLY_LEVELS + 1)] for core, halo in FLY_SIZES]
         return self.sprite_cache["fireflies"]
@@ -1151,7 +1185,7 @@ class Weather:
             n, rows = self.crown[min(2, int((1 - c[1] / CROWN_SEC) * 3))]
             xi = int(c[0]) - n // 2
             if c[1] > 0 and 0 <= xi <= w - n:
-                stamp(px, stride, xi, c[2] - n, rows)
+                stamp(px, stride, xi, c[2] - n + 1, rows)  # shade 로 높이가 폭보다 1px 작음
                 live.append(c)
         self.crowns = live
 
@@ -1481,7 +1515,7 @@ class Weather:
             if self.vents and random.random() < 0.5:
                 f[0] = random.choice(self.vents) + random.uniform(-2, 2)
             col = min(max(int(f[0]), 0), self.w - 1)
-            n = int(math.ceil(2 * BUBBLE_LAYERS[li][1][f[4]])) + 3  # bubble() 그림 크기
+            n = int(math.ceil(2 * BUBBLE_LAYERS[li][1][f[4]])) + 5  # bubble() 그림 크기 — shade 가 2px 늘림
             f[1] = self.h - self.base[col] - self.pile.h[col] - n - random.uniform(0, 4)
         return f
 
@@ -2056,6 +2090,9 @@ def check():
         assert nx >= 0 and nx + max(skip // 4 + len(d) // 4 for skip, d in narrow[0]) <= 30, "가장자리에서 막힘"
     assert sum(len(d) for sk, d in levels[0]) > 4 * 200, "줄기가 그려져 있음"
     assert [round(blink(t, 4), 6) for t in (0, 0.15, 0.5, 1.4, 2, 3.9)] == [0, 0.5, 1, 0.5, 0, 0], "깜빡임 곡선"
+    white, s = pixel((255, 255, 255), 255), pixel(SHADE, 255 * SHADE_K)
+    assert shade((1, [(0, white)])) == (3, [(0, s + white + s), (0, s * 3)]), "그림자는 양옆·아래 1px, 그림은 위에"
+    assert all(abs(s[c] + 30 * (255 - s[3]) // 255 - 30) <= 16 for c in range(3)), "그림자는 어두운 창(#1e1e1e) 위에선 묻힘"
     sprites = [disc(3.0, 1.8, 235, SNOW_COLOR, SNOW_RIM, 0.5, 0.25)[1], streak(30, 165, 1.6)[1], glow(1.5, 6.5, 0.6, 0.25, 0.5)[1],
                levels[0], crown(0)[1], crown(2)[1], streak(20, 190 * RAIN_LIT, 1.6, 0.35, RAIN_LIT_COLOR)[1]]
     for rows in sprites + levels[1:]:
