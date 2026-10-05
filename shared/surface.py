@@ -60,6 +60,12 @@ user32.UpdateLayeredWindow.argtypes = (wintypes.HWND, wintypes.HDC, ctypes.POINT
                                        ctypes.POINTER(wintypes.POINT), wintypes.DWORD,
                                        ctypes.POINTER(BLENDFUNCTION), wintypes.DWORD)
 user32.DestroyWindow.argtypes = (wintypes.HWND,)
+user32.GetWindowLongPtrW.argtypes = (wintypes.HWND, ctypes.c_int)
+user32.GetWindowLongPtrW.restype = ctypes.c_ssize_t
+user32.SetWindowLongPtrW.argtypes = (wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t)
+user32.SetCapture.argtypes = (wintypes.HWND,)
+user32.LoadCursorW.argtypes = (wintypes.HINSTANCE, ctypes.c_void_p)
+user32.LoadCursorW.restype = wintypes.HANDLE
 gdi32.CreateCompatibleDC.restype = wintypes.HDC
 gdi32.CreateDIBSection.restype = wintypes.HBITMAP
 gdi32.CreateDIBSection.argtypes = (wintypes.HDC, ctypes.c_void_p, wintypes.UINT,
@@ -69,15 +75,21 @@ kernel32.GetModuleHandleW.restype = wintypes.HMODULE
 
 # 겹친 창 · 클릭 통과 · 작업 표시줄에 안 뜸 · 포커스 안 뺏음 · 맨 위
 EX_STYLE = 0x80000 | 0x20 | 0x80 | 0x8000000 | 0x8
+WS_EX_TRANSPARENT = 0x20
 HWND_TOPMOST, HWND_NOTOPMOST = wintypes.HWND(-1), wintypes.HWND(-2)
+WM_LBUTTONDOWN, WM_LBUTTONUP, WM_CAPTURECHANGED = 0x201, 0x202, 0x215
 
 
 class Surface:
-    def __init__(self, left, top, width, height, class_name):
+    def __init__(self, left, top, width, height, class_name, on_mouse=None):
+        """on_mouse 를 주면 catch(True) 인 동안 왼쪽 단추를 on_mouse(True)·(False) 로 알림(pump 안에서, 이 스레드)."""
         self.w, self.h = width, height
         hinst = kernel32.GetModuleHandleW(None)
-        self._proc = WNDPROC(user32.DefWindowProcW)  # 붙들어 둬야 GC 가 콜백을 안 걷어 감
-        user32.RegisterClassW(ctypes.byref(WNDCLASSW(lpfnWndProc=self._proc, hInstance=hinst,
+        self.on_mouse = on_mouse
+        # 붙들어 둬야 GC 가 콜백을 안 걷어 감. 마우스를 안 받는 창은 파이썬을 안 거침
+        self._proc = WNDPROC(self._wndproc if on_mouse else user32.DefWindowProcW)
+        hand = user32.LoadCursorW(None, 32649) if on_mouse else None  # IDC_HAND — 집을 수 있는 자리에서만 보임
+        user32.RegisterClassW(ctypes.byref(WNDCLASSW(lpfnWndProc=self._proc, hInstance=hinst, hCursor=hand,
                                                      lpszClassName=class_name)))
         self.hwnd = user32.CreateWindowExW(EX_STYLE, class_name, class_name, 0x80000000,  # WS_POPUP
                                            left, top, width, height, None, None, hinst, None)
@@ -131,6 +143,30 @@ class Surface:
         if on and overlay.layers_running():
             return
         user32.SetWindowPos(self.hwnd, HWND_TOPMOST if on else HWND_NOTOPMOST, 0, 0, 0, 0, 0x1 | 0x2 | 0x10)  # NOSIZE NOMOVE NOACTIVATE
+
+    def catch(self, on):
+        """on 이면 클릭을 받음(WS_EX_TRANSPARENT 를 뺌). 그래도 알파 0 인 픽셀은 겹친 창이라 아래 창으로 감.
+        바뀔 때만 부름 — 다른 비트(맨 위 등)는 그대로 둠."""
+        ex = user32.GetWindowLongPtrW(self.hwnd, -20)  # GWL_EXSTYLE
+        user32.SetWindowLongPtrW(self.hwnd, -20, ex & ~WS_EX_TRANSPARENT if on else ex | WS_EX_TRANSPARENT)
+
+    def cursor(self):
+        """마우스 커서 자리 (창 왼쪽 위 기준 px). 한 번 1.3µs."""
+        pt = wintypes.POINT()
+        user32.GetCursorPos(ctypes.byref(pt))
+        return pt.x - self._pos.x, pt.y - self._pos.y
+
+    def _wndproc(self, hwnd, msg, wparam, lparam):
+        if msg == WM_LBUTTONDOWN:
+            user32.SetCapture(hwnd)  # 끄는 동안 커서가 동물 밖으로 나가도 뗀 것을 받음
+            self.on_mouse(True)
+            return 0
+        if msg in (WM_LBUTTONUP, WM_CAPTURECHANGED):  # 떼면 ReleaseCapture 가 CAPTURECHANGED 를 또 부름 — 두 번 와도 됨
+            if msg == WM_LBUTTONUP:
+                user32.ReleaseCapture()
+            self.on_mouse(False)
+            return 0
+        return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
     def pump(self):
         while user32.PeekMessageW(ctypes.byref(self._msg), None, 0, 0, 1):  # PM_REMOVE

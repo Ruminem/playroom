@@ -305,6 +305,7 @@ KINDS = {1: ("snow", "눈"), 2: ("rain", "비"), 3: ("storm", "뇌우"), 4: ("ha
          5: ("fireworks", "불꽃놀이"), 8: ("aquarium", "어항"), 7: ("none", "날씨 없음")}  # 없음은 동물만. id 는 설정 파일과 무관해 순서만 바꿔도 됨
 KIND_NAMES = tuple(k for k, _ in KINDS.values())
 SHOW, PANEL, AUTOSTART, EXIT = 20, 30, 50, 99
+DRAG = 27  # 동물을 왼쪽 단추로 집어 옮기기. 윈도우만 — 맥은 창을 누르면 앱이 앞으로 나와 포커스를 뺏을 수 있어 아직 안 함
 PETS = {22: "cat", 23: "bird", 24: "dog", 25: "rabbit", 26: "penguin"}  # 메뉴 id → 설정 파일 pet 목록의 이름
 PET_NAMES = {"cat": "고양이", "bird": "새", "dog": "강아지", "rabbit": "토끼", "penguin": "펭귄"}
 PET_CLASS = {"cat": pet.Cat, "bird": pet.Bird, "dog": pet.Dog, "rabbit": pet.Rabbit, "penguin": pet.Penguin}
@@ -750,12 +751,15 @@ def load_settings():
         ok["pet"] = [a for a in PET_CLASS if a in p]  # 모르는 이름·겹친 이름은 버림
     if data.get("fps") in FPS_IDS.values():
         ok["fps"] = data["fps"]
+    if isinstance(data.get("drag"), bool):
+        ok["drag"] = data["drag"]
     return ok
 
 
 class Weather:
-    def __init__(self, kind, amount, animals=(), fps=FPS):
+    def __init__(self, kind, amount, animals=(), fps=FPS, drag=False):
         self.kind, self.amount, self.visible, self.fps = kind, amount, True, fps
+        self.drag, self.catching = drag and not MAC, False  # 동물 집기를 켰나 · 지금 창이 클릭을 받나
         # ponytail: 시작할 때의 주 모니터 작업 영역에 고정. 해상도·작업 표시줄이 바뀌면 다시 켜야 함
         l, t, r, b = overlay.work_area()
         spot = None if MAC else taskbar.spot()
@@ -769,7 +773,7 @@ class Weather:
         # 바닥이 가려는 모양 · 내려앉는 중이면 (시작 모양, 시각) · 열마다 늦게 떨어지는 초(모래가 무너지듯)
         self.goal, self.fall, self.crumble = self.base, None, crumble(self.w)
         self.strip_h = PILE_STRIP + self.rise
-        self.surface = Surface(l, t, self.w, self.h, SURFACE_CLASS)
+        self.surface = Surface(l, t, self.w, self.h, SURFACE_CLASS, **({} if MAC else {"on_mouse": self.press}))
         self.on_top = MAC or overlay.on_top("weather")  # 런처의 '항상 위'. 맥은 런처가 없음
         if not self.on_top:
             self.surface.topmost(False)
@@ -845,7 +849,8 @@ class Weather:
                 ("양", [("%d%%" % p, cid, p == self.amount) for cid, p in AMOUNTS.items()]),
                 ("부드러움", [("%dfps" % n, cid, n == self.fps) for cid, n in FPS_IDS.items()]),
                 None,
-                ("동물", [(PET_NAMES[a], cid, a in self.pets) for cid, a in PETS.items()]),
+                ("동물", [*((PET_NAMES[a], cid, a in self.pets) for cid, a in PETS.items()),
+                          *(() if MAC else (None, ("집어서 옮기기", DRAG, self.drag)))]),
                 ("보이기", SHOW, self.visible),
                 ("로그인 시 실행" if MAC else "Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)),
                 None,
@@ -871,9 +876,15 @@ class Weather:
             self.full_clear = True  # 끈 동물이 있던 자리까지 지움
             self.save()
             return
+        elif cid == DRAG:
+            self.drag = not self.drag and not MAC
+            self.press(False)  # 끄면 들고 있던 동물을 놓음. 클릭 통과는 다음 프레임 aim 이 되돌림
+            self.save()
+            return
         elif cid == SHOW:
             self.visible = not self.visible
             self.surface.show(self.visible)
+            self.press(False)
             return
         elif cid == AUTOSTART:
             startup.toggle(RUN_NAME, __file__)
@@ -888,7 +899,7 @@ class Weather:
         try:
             SETTINGS.parent.mkdir(parents=True, exist_ok=True)
             SETTINGS.write_text(json.dumps({"kind": self.kind, "amount": self.amount, "pet": list(self.pets),
-                                            "fps": self.fps}), encoding="utf-8")
+                                            "fps": self.fps, "drag": self.drag}), encoding="utf-8")
         except OSError:
             pass  # 못 남겨도 지금 화면은 바뀌었으니 넘어감
 
@@ -897,7 +908,7 @@ class Weather:
         if self.panel and self.panel.poll() is None:
             return  # 이미 떠 있음
         state = {"kind": self.kind, "amount": self.amount, "pet": list(self.pets), "show": self.visible,
-                 "auto": startup.is_on(RUN_NAME, __file__), "fps": self.fps}
+                 "auto": startup.is_on(RUN_NAME, __file__), "fps": self.fps, "drag": self.drag}
         ctypes.windll.user32.AllowSetForegroundWindow(-1)  # 방금 트레이를 누른 건 이 프로세스라 앞으로 올릴 권한을 넘김
         me = [] if getattr(sys, "frozen", False) else [str(Path(__file__).resolve())]  # 릴리스 exe 는 스크립트 없이 자기 자신
         self.panel = subprocess.Popen([sys.executable, *me, "--panel", json.dumps(state)],
@@ -909,7 +920,7 @@ class Weather:
             word, _, arg = line.partition(" ")
             if word == "amount" and arg.strip().isdigit() and parse_amount(int(arg)) is not None:
                 self.commands.put(("amount", int(arg)))
-            elif word.strip().isdigit() and int(word) in (*KINDS, *FPS_IDS, *PETS, SHOW, AUTOSTART, EXIT):
+            elif word.strip().isdigit() and int(word) in (*KINDS, *FPS_IDS, *PETS, DRAG, SHOW, AUTOSTART, EXIT):
                 self.commands.put(int(word))
 
     def poll(self):
@@ -1528,6 +1539,8 @@ class Weather:
         low = [(f[0], self.h - f[1] - base[min(int(f[0]), w - 1)]) for f in self.flies] if self.kind == "fireflies" else []
         for p in self.pets.values():
             p.kind, p.snowy = self.kind, self.kind in ("snow", "hail")
+            if p.held or p.air:  # 들려 있거나 떨어지는 중엔 날씨에 반응 안 함
+                continue
             if bolt:
                 p.startle(now)
             for x in self.bangs:
@@ -1537,23 +1550,71 @@ class Weather:
                 p.chase(now, low)
         self.bangs = []
 
+    def hover(self):
+        """커서 밑의 동물 — 나중에 그린 것(위에 보이는 것)부터. 없으면 None."""
+        cx, cy = self.surface.cursor()
+        for p in reversed(list(self.pets.values())):
+            b = p.box()
+            if b and b[0] <= cx < b[0] + b[2] and b[1] <= cy < b[1] + b[3]:
+                return p
+        return None
+
+    def aim(self):
+        """커서가 동물 위에 있거나 동물을 들고 있는 동안만 창이 클릭을 받게 함 — 그 밖은 늘 아래 창으로 통과.
+        창 스타일은 바뀔 때만 고침."""
+        on = self.drag and self.visible and (any(p.held for p in self.pets.values()) or self.hover() is not None)
+        if on != self.catching:
+            self.catching = on
+            self.surface.catch(on)
+
+    def press(self, down):
+        """창이 받은 왼쪽 단추 — Surface 가 pump 중에 부름. 누르면 커서 밑 동물을 집고, 떼면 놓음(놓인 동물은 떨어짐)."""
+        if not down:
+            for p in self.pets.values():
+                p.held = None
+            return
+        hit = self.hover() if self.drag and self.visible else None
+        if hit:
+            cx, cy = self.surface.cursor()
+            hit.grab(time.perf_counter(), cx - hit.at[0], cy - hit.at[1])
+
     def walk_pet(self, dt, now):
         rainy, wet = self.kind in ("rain", "storm"), self.kind == "aquarium"
         self.react(now)
+        cx, cy = self.surface.cursor() if any(p.held for p in self.pets.values()) else (0, 0)
         for p in self.pets.values():
-            if wet:  # 잠수 장비를 차고 헤엄 — 하던 짓은 멈춰 둠
+            wide, tall = pet.DIVE_SIZE[p.DIVER] if wet else (p.W, p.H)
+            if p.held:  # 커서를 따라감. 높이는 발밑을 구한 뒤에
+                if wet and p.dive is None:
+                    p.swim(0.0, now)  # 들고 있는 사이에 어항이 되면 잠수 장비부터 갖춤
+                elif not wet:
+                    p.dive = None
+                p.x = min(max(cx - p.held[0], 0), max(0, self.w - wide))
+            elif wet:  # 잠수 장비를 차고 헤엄 — 하던 짓은 멈춰 둠
+                p.air = 0.0  # 떨어지던 중에 어항이 되면 그 자리에서 헤엄
                 p.swim(dt, now)
             else:
                 p.dive = None  # 어항을 벗어나면 바닥에서 하던 짓을 이어 감
-                p.update(dt, now, rainy)
+                p.fall(dt, now) if p.air else p.update(dt, now, rainy)
             a, b = p.feet()
-            g = p.follow(max(v + f for v, f in zip(self.pile.h[a:b], self.base[a:b])), dt, now)  # 틀 단은 뛰어 오르내림
+            want = max(v + f for v, f in zip(self.pile.h[a:b], self.base[a:b]))
+            if p.held or p.air:  # 들리거나 떨어지는 동안은 틀 단을 안 뜀 — 발밑을 바로 바닥으로
+                g = p.ground = want
+                p.leap = None
+            else:
+                g = p.follow(want, dt, now)  # 틀 단은 뛰어 오르내림
+            if p.held:  # 그림 윗줄이 커서에서 집은 자리만큼 위. 바닥 밑으로도 화면 위로도 안 나감
+                up = min(max(self.h - g - tall - (cy - p.held[1]), 0), max(0, self.h - g - tall))
+                if wet:
+                    p.lift = p.depth = up  # 놓으면 이 높이에서 헤엄을 이어 감
+                else:
+                    p.air = up
             if wet:
                 p.draw_swim(self.surface.pixels, self.stride, self.h, self.pet_sprites, g, now)
                 if p.breathe:
                     self.exhale(*p.mouth)
             else:
-                p.draw(self.surface.pixels, self.stride, self.h, self.pet_sprites, g, now, rainy)
+                p.draw(self.surface.pixels, self.stride, self.h, self.pet_sprites, g + p.air, now, rainy)
 
     def frame(self, dt, now):
         kind = self.kind
@@ -1566,7 +1627,9 @@ class Weather:
                 self.goal, self.fall = nb, (self.base, now)
                 self.full_clear = True  # 동물이 있던 띠 위쪽까지 한 번 지움
         moved = self.fall is not None and self.sink(now)
-        top =0 if MAC or self.full_clear or kind != "none" else self.h - pet.BAND - self.rise
+        # 들거나 떨어지는 동물은 띠 위로 올라가서 그동안도 통째로
+        lifted = any(p.held or p.air for p in self.pets.values())
+        top = 0 if MAC or self.full_clear or kind != "none" or lifted else self.h - pet.BAND - self.rise
         self.full_clear = False
         if kind == "aquarium":  # 지우는 대신 미리 칠한 물빛으로 덮음 (2560×1440 memset 0.89 · memmove 1.15ms)
             self.surface.fill(self.water)
@@ -1625,6 +1688,8 @@ class Weather:
         now = time.perf_counter()
         dt = min(now - self.last, 0.1)  # 멈췄다 돌아와도 한 번에 순간 이동하지 않게
         self.last = now
+        if not MAC:
+            self.aim()  # 집기를 껐으면 커서도 안 읽음
         if not self.visible:
             return False
         if self.kind == "none" and not self.pets:  # 그릴 게 없으면 한 번 지우고 숨겼을 때처럼 쉼(180fps 에서 29% 를 쓰던 자리)
@@ -1945,6 +2010,19 @@ def check():
             assert all(abs(f[0] - dog.mouth[0]) <= 2 and dog.mouth[1] - 10 <= f[1] <= dog.mouth[1] for f in new),                 ("거품은 호흡기에서", dog.mouth, new)
     assert dog.dive == 0 and dog.lift > 60 and dog.state == state and puffs >= 3, ("떠서 헤엄", dog.lift, puffs)
     assert first[0] not in a.breaths or first[0][1] < first[1] - 100, "숨 거품은 위로"
+    # 어항에서 집어 올렸다 놓으면 안 떨어지고 그 높이에서 헤엄을 이어 감
+    a.visible, a.drag, lift0 = True, True, dog.lift
+    bx, by, *_ = dog.box()
+    a.surface.cursor = lambda: (bx + 5, by + 5)
+    a.press(True)
+    a.surface.cursor = lambda: (bx + 5, by + 5 - 40)
+    a.frame(1 / 60, 8.0)
+    up = dog.lift
+    assert dog.held and abs(up - int(lift0) - 40) <= 1, ("어항에선 헤엄 높이를 끌어 올림", lift0, up)
+    a.press(False)
+    a.frame(1 / 60, 8.0 + 1 / 60)
+    assert not dog.held and not dog.air and abs(dog.lift - up) <= pet.SWIM_RISE / 60 + pet.SWIM_BOB, \
+        ("놓으면 안 떨어지고 그 높이에서 헤엄", up, dog.lift)
     a.kind = "none"
     a.reset()
     a.frame(1 / 60, 8.0)
@@ -2081,7 +2159,7 @@ def check():
     assert all(parse_amount(a) is None for a in (101, -1, True, "x", [1], None, 2.5))
     assert amount_arg("normal") == 50 and amount_arg("7") == 7
     assert {20, 50, 100} <= set(AMOUNTS.values()), "예전 세 단계가 메뉴 칸에 있음"
-    ids = [*AMOUNTS, *FPS_IDS, SHOW, *PETS, PANEL, AUTOSTART, EXIT, *KINDS]
+    ids = [*AMOUNTS, *FPS_IDS, SHOW, *PETS, DRAG, PANEL, AUTOSTART, EXIT, *KINDS]
     assert len(ids) == len(set(ids)), "메뉴 id 가 겹치지 않음"
     assert FPS in FPS_IDS.values()
     assert list(PETS.values()) == list(PET_CLASS) == list(PET_NAMES)
@@ -2092,6 +2170,9 @@ def check():
                             (["penguin", "cat", "fox", "cat", [1]], ["cat", "penguin"])):
             SETTINGS.write_text(json.dumps({"pet": saved}), encoding="utf-8")
             assert load_settings().get("pet") == want, (saved, "예전 true 는 고양이, 모르는 이름은 버림")
+        for saved, want in ((True, True), (False, False), (1, None), ("yes", None)):
+            SETTINGS.write_text(json.dumps({"drag": saved}), encoding="utf-8")
+            assert load_settings().get("drag") == want, (saved, "집기는 참·거짓만")
     finally:
         SETTINGS = real
     from types import SimpleNamespace
@@ -2104,8 +2185,93 @@ def check():
     assert list(z.pets) == ["cat"], "다시 누르면 꺼짐"
     q = SimpleNamespace(commands=queue.Queue())
     Weather.read_panel(q, SimpleNamespace(stdout=["amount 30\n", "amount x\n", "amount 150\n", "2\n",
-                                                        "43\n", "23\n", "77\n", "hi\n"]))
-    assert list(q.commands.queue) == [("amount", 30), 2, 43, 23], "설정 창이 보낸 줄 중 아는 것만"
+                                                        "43\n", "23\n", "77\n", "27\n", "hi\n"]))
+    assert list(q.commands.queue) == [("amount", 30), 2, 43, 23, 27], "설정 창이 보낸 줄 중 아는 것만"
+
+    # 동물 집어 옮기기 (커서·단추는 흉내): 커서가 동물 위일 때만 클릭을 받고, 누르면 집어 커서를 따라가고, 떼면 떨어짐
+    dw, dh, rise = 600, 500, 40
+    d = Weather.__new__(Weather)
+    d.w, d.h, d.stride, d.rise, d.amount, d.kind, d.strip_h = dw, dh, dw * 4, rise, 50, "none", PILE_STRIP + rise
+    # 오른쪽 절반은 틀이 없음 — 들고 넘어가도 틀 단을 뛰지 않아야 함
+    d.base, d.snow_pile, d.sprite_cache, d.next_base, d.full_clear = [rise] * 300 + [0] * 300, pile_column_parts(PILE_STRIP + rise), {}, None, False
+    d.goal, d.fall, d.crumble, d.on_top, d.last_settle = d.base, None, crumble(dw), False, 0
+    d.visible, d.drag, d.catching, d.save = True, True, False, lambda: None
+    d.pet_sprites, d.bolt_seen, d.bangs = pet.sprites(), None, []
+    ms = {"at": (0, 0), "catch": [], "tops": []}
+    d.surface = SimpleNamespace(pixels=bytearray(dw * dh * 4), cursor=lambda: ms["at"], catch=ms["catch"].append,
+                                clear=lambda top=0: ms["tops"].append(top), present=lambda top=0: None)
+    cat, bird = pet.Cat(dw, random.Random(2)), pet.Bird(dw, random.Random(2))
+    d.pets = {"cat": cat, "bird": bird}
+    d.reset()
+    t0 = time.perf_counter()  # grab 이 perf_counter 로 시각을 찍음
+    cat.x, bird.x = 100.0, 400.0
+    cat.go("sleep", t0)
+    d.frame(1 / 60, t0 - 1 / 60)  # reset 뒤 첫 프레임은 통째로
+    d.frame(1 / 60, t0)
+    band_top = dh - pet.BAND - rise
+    assert ms["tops"][-1] == band_top, "평소엔 바닥 띠만 지움"
+    d.aim()
+    assert ms["catch"] == [], "커서가 동물 밖이면 클릭은 아래 창으로"
+    cx, cy, cw, ch = cat.box()
+    ms["at"] = (cx + cw // 2, cy + ch - 5)
+    d.aim()
+    d.aim()
+    assert ms["catch"] == [True], "동물 위에 오면 한 번만 클릭을 받게 바꿈"
+    d.press(True)
+    assert cat.held == (cw // 2, ch - 5) and not bird.held and cat.state == "stand", "커서 밑 동물만 집음"
+    ms["at"] = (cx + cw // 2 + 50, cy + ch - 5 - 300)
+    d.bolt = (1,)  # 들려 있는 동안 번개가 쳐도
+    d.surface.pixels[:] = bytes(dw * dh * 4)  # 흉내 clear 는 안 지움
+    d.frame(1 / 60, t0 + 1 / 60)
+    assert ms["tops"][-1] == 0, "띠 위로 든 동물은 자국이 안 남게 통째로 지움"
+    assert int(cat.x) == cx + 50 and cat.air == 300 and cat.box()[:2] == (cx + 50, cy - 300), ("커서를 따라감", cat.box())
+    assert cat.state == "stand" and not cat.leap, "들린 동안은 놀라지도 뛰지도 않음"
+    ink = [y for y in range(dh) if any(d.surface.pixels[y * dw * 4 + (cx + 50) * 4:y * dw * 4 + (cx + 50 + cw) * 4])]
+    assert cy - 300 - 30 <= ink[0] and ink[-1] < cy + ch - 300, ("든 높이에 그려짐", ink[0], ink[-1])
+    ms["at"] = (dw + 500, -1000)  # 화면 밖으로 끌어도
+    d.frame(1 / 60, t0 + 2 / 60)
+    x, y, w, h = cat.box()
+    assert x + w <= dw and y >= 0 and not cat.leap, ("화면 안, 틀이 없는 쪽으로 넘어가도 안 뜀", cat.box())
+    d.press(False)
+    d.press(False)  # 떼면 CAPTURECHANGED 가 또 옴
+    frames, now = 0, t0 + 2 / 60
+    while cat.air:
+        frames, now = frames + 1, now + 1 / 60
+        d.frame(1 / 60, now)
+        assert ms["tops"][-1] == 0 or not cat.air, "떨어지는 동안도 통째로"
+    assert frames <= (2 * dh / pet.GRAVITY) ** 0.5 * 60 + 2 and cat.ground == 0 and not cat.leap, ("떨어져 바닥에 섬", frames)
+    d.frame(1 / 60, now + 1 / 60)
+    assert ms["tops"][-1] == band_top, "내려앉으면 다시 띠만"
+    bx, by, bw, bh = bird.box()
+    ms["at"] = (bx + 3, by + 3)
+    d.handle(DRAG)
+    assert not d.drag, "메뉴로 끔"
+    d.aim()
+    d.press(True)
+    assert ms["catch"][-1] is False and not bird.held, "끄면 동물 위여도 클릭은 아래 창으로, 안 집힘"
+    d.handle(DRAG)
+    d.press(True)
+    assert bird.held and d.drag, "다시 켜면 집힘"
+    d.handle(DRAG)
+    assert not bird.held, "끄면 들던 동물을 놓음"
+    if not MAC:  # 창을 안 만들고 Surface 의 마우스 갈래만: user32 를 흉내로 바꿔 끼움
+        import surface
+        real, calls = surface.user32, []
+        surface.user32 = SimpleNamespace(GetWindowLongPtrW=lambda h, i: surface.EX_STYLE,
+                                         SetWindowLongPtrW=lambda h, i, v: calls.append(("ex", v)),
+                                         SetCapture=lambda h: calls.append("capture"),
+                                         ReleaseCapture=lambda: calls.append("release"),
+                                         DefWindowProcW=lambda *a: calls.append("default") or 0)
+        try:
+            s = SimpleNamespace(hwnd=1, on_mouse=lambda down: calls.append(down))
+            surface.Surface.catch(s, True)
+            surface.Surface.catch(s, False)
+            for m in (0x200, surface.WM_LBUTTONDOWN, surface.WM_LBUTTONUP, surface.WM_CAPTURECHANGED):
+                surface.Surface._wndproc(s, 1, m, 0, 0)
+        finally:
+            surface.user32 = real
+        assert calls == [("ex", surface.EX_STYLE & ~0x20), ("ex", surface.EX_STYLE), "default", "capture", True,
+                         "release", False, False], ("받을 땐 클릭 통과 비트만 빼고, 누르면 붙잡고, 떼면 놓음", calls)
     print("자체 점검 통과")
 
 
@@ -2179,13 +2345,14 @@ def panel(state):
         ttk.Checkbutton(animals, text=PET_NAMES[a], variable=keep[-1], style="Toolbutton",
                         command=lambda cid=cid: send(cid)).pack(side="left", padx=px(2))
 
-    for r, (key, cid, label) in enumerate((("show", SHOW, "보이기"),
+    for r, (key, cid, label) in enumerate((("drag", DRAG, "동물을 왼쪽 단추로 집어서 옮기기"),
+                                          ("show", SHOW, "보이기"),
                                           ("auto", AUTOSTART, "Windows 시작 시 실행")), start=6):
-        keep.append(tk.BooleanVar(value=state[key]))
+        keep.append(tk.BooleanVar(value=state.get(key, False)))
         ttk.Checkbutton(f, text=label, variable=keep[-1], command=lambda cid=cid: send(cid)).grid(
             row=r, column=0, columnspan=4, sticky="w", pady=px(1))
     ttk.Button(f, text="끝내기", command=lambda: (send(EXIT), root.destroy())).grid(
-        row=8, column=3, sticky="e", pady=(px(10), 0))
+        row=9, column=3, sticky="e", pady=(px(10), 0))
 
     f.columnconfigure((0, 1, 2, 3), uniform="kind")
     root.bind("<Escape>", lambda _: root.destroy())
@@ -2267,7 +2434,7 @@ def main():
         ctypes.windll.winmm.timeBeginPeriod(1)  # 기본 타이머 간격(15.6ms)이면 30fps 를 청해도 21fps 에서 멈춤
     PID_FILE.write_text(str(os.getpid()))
     try:
-        Weather(args.kind, args.amount, saved.get("pet", []), saved.get("fps", FPS)).run()
+        Weather(args.kind, args.amount, saved.get("pet", []), saved.get("fps", FPS), saved.get("drag", False)).run()
     finally:
         if not MAC:
             ctypes.windll.winmm.timeEndPeriod(1)

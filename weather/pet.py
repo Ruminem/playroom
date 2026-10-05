@@ -373,6 +373,35 @@ class Pet:
     lift = 0.0       # 헤엄치며 바닥 위로 뜬 높이 px
     breathe = False  # 이번 프레임에 숨을 내쉼 — weather 가 mouth 에서 거품을 띄움
     mouth = (0, 0)   # 마지막으로 그린 호흡기 자리 (화면 px)
+    # 마우스로 집어 옮기기 (weather 의 설정). 들린 동안은 update·swim 을 안 부르고 weather 가 x·air(어항이면 lift)를 넣음
+    held = None      # 집혀 있으면 집은 자리 (그림 왼쪽 위에서 px)
+    air = 0.0        # 놓인 뒤 바닥 위로 떠 있는 높이 px. 0 이 될 때까지 떨어짐
+    fall_v = 0.0
+    FALL = (GRAVITY, math.inf)  # 놓였을 때 떨어지는 가속 px/초², 가장 빠른 px/초
+    at = None        # 마지막으로 그린 그림 왼쪽 위 (화면 px). 아직 안 그렸으면 None
+
+    def box(self):
+        """마지막으로 그린 그림 상자 (x, y, 폭, 높이) — 집을 수 있는 자리. 아직 안 그렸으면 None."""
+        if self.at is None:
+            return None
+        return (*self.at, *(DIVE_SIZE[self.DIVER] if self.dive is not None else (self.W, self.H)))
+
+    def grab(self, now, dx, dy):
+        """마우스로 집힘: 하던 짓·뛰기·떨어지기를 멈추고 선 채로 들림."""
+        self.held, self.leap, self.air, self.fall_v = (dx, dy), None, 0.0, 0.0
+        self.hop = self.vy = self.alt = 0.0  # Cat 은 hop·vy, Bird·Rabbit 은 alt
+        self.zz, self.pounce, self.breathe = [], False, False
+        self.go("stand", now)
+        self.emote("!", now)
+
+    def fall(self, dt, now):
+        """놓인 뒤 바닥까지 떨어짐. 닿으면 서서 하던 짓으로 돌아감."""
+        g, vmax = self.FALL
+        self.fall_v = min(self.fall_v + g * dt, vmax)
+        self.air = max(0.0, self.air - self.fall_v * dt)
+        if not self.air:
+            self.fall_v = 0.0
+            self.go("stand", now)
 
     def swim(self, dt, now):
         """어항: 사람처럼 물속에서 숨을 못 쉬니 잠수 장비를 차고 바닥에서 천천히 떠올라 헤엄침. 가끔 돌아서며
@@ -425,7 +454,8 @@ class Pet:
         self.mood = (mark, now, now + dur)
 
     def draw_mood(self, px, stride, height, sprites, x, y, now):
-        """y: 동물 그림 맨 윗줄. 머리 위에서 천천히 떠오름."""
+        """y: 동물 그림 맨 윗줄. 머리 위에서 천천히 떠오름. 그리는 함수가 다 부르므로 그린 자리(at)도 여기서 남김."""
+        self.at = (x, y)
         if self.mood is None:
             return
         mark, t0, t1 = self.mood
@@ -539,6 +569,8 @@ class Cat(Pet):
             self.zz = []
 
     def pose(self, now, rainy):
+        if self.held or self.air:  # 들리거나 떨어지며 버둥거림
+            return self.PRE + ("walk1" if int(now / RUN_STEP) % 2 == 0 else "walk2")
         if self.leap:
             return self.PRE + self.LEAP_POSE[self.leap[2]]
         if self.state in ("walk", "run"):
@@ -572,6 +604,7 @@ class Bird(Pet):
     W, H = BIRD_W, BIRD_H
     LEAP, NO_LEAP = {"up": (0.3, 8), "down": (0.4, 4)}, ("fly",)  # 날갯짓하며 사뿐히. 나는 중엔 그냥 높이만 따라감
     DIVER, SWIM_V = "bird", 45
+    FALL = (600, 180)  # 놓이면 날갯짓하며 천천히 내려앉음
 
     def __init__(self, width, rng=random):
         self.rng, self.width = rng, width
@@ -647,7 +680,7 @@ class Bird(Pet):
                 self.right = not self.right
 
     def pose(self, now):
-        if self.state == "fly" or self.leap:
+        if self.state == "fly" or self.leap or self.held or self.air:
             return "bird_fly1" if int((now - self.since) / FLAP) % 2 == 0 else "bird_fly2"
         if self.state == "peck":
             return "bird_peck" if int((now - self.since) / 0.25) % 2 == 0 else "bird_stand"
@@ -680,7 +713,8 @@ class Dog(Cat):
 
     def pose(self, now, rainy):
         p = super().pose(now, rainy)
-        return "dog_wag" if self.state == "stand" and not self.leap and int((now - self.since) / 0.18) % 2 else p
+        still = self.state == "stand" and not (self.leap or self.held or self.air)
+        return "dog_wag" if still and int((now - self.since) / 0.18) % 2 else p
 
 
 class Penguin(Cat):
@@ -757,7 +791,7 @@ class Rabbit(Pet):
             self.right = self.x <= 0
 
     def pose(self, now):
-        if self.leap:
+        if self.leap or self.held or self.air:
             return "rab_jump"
         if self.state in self.JUMP:
             return "rab_jump" if self.alt > 2 else "rab_stand"
@@ -1069,6 +1103,36 @@ def check():
         row, ref = px[y * 400:(y + 1) * 400], full[y * 400:(y + 1) * 400]
         assert row[:18 * 4] == ref[(40 + 18) * 4:(40 + 36) * 4], y   # 왼쪽 끝: 그림의 오른쪽 부분
         assert row[82 * 4:] == ref[40 * 4:(40 + 18) * 4], y           # 오른쪽 끝: 그림의 왼쪽 부분
+
+    # 마우스로 집기: 그린 자리가 집는 상자, 집히면 하던 짓을 멈추고 버둥, 놓이면 떨어져 섬. 새는 천천히 내려앉음
+    px, landed = bytearray(500 * 4 * 400), {}
+    for cls in (Cat, Dog, Rabbit, Penguin, Bird):
+        a = cls(500, random.Random(8))
+        assert a.box() is None, "안 그렸으면 못 집음"
+        a.startle(1.0)  # 뛰거나 날아오르는 중에 집어도
+        a.update(0.1, 1.1, False)
+        a.draw(px, 2000, 400, sp, 0, 1.1, False)
+        x, y, w, h = a.box()
+        assert (x, w, h) == (int(a.x), a.W, a.H) and y == 400 - a.H - int(getattr(a, "hop", 0) + getattr(a, "alt", 0)), cls.__name__
+        a.grab(1.1, 5, 6)
+        assert a.held == (5, 6) and a.state == "stand" and a.mood[0] == "!" and not (a.hop or a.alt), cls.__name__
+        pose = (lambda t: a.pose(t, False)) if isinstance(a, Cat) else a.pose
+        poses = {pose(1.1 + i / 30) for i in range(30)}
+        assert all((p, a.right) in sp for p in poses) and not poses & {"dog_wag", "dog_stand", "stand", "peng_stand"}, \
+            ("들린 동안 버둥", cls.__name__, poses)
+        a.held, a.air = None, 300.0
+        t, last = 0.0, a.air
+        while a.air:
+            t += 1 / 60
+            a.fall(1 / 60, 100 + t)
+            assert a.air <= last, ("떨어지기만 함", cls.__name__)
+            last = a.air
+        assert a.state == "stand" and a.until > 100 and not a.fall_v, ("내려앉은 때부터 잠깐 섬", cls.__name__)
+        landed[cls] = t
+        a.dive = 0.0
+        assert a.box()[2:] == DIVE_SIZE[a.DIVER], "어항에선 잠수 그림 상자"
+    assert all(t <= math.sqrt(2 * 300 / GRAVITY) + 2 / 60 for c, t in landed.items() if c is not Bird), landed
+    assert landed[Bird] > 1.0, ("새는 날갯짓하며 천천히", landed[Bird])
     print("자체 점검 통과")
 
 
