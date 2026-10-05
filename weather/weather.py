@@ -834,11 +834,17 @@ class Weather:
 
     def set_base(self, base):
         """바닥 모양을 바꿈. 틀이 사라진 열의 눈은 그대로 새 바닥으로 떨어지고(HUD 를 끄거나 앱을 닫으면 위에
-        쌓였던 눈이 내려앉아 옆과 섞임), 틀이 새로 솟은 열은 틀이 밀고 올라온 만큼 눈이 묻힘."""
+        쌓였던 눈이 내려앉아 옆과 섞임), 틀이 새로 솟은 열은 틀이 밀고 올라온 만큼 눈이 묻힘. 발밑에 틀이 단보다
+        높이 솟은 동물도 그 뒤에 묻혔다가 빼꼼 나옴(pet.follow) — 전체 화면을 풀 때도, 단추 묶음이 넓어질 때도."""
         h = self.pile.h
         for x, (a, b) in enumerate(zip(self.base, base)):
             if b > a:
                 h[x] = max(0.0, h[x] - (b - a))
+        for p in self.pets.values():
+            a, b = p.feet()
+            if p.ground is not None and max(base[a:b], default=0) > p.ground + pet.LEDGE and \
+                    any(n > o for o, n in zip(self.base[a:b], base[a:b])):
+                p.bury()
         self.base = self.pile.base = base
 
     def sink(self, now):
@@ -1579,7 +1585,7 @@ class Weather:
         low = [(f[0], self.h - f[1] - base[min(int(f[0]), w - 1)]) for f in self.flies] if self.kind == "fireflies" else []
         for p in self.pets.values():
             p.kind, p.snowy = self.kind, self.kind in ("snow", "hail")
-            if p.held or p.air:  # 들려 있거나 떨어지는 중엔 날씨에 반응 안 함
+            if p.held or p.air or p.under:  # 들렸거나 떨어지는 중, 틀 뒤에 묻혀 빼꼼하는 동안은 날씨에 반응 안 함
                 continue
             if bolt:
                 p.startle(now)
@@ -1635,7 +1641,10 @@ class Weather:
                 p.swim(dt, now)
             else:
                 p.dive = None  # 어항을 벗어나면 바닥에서 하던 짓을 이어 감
-                p.fall(dt, now) if p.air else p.update(dt, now, rainy)
+                if p.air:
+                    p.fall(dt, now)
+                elif not p.under:  # 틀 뒤에 묻혀 빼꼼하는 동안은 제자리
+                    p.update(dt, now, rainy)
             a, b = p.feet()
             want = max(v + f for v, f in zip(self.pile.h[a:b], self.base[a:b]))
             if p.held or p.air:  # 들리거나 떨어지는 동안은 틀 단을 안 뜀 — 발밑을 바로 바닥으로
@@ -1654,7 +1663,8 @@ class Weather:
                 if p.breathe:
                     self.exhale(*p.mouth)
             else:
-                p.draw(self.surface.pixels, self.stride, self.h, self.pet_sprites, g + p.air, now, rainy)
+                p.draw(self.surface.pixels, self.stride, self.h, self.pet_sprites, g + p.air, now, rainy,
+                       self.base if p.under else None)
 
     def frame(self, dt, now):
         kind = self.kind
@@ -1828,7 +1838,7 @@ def check():
     Weather.rain(wf, 1 / 60, 0.0)
     assert [c[2] for c in wf.crowns] == [152] and wf.drops[1][1] > 0, "빗방울도 틀 위에선 틀 윗변에서 튀고, 틈에선 계속"
     zf = big(kind="none", amount=0, strip_h=PILE_STRIP + 48, snow_pile=pile_column_parts(PILE_STRIP + 48),
-             base=[0] * 100 + [48] * 100)
+             base=[0] * 100 + [48] * 100, pets={})
     Weather.reset(zf)
     assert zf.pile.base is zf.base, "종류를 바꿔 더미를 새로 깔아도 틀 모양을 앎"
     zf.pile.h = [5.0] * 90 + [50.0] * 10 + [5.0] * 100  # 틈 90..99 엔 틀 높이를 넘는 언덕
@@ -1881,6 +1891,31 @@ def check():
     Weather.walk_pet(gf, 1 / 60, 1 / 60)
     Weather.walk_pet(gf, 1 / 60, 2 / 60)
     assert walker.leap and walker.ground > 48, "발밑 틀이 사라지면 뛰어내림(살짝 뜨며 시작)"
+    # 틀이 다시 솟으면(전체 화면을 풂) 그 뒤에 묻혔다 머리만 빼꼼 내밀고 뛰어나옴 — 틀 아래로는 안 그림
+    for i in range(60):
+        Weather.walk_pet(gf, 1 / 60, (3 + i) / 60)
+    walker.x = 120
+    Weather.set_base(gf, [0] * 200)
+    assert walker.ground == 0 and not walker.under, "발밑 바닥이 그대로면 안 묻힘"
+    Weather.set_base(gf, [0] * 100 + [48] * 100)
+    assert walker.under, "발밑에 틀이 솟으면 묻힘"
+    tops = set()
+    for i in range(60 * 3):
+        gf.surface.pixels[:] = bytes(len(gf.surface.pixels))
+        Weather.walk_pet(gf, 1 / 60, 2 + i / 60)
+        ink = gf.surface.pixels
+        if any(ink):
+            tops.add((len(ink) - len(ink.lstrip(b"\0"))) // 800)
+            assert walker.x == 120 and not any(ink[(200 - 48) * 800:]), "묻힌 동안 제자리, 틀 아래는 안 그림"
+        if not walker.under:
+            break
+    assert 200 - 48 - walker.PEEK * pet.SCALE in tops and walker.ground == 48, ("빼꼼 내밀고 틀 위로 나옴", sorted(tops))
+    rab = pet.Rabbit(200, random.Random(1))
+    rab.x = 10
+    rab.follow(0.0, 1 / 60, 0.0)
+    gf.pets, gf.base = {"rabbit": rab}, [0] * 200
+    Weather.set_base(gf, [0] * 100 + [48] * 100)
+    assert not rab.under, "틈에 선 동물은 안 묻힘"
     assert floor_heights(5, 100, 0, 48, None) == [48] * 5, "틀을 모르면 작업 표시줄 윗변 전체가 바닥"
     assert floor_heights(10, 100, 10, 48, [(12, 52, 15), (16, 57, 30), (11, 20, 13), (0, 100, 20)]) == \
         [0, 0, 48, 48, 48, 0, 43, 43, 43, 43], "틀마다 그 윗변 높이, 띠 위의 창·높이 0 인 것은 안 셈"
