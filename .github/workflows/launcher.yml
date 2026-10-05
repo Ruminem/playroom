@@ -1,0 +1,35 @@
+# launcher 를 점검하고 실제로 띄워 봄. --check 가 도구 넷을 import 해 표와 맞춰 보므로 그 폴더들도 본다.
+# private 저장소에서 윈도우 러너는 1분이 무료 한도 2분으로 잡혀서, 그 파일들이 바뀔 때만 돈다
+name: launcher
+on:
+  push:
+    paths: [launcher/**, usage-hud/*.py, weather/*.py, sysmon/**, layers/**, shared/**,
+            .github/workflows/launcher.yml]
+  pull_request:
+    paths: [launcher/**, usage-hud/*.py, weather/*.py, sysmon/**, layers/**, shared/**,
+            .github/workflows/launcher.yml]
+  workflow_dispatch:
+env:
+  PYTHONUTF8: '1'
+jobs:
+  launcher:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: python launcher/launcher.py --check
+      # 런처는 끄는 옵션이 없는 보통 창이라 8초 살아 있는 것만 보고 프로세스를 끝냄
+      - name: launcher 띄워 보기
+        run: |
+          $p = Start-Process python -ArgumentList 'launcher/launcher.py' -PassThru -RedirectStandardError run.err
+          $null = $p.Handle  # 먼저 잡아 두지 않으면 끝난 뒤 ExitCode 가 빈다
+          Start-Sleep 8
+          if ($p.HasExited) { Get-Content run.err; throw "launcher 가 뜨다 죽음 (종료 코드 $($p.ExitCode))" }
+          Stop-Process -Id $p.Id
+          Get-Content run.err
