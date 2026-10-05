@@ -2761,17 +2761,21 @@ def check_sound():
     assert not Weather.poll(sw) and played == [VOLUME, 20, 10, None], ("켜기·막대·메뉴 칸·끄기가 바로 들림", played)
     out = [float(i) for i in range(30)]
     loop = rain_sound.seam(out, 20, 10)
-    assert len(loop) == 20 and loop[0] == out[20] and loop[5] == 15.0 and loop[10:] == out[10:20], \
-        ("되풀이하면 [19] 다음이 원래 이웃 [20]", loop)
-    a = rain_sound.synth(2, seed=3)
-    assert a == rain_sound.synth(2, seed=3) and len(a) == 2 * rain_sound.RATE and max(map(abs, a)) == 1.0
-    assert a != rain_sound.synth(2, seed=4)
+    assert len(loop) == 20 and loop[0] == out[20] and abs(loop[5] - (5 + 25) * 0.5 ** 0.5) < 1e-9 \
+        and loop[10:] == out[10:20], ("되풀이하면 [19] 다음이 원래 이웃 [20], 섞을 때 √ 무게", loop)
+    a = rain_sound.synth(1, seed=3)
+    assert a == rain_sound.synth(1, seed=3) and [len(ch) for ch in a] == [rain_sound.RATE] * 2
+    corr = sum(x * y for x, y in zip(*a)) / math.sqrt(sum(x * x for x in a[0]) * sum(y * y for y in a[1]))
+    assert max(max(map(abs, ch)) for ch in a) == 1.0 and corr < 0.9, ("최고점 1, 좌우 바닥이 따로(0.82, 같으면 0.98)", corr)
+    assert a != rain_sound.synth(1, seed=4)
 
     def peak(volume):
         with wave.open(io.BytesIO(rain_sound.wav(a, volume))) as wf:
             assert (wf.getnchannels(), wf.getsampwidth(), wf.getframerate(), wf.getnframes()) == \
-                (1, 2, rain_sound.RATE, len(a))
-            return max(map(abs, array("h", wf.readframes(len(a)))))
+                (2, 2, rain_sound.RATE, len(a[0]))
+            pcm = array("h", wf.readframes(len(a[0])))
+            assert pcm[1] == int(a[1][0] * rain_sound.PEAK * 32767 * (volume / 100) ** 2), "왼·오 번갈아"
+            return max(map(abs, pcm))
     loud = peak(100)
     assert peak(0) == 0 and loud == int(rain_sound.PEAK * 32767) and abs(peak(50) - loud / 4) <= 1, \
         "100% 는 끝 바로 아래, 50% 는 4분의 1(−12dB)"
