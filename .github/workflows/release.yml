@@ -62,47 +62,68 @@ jobs:
           if (-not $p.WaitForExit(60000)) { Stop-Process -Id $p.Id -Force; throw "60초 안에 안 끝남 — 오류 대화상자에 멈췄을 수 있음" }
           Get-Content check.out, check.err
           if ($p.ExitCode -ne 0 -or -not (Select-String -Quiet '자체 점검 통과' check.out)) { throw "stdout 이 파이프로 안 나감 (종료 코드 $($p.ExitCode))" }
-      # 트레이까지 뜨는지 콘솔판으로 먼저 봄 — 창 없는 판이 대화상자에 멈추면 오류를 읽을 길이 없음
-      - name: 콘솔판 hud.exe 8초 띄우기
-        run: |
-          python -m PyInstaller --noconfirm --onefile --console --log-level WARN --name hud --python-option 'X utf8' `
-            --paths "$PWD/shared" --add-data "$PWD/usage-hud/page.html;." `
-            --distpath build/console --workpath build/console-work --specpath build/console-work usage-hud/hud.py
-          if ($LASTEXITCODE) { throw "콘솔판 굽기 실패" }
-          $p = Start-Process build/console/hud.exe -PassThru -RedirectStandardOutput hud.out -RedirectStandardError hud.err
-          $null = $p.Handle
-          Start-Sleep 8
-          $alive = -not $p.HasExited
-          if ($alive) { build/console/hud.exe --stop; $null = $p.WaitForExit(10000) }
-          if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
-          Get-Content hud.out, hud.err
-          if (-not $alive) { throw "콘솔판 hud.exe 가 뜨다 죽음 (종료 코드 $($p.ExitCode))" }
-      # 창 없는 exe 는 죽으면 오류 대화상자를 띄운 채 살아 있으므로, 살아 있는 것만 보지 않고 트레이 창이 떴는지 봄
+      # 창 없는 exe 는 죽으면 오류 대화상자를 띄운 채 살아 있으므로, 살아 있는 것만 보지 않고 트레이 창이 떴는지 봄.
+      # onefile 은 풀어 놓는 데만 몇 초 걸리므로 정해진 시간을 자지 않고 30초까지 1초마다 찾음
       - name: exe 띄워 보기
         run: |
-          Add-Type -Namespace U -Name W -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string n);'
+          Add-Type -Namespace U -Name W -MemberDefinition @'
+          [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string n);
+          public delegate bool EnumProc(IntPtr h, IntPtr l);
+          [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc f, IntPtr l);
+          [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+          [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+          [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
+          public static System.Collections.Generic.List<string> Of(uint[] pids) {
+            var r = new System.Collections.Generic.List<string>();
+            EnumWindows((h, l) => { uint p; GetWindowThreadProcessId(h, out p);
+              if (System.Array.IndexOf(pids, p) >= 0) { var c = new System.Text.StringBuilder(256); var t = new System.Text.StringBuilder(256);
+                GetClassName(h, c, 256); GetWindowText(h, t, 256); r.Add(p + " " + c + " '" + t + "'"); }
+              return true; }, IntPtr.Zero);
+            return r;
+          }
+          '@
+          function Wait-Window($class, $title) {
+            $t = [Diagnostics.Stopwatch]::StartNew()
+            while ($t.Elapsed.TotalSeconds -lt 30) {
+              if ([U.W]::FindWindow($class, $title) -ne [IntPtr]::Zero) { return $t.Elapsed.TotalSeconds }
+              Start-Sleep 1
+            }
+            return $null
+          }
+          function Show-Windows($proc) {  # 대화상자에 멈췄으면 그 창이 여기 보임
+            $ids = [uint32[]]@(Get-Process $proc -ErrorAction SilentlyContinue | ForEach-Object Id)
+            "$proc 프로세스 $($ids -join ', ') 의 창:"; [U.W]::Of($ids)
+            Get-ChildItem $env:TEMP -Filter 'playroom-*.log' | ForEach-Object { "--- $($_.Name)"; Get-Content $_.FullName -Tail 40 }
+          }
           $tray = [ordered]@{ hud = 'PlayroomUsageHudTray'; weather = 'PlayroomWeatherTray'; sysmon = 'PlayroomSysmonTray'; layers = 'PlayroomLayersTray' }
           foreach ($name in $tray.Keys) {
             $p = Start-Process "dist/$name.exe" -PassThru
             $null = $p.Handle  # 먼저 잡아 두지 않으면 끝난 뒤 ExitCode 가 빈다
-            Start-Sleep 8
+            $sec = Wait-Window $tray[$name] $null
             if ($p.HasExited) { throw "$name.exe 가 뜨다 죽음 (종료 코드 $($p.ExitCode))" }
-            if ([U.W]::FindWindow($tray[$name], $null) -eq [IntPtr]::Zero) {
-              Get-ChildItem $env:TEMP -Filter 'playroom-*.log' | ForEach-Object { "--- $($_.Name)"; Get-Content $_.FullName -Tail 40 }
-              throw "$name.exe 의 트레이 창이 없음 — 오류 대화상자에 멈췄을 수 있음"
+            if ($null -eq $sec) {
+              Show-Windows $name
+              # 기준선: 같은 도구를 굳히지 않은 파이썬으로 띄워도 트레이가 없는지
+              $src = @{ hud = 'usage-hud/hud.py'; weather = 'weather/weather.py'; sysmon = 'sysmon/sysmon.py'; layers = 'layers/layers.py' }[$name]
+              $q = Start-Process python -ArgumentList $src -PassThru
+              $base = Wait-Window $tray[$name] $null
+              "파이썬으로 띄운 $src 의 트레이: $(if ($null -eq $base) { '30초 안에 없음' } else { '{0:N1}초' -f $base })"
+              if (-not $q.HasExited) { Stop-Process -Id $q.Id -Force }
+              throw "$name.exe 의 트레이 창이 30초 안에 안 뜸"
             }
+            "$name.exe 트레이 {0:N1}초" -f $sec
             $s = Start-Process "dist/$name.exe" -ArgumentList '--stop' -PassThru
             if (-not $s.WaitForExit(15000)) { throw "$name.exe --stop 이 안 끝남" }
             if (-not $p.WaitForExit(10000)) { throw "$name.exe 가 --stop 으로 안 꺼짐" }
-            "$name.exe 뜨고 꺼짐"
+            "$name.exe 꺼짐"
           }
           $p = Start-Process dist/launcher.exe -PassThru
           $null = $p.Handle
-          Start-Sleep 8
+          $sec = Wait-Window $null 'playroom'
           if ($p.HasExited) { throw "launcher.exe 가 뜨다 죽음 (종료 코드 $($p.ExitCode))" }
-          if ([U.W]::FindWindow($null, 'playroom') -eq [IntPtr]::Zero) { throw "launcher.exe 창이 없음 — 오류 대화상자에 멈췄을 수 있음" }
-          Stop-Process -Id $p.Id
-          "launcher.exe 뜸"
+          if ($null -eq $sec) { Show-Windows launcher; throw "launcher.exe 창이 30초 안에 안 뜸" }
+          "launcher.exe 창 {0:N1}초" -f $sec
+          Get-Process launcher | Stop-Process
       - name: 릴리스 만들기
         env:
           GH_TOKEN: ${{ github.token }}
