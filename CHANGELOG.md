@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.1 — 2026-10-05
+
+- weather: a new kind, Aquarium — the screen gets a light water tint with light rays, bubbles, tropical fish, and sand and swaying seaweed along the taskbar and the bottom
+- weather: in the aquarium the pets put on goggles, an air tank and (all but the bird) flippers, swim up and down, and breathe out bubbles
+- The `.exe` files are now also in Google Drive (`Apps/playroom/`), replaced in place on every release
+
+**한국어**
+
+- weather: 새 종류 어항 — 화면을 옅은 물빛으로 덮고 빛줄기·거품·열대어, 작업 표시줄과 화면 바닥에 모래와 흔들리는 해초를 그림
+- weather: 어항에서는 동물들이 물안경·공기통·오리발(새 빼고)을 차고 위아래로 헤엄치며 숨 거품을 내쉼
+- `.exe` 가 이제 구글 드라이브(`Apps/playroom/`)에도 있고, 릴리스마다 같은 파일에 덮어씀
+
 ## 0.1.0 — 2026-10-05
 
 - First release: the Windows tools as standalone `.exe` files, so they run without Python installed — `launcher.exe`, `hud.exe` (usage-hud), `weather.exe`, `sysmon.exe` and `layers.exe`
