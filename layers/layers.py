@@ -462,9 +462,7 @@ def main():
     if args.stop:
         print("치움" if overlay.stop(PID_FILE, overlay.LAYERS_TRAY) else "떠 있는 것이 없음")
         return
-    if overlay.running_pid(PID_FILE) is not None:
-        if args.toggle:
-            overlay.stop(PID_FILE, overlay.LAYERS_TRAY)
+    if overlay.already_running(PID_FILE, overlay.LAYERS_TRAY, __file__, args.toggle):
         return
     if args.toggle and Path(sys.executable).name.lower() == "python.exe":
         pythonw = Path(sys.executable).with_name("pythonw.exe")  # 콘솔 창이 남지 않게
@@ -475,6 +473,7 @@ def main():
         ctypes.windll.shcore.SetProcessDpiAwareness(2)
     except (AttributeError, OSError):
         pass
+    startup.follow(RUN_NAME, __file__)
     PID_FILE.write_text(str(os.getpid()))
     try:
         Layers().run()

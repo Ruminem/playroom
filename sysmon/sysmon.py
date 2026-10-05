@@ -579,9 +579,11 @@ def main():
     if args.stop:
         print("치움" if overlay.stop(PID_FILE, TRAY_CLASS) else "떠 있는 것이 없음")
         return
-    if overlay.running_pid(PID_FILE) is not None:
+    if MAC and overlay.running_pid(PID_FILE) is not None:  # 맥은 소스로만 돌아 갈아 끼울 exe 가 없음
         if args.toggle:
             overlay.stop(PID_FILE, TRAY_CLASS)
+        return
+    if not MAC and overlay.already_running(PID_FILE, TRAY_CLASS, __file__, args.toggle):
         return
     if args.toggle and Path(sys.executable).name.lower() == "python.exe":
         # sysmon.bat 에서 콘솔 창이 남지 않게 pythonw 로 다시 띄움
@@ -599,6 +601,7 @@ def main():
             ctypes.windll.shcore.SetProcessDpiAwareness(2)  # 배율 높은 화면에서 흐려지지 않게
         except (AttributeError, OSError):
             pass
+        startup.follow(RUN_NAME, __file__)
     PID_FILE.write_text(str(os.getpid()))
     try:
         (MacMonitor if MAC else Monitor)().run()
