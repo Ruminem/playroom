@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.2 — 2026-10-05
+
+- The files in Google Drive now carry the version in their names (`hud-0.1.2.exe`); the launcher and start-with-Windows find a tool as `hud.exe` or, failing that, the highest `hud-<version>.exe` next to them
+- Start with Windows points at the exact file, so after swapping in files of a new version it shows as off until you switch it on again
+
+**한국어**
+
+- 구글 드라이브의 파일 이름에 버전이 붙음(`hud-0.1.2.exe`). 런처와 Windows 시작 시 실행은 옆의 `hud.exe` 를, 없으면 버전이 가장 높은 `hud-<버전>.exe` 를 찾음
+- Windows 시작 시 실행은 그 파일 경로를 그대로 가리키므로, 새 버전 파일로 바꿔 넣으면 다시 켤 때까지 꺼진 것으로 보임
+
 ## 0.1.1 — 2026-10-05
 
 - weather: a new kind, Aquarium — the screen gets a light water tint with light rays, bubbles, tropical fish, and sand and swaying seaweed along the taskbar and the bottom
