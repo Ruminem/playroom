@@ -204,6 +204,8 @@ jobs:
         run: |
           $r = 'rclone-v1.75.1-windows-amd64'
           Invoke-WebRequest "https://downloads.rclone.org/v1.75.1/$r.zip" -OutFile "$env:RUNNER_TEMP\rclone.zip"
+          # rclone 사이트와 GitHub 릴리스의 SHA256SUMS 값. 바꿔치기된 zip 이 드라이브 토큰을 들고 돌지 않게 함
+          if ((Get-FileHash "$env:RUNNER_TEMP\rclone.zip").Hash -ne '200eb602c126d82aa38b51e0f6b9ae837473ff99b51278d3f6f837574c494d6e') { throw 'rclone zip 해시가 다름' }
           Expand-Archive "$env:RUNNER_TEMP\rclone.zip" $env:RUNNER_TEMP
           $env:Path = "$env:RUNNER_TEMP\$r;$env:Path"
           $dir = 'gdrive:Apps/playroom'
