@@ -1,3 +1,7 @@
+- 여기까지 됨 (2026-10-05 — v0.2.2, 자체 점검 임시 폴더): layers 를 새 코드로 다시 띄우고 작업 표시줄을 일부러 맨 위로 올리니 0.1초 안에 weather 밑으로 내려감. 사용자가 작업 표시줄 띠 안의 동물 집기와 F11 빼꼼·무너짐을 확인함. weather·launcher·layers 의 --check 가 tempfile.mkdtemp 폴더를 안 지워 %TEMP% 에 229개가 쌓였음 — finally 에서 rmtree 하게 고쳤고 셋을 돌린 뒤 폴더 수가 233 → 233. 쌓인 것 중 내용이 그 점검들 모양인 221개만 지움. 출처를 모르는 빈 폴더 7 · weather.log 2 · shared,weather 3 은 남김. 0.2.2 로 릴리스
+- 다음 할 것: 다른 PC 에서 드라이브의 0.2.x 를 옛 것이 떠 있는 채로 띄워 갈아 끼워지는지 보기 (직접)
+- 막힌 것: 없음
+
 - 여기까지 됨 (2026-10-05 — 작업 표시줄 안 동물이 안 집힘 → layers 순서 맞추기가 죽어 있었음): 사용자가 처음엔 펭귄·토끼만 안 된다고 했다가 "작업 표시줄 띠 안의 동물은 종류 상관없이" 로 좁힘. 판정 코드는 다섯 동물·평소·어항 다 맞았음(scratchpad repro_grab). 창 순서를 재 보니 Shell_TrayWnd(16번째) 가 weather(27번째) 위 — 작업 표시줄이 투명(Windhawk)이라 동물은 보이는데 클릭은 작업 표시줄이 가져감. layers 규칙대로면 작업 표시줄은 맨 아래이고 layers 가 하려는 이동도 뽑혔는데, 14:38 부터 도는 layers 가 몇 분째 안 고침. 같은 이동을 한 번 손으로 하니 3초 그대로 유지 → 되돌리는 쪽은 없고 enforce 루프가 죽은 것. enforce 는 끝에서 다음 차례를 거는데 한 번 터지면 끊기고 pythonw 라 안 보임. 확실한 구멍은 plan_moves — windows() 와 all_windows() 를 따로 읽어 그 사이 닫힌 창이면 z.index 가 ValueError. 실제로 무엇이 터졌는지는 로그가 없어 모름. enforce 를 restack 으로 빼 try 로 감싸 늘 다음 차례를 걸고 마지막 오류를 %LOCALAPPDATA%\playroom\layers-error.txt 에 남김, plan_moves 는 사라진 창을 건너뜀. 변이 3/3. v0.2.1 릴리스 성공(exe 다섯, 갈아 끼우기 단계 통과)
 - 다음 할 것: layers 다시 띄우기 (직접 — 도는 것은 옛 코드). layers-error.txt 가 생기면 무엇이 터졌는지 보고 그 자리를 고치기
 - 막힌 것: 없음

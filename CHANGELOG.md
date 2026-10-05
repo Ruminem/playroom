@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.2 — 2026-10-05
+
+- layers: if putting the windows in order failed once (a window closing at that very moment), it stopped ordering them for good until restarted — the taskbar could then stay above weather, and with a see-through taskbar the animals standing in it could not be grabbed. It now tries again next time and keeps the last error in `%LOCALAPPDATA%\playroom\layers-error.txt`
+
+**한국어**
+
+- layers: 창 순서 맞추기가 한 번 실패하면(그 순간 창이 닫히는 등) 다시 켤 때까지 영영 순서를 안 맞췄음 — 그러면 작업 표시줄이 weather 위에 남아, 작업 표시줄이 투명할 때 그 안에 선 동물이 안 집혔음. 이제 다음 차례에 다시 하고 마지막 오류를 `%LOCALAPPDATA%\playroom\layers-error.txt` 에 남김
+
 ## 0.2.1 — 2026-10-05
 
 - weather: the sliders in the settings panel now apply while you drag them instead of only when you let go, and moving one no longer starts the weather over — snow already on the ground stays and fish keep swimming where they are

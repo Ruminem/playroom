@@ -18,6 +18,7 @@ import ctypes
 import json
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -466,6 +467,7 @@ def check():
         Layers.enforce(me)
         assert later == [ENFORCE_MS] and "ZeroDivisionError" in ERROR_LOG.read_text(encoding="utf-8")
     finally:
+        shutil.rmtree(ERROR_LOG.parent, ignore_errors=True)
         ERROR_LOG = real
     w = {"exe": "pythonw.exe", "cls": "TkTopLevel", "title": "usage-hud"}
     assert matches(DEFAULT_RULES[0], w) and not matches(DEFAULT_RULES[1], w)

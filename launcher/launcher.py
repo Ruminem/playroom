@@ -8,6 +8,7 @@ import ctypes
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -345,7 +346,10 @@ def check():
         assert startup.beside("x/none.py", rel).name == "none.exe", "없으면 버전 없는 이름 (띄우다 실패가 보임)"
     finally:
         overlay.LAUNCHER_FILE = real
-    check_takeover(tmp)
+    try:
+        check_takeover(tmp)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     print("자체 점검 통과")
 
 

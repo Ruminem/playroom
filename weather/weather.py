@@ -22,6 +22,7 @@ import math
 import os
 import queue
 import random
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -2365,6 +2366,7 @@ def check():
             SETTINGS.write_text(json.dumps({"drag": saved}), encoding="utf-8")
             assert load_settings().get("drag") == want, (saved, "집기는 참·거짓만")
     finally:
+        shutil.rmtree(SETTINGS.parent, ignore_errors=True)
         SETTINGS = real
     from types import SimpleNamespace
     z = SimpleNamespace(pets={}, w=300, save=lambda: None)
