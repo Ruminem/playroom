@@ -48,11 +48,15 @@ class Tool:
     def __init__(self, name, label, script, tray, run, pick_top):
         self.name, self.label, self.tray, self.run, self.pick_top = name, label, tray, run, pick_top
         self.script = ROOT / script
-        self.exe = Path(sys.executable).with_name(self.script.stem + ".exe")  # 릴리스 exe 로 돌 때 옆에 있는 도구
         self.pid = Path(tempfile.gettempdir()) / f"playroom-{name}.pid"
         self.settings = DATA / f"{name}.json"
         self.link = MENU / f"{name}.lnk"
         self.busy = False
+
+    @property
+    def exe(self):
+        """릴리스 exe 로 돌 때 옆에 있는 도구. 띄울 때마다 찾으므로 켜 둔 사이 새 버전으로 바꿔 넣어도 그쪽을 띄움."""
+        return startup.beside(self.script)
 
 
 TOOLS = [Tool("usage-hud", "사용량 HUD", "usage-hud/hud.py", "PlayroomUsageHudTray", "PlayroomUsageHud", True),
@@ -314,6 +318,16 @@ def check():
         finally:
             del sys.frozen
         assert argv(hud)[0][1:] == [str(hud.script)], "스크립트로 돌면 pythonw <스크립트>"
+
+        # 드라이브에서 받으면 hud-0.1.2.exe 처럼 버전이 붙음
+        rel = tmp / "release"
+        rel.mkdir()
+        for n in ("hud-0.1.9.exe", "hud-0.1.10.exe", "hud-x.exe", "hudson-9.0.0.exe"):
+            (rel / n).touch()
+        assert startup.beside(hud.script, rel).name == "hud-0.1.10.exe", "버전이 붙었으면 가장 높은 것 (글자 순이 아니라 숫자 순)"
+        (rel / "hud.exe").touch()
+        assert startup.beside(hud.script, rel).name == "hud.exe", "버전 없는 이름이 있으면 그쪽"
+        assert startup.beside("x/none.py", rel).name == "none.exe", "없으면 버전 없는 이름 (띄우다 실패가 보임)"
     finally:
         overlay.LAUNCHER_FILE = real
     print("자체 점검 통과")

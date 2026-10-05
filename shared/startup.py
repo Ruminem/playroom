@@ -14,12 +14,30 @@ RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 APPROVED_KEY = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
 
 
+def beside(script, here=None):
+    """릴리스 exe 로 돌 때 스크립트 이름을 딴 옆의 exe (hud.py → hud.exe). 드라이브에서 받으면 hud-0.1.2.exe 처럼
+    버전이 붙어 있으므로, hud.exe 가 없으면 hud-<버전>.exe 중 버전이 가장 높은 것."""
+    here = Path(here or Path(sys.executable).parent)
+    stem = Path(script).stem
+    exact = here / f"{stem}.exe"
+    if exact.exists():
+        return exact
+
+    def version(p):
+        try:
+            return tuple(int(x) for x in p.stem[len(stem) + 1:].split("."))
+        except ValueError:
+            return None
+    found = [(v, p) for p in here.glob(f"{stem}-*.exe") if (v := version(p))]
+    return max(found)[1] if found else exact
+
+
 def command(script):
     """시작할 때 부를 명령. 콘솔 창이 안 뜨게 pythonw, 나머지는 각자 저장된 설정을 따름.
-    릴리스 exe 로 돌면 스크립트 이름을 딴 옆의 exe (hud.py → hud.exe) — 런처가 남의 것을 켜도 맞게."""
+    릴리스 exe 로 돌면 옆의 도구 exe(beside) — 런처가 남의 것을 켜도 맞게."""
     exe = Path(sys.executable)
     if getattr(sys, "frozen", False):
-        return '"%s"' % exe.with_name(Path(script).stem + ".exe")
+        return '"%s"' % beside(script)
     w = exe.with_name("pythonw.exe")
     return '"%s" "%s"' % (w if w.exists() else exe, Path(script).resolve())
 
