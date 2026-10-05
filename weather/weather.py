@@ -135,11 +135,11 @@ SAND_H = (3, 7)    # 모래 두께 px
 SAND_COLORS = ((238, 222, 176), (224, 204, 150), (210, 188, 134), (232, 214, 164), (196, 172, 120))
 WEED_EVERY, WEED_H, WEED_SWAY = 160, (24, 64), 7  # 해초 사이 평균 px · 키 px · 꼭대기가 흔들리는 px
 WEED_COLORS = ((34, 112, 64), (52, 146, 78), (92, 190, 98))  # 아래 → 위
-FISH_N, FISH_SPEED, FISH_TURN = 6, (22, 58), 0.04  # 물고기 수 · px/초 · 1초에 돌아설 확률
+FISH_N, FISH_SPEED, FISH_TURN = 8, (22, 58), 0.04  # 물고기 수 · px/초 · 1초에 돌아설 확률
 FISH_COLORS = {"k": (38, 43, 68), "e": (24, 20, 37), "w": (255, 255, 255), "o": (247, 118, 34),
                "b": (52, 110, 230), "n": (24, 40, 110), "y": (250, 214, 60),
                "c": (64, 224, 255), "s": (206, 214, 230), "r": (232, 58, 70)}
-# 물고기: (오른쪽을 보는 그림, 꼬리를 친 그림의 각 행 앞부분). 흰동가리 · 블루탱 · 네온테트라
+# 물고기: (오른쪽을 보는 그림, 꼬리를 친 그림의 각 행 앞부분). 흰동가리 · 블루탱 · 네온테트라 · 복어 · 엔젤피시
 FISH_ART = ((("......kkkk...",
               "k..kkowwokk..",
               "kk.koowwowwek",
@@ -158,7 +158,146 @@ FISH_ART = ((("......kkkk...",
               "k.kcccccek",
               "kkksssssk.",
               "k.krrrrrk.",
-              "...kkkkk.."), ("", "..", "kk", "..", "")))
+              "...kkkkk.."), ("", "..", "kk", "..", "")),
+            (("....k.k.k...",
+              "...kkkkkkkk.",
+              "k.kyyyyyywwk",
+              "kkyynyyyywek",
+              "kyyyyyynyyyk",
+              "kkynyyyyyyok",
+              "k.kyyynyyyk.",
+              "...kkkkkkkk.",
+              "....k.k.k..."), ("", "", "..", "k.", "kk", "k.", "..", "", "")),
+            (("....k......",
+              "...kyk.....",
+              "...kkk.....",
+              "..kkssk....",
+              ".kskssksk..",
+              "kkskssksswk",
+              "kksksskssek",
+              "kkskssksssk",
+              ".kskssksk..",
+              "..kkssk....",
+              "...kkk.....",
+              "...kyk.....",
+              "....k......"), ("", "", "", "", "k", ".", "", ".", "k", "", "", "", "")))
+# 바닥 장식: 해초 사이 틈마다 DECOR_SHARE 확률로 하나. 산호 둘 · 조개 · 불가사리 · 돌
+DECOR_COLORS = {"k": (38, 43, 68), "p": (255, 122, 160), "q": (196, 64, 112), "v": (170, 122, 222), "u": (112, 72, 172),
+                "l": (252, 222, 198), "d": (226, 160, 128), "o": (255, 150, 64), "g": (140, 150, 170), "s": (186, 196, 212),
+                "y": (250, 206, 60), "Y": (196, 146, 30), "w": (255, 255, 255), "b": (156, 94, 48), "n": (100, 58, 30),
+                "r": (236, 72, 56), "R": (168, 40, 36), "e": (24, 20, 37)}
+DECOR_SHARE = 0.75
+DECOR_ART = ((".p.....p...",
+              ".p..p..p.p.",
+              "pp..p.pp.p.",
+              ".p.pp.p..pp",
+              ".ppp..p.pp.",
+              "..pp.ppp.p.",
+              "..p..pp.pp.",
+              "..pppp.pp..",
+              "...ppppp...",
+              "....qpp....",
+              "....qqp....",
+              "...qqqqq..."),
+             ("...vvvvvv...",
+              ".vvuvvuvvvv.",
+              "vvuvvvuvvuvv",
+              "vuvvuvvvuvvv",
+              "vvvuvvuvvuvv",
+              "uuuuuuuuuuuu"),
+             ("...kkk...",
+              "..kldlk..",
+              ".kldldlk.",
+              "kldldldlk",
+              "kldldldlk",
+              ".kkkkkkk.",
+              "...kdk...",
+              "...kkk..."),
+             ("....k....",
+              "...kok...",
+              "kkkkokkkk",
+              "koooooook",
+              ".koodook.",
+              "..koook..",
+              ".kok.kok.",
+              "kok...kok",
+              "kk.....kk"),
+             ("...kkkk...",
+              ".kkgsgsgk.",
+              "kgsgggsgsk",
+              "kggsgggggk",
+              "kkkkkkkkkk"))
+# 보물상자: (닫힘, 열림). 닫혀 있는 초 · 열려 있는 초 · 열린 동안 거품 뿜는 간격 초
+CHEST_ART = (("..kkkkkkkk..",
+              ".knnnnnnnnk.",
+              "knbbbbbbbbnk",
+              "kyyyyyyyyyyk",
+              "kbbbbykybbbk",
+              "kbbbbyybbbbk",
+              "kbbbbbbbbbbk",
+              "knnnnnnnnnnk",
+              ".kkkkkkkkkk."),
+             (".kkkkkkkk...",
+              "knnnnnnnnk..",
+              ".knnnnnnnnk.",
+              "kyywyywyyyyk",
+              "kyyyyyyyyyyk",
+              "kbbbbykybbbk",
+              "kbbbbyybbbbk",
+              "kbbbbbbbbbbk",
+              "knnnnnnnnnnk",
+              ".kkkkkkkkkk."))
+CHEST_SHUT, CHEST_OPEN, CHEST_PUFF = (8, 15), 2.0, 0.07
+# 게: (걸음 둘, 집게 듦). 마릿수 · px/초 · 걷는 초 · 서서 집게 드는 초
+CRAB_ART = (("rr.........rr",
+             "rRr..e.e..rRr",
+             ".rr..k.k..rr.",
+             "..rrrrrrrrr..",
+             ".rrrRrrrRrrr.",
+             "..r.r...r.r..",
+             ".r.r.....r.r."),
+            ("rr.........rr",
+             "rRr..e.e..rRr",
+             ".rr..k.k..rr.",
+             "..rrrrrrrrr..",
+             ".rrrRrrrRrrr.",
+             ".r.r.....r.r.",
+             "..r.r...r.r.."),
+            ("r.r.......r.r",
+             "rrr..e.e..rrr",
+             ".rr..k.k..rr.",
+             "..rrrrrrrrr..",
+             ".rrrRrrrRrrr.",
+             "..r.r...r.r..",
+             ".r.r.....r.r."))
+CRAB_N, CRAB_SPEED, CRAB_WALK, CRAB_REST = 2, 22, (2, 6), (1, 3)
+# 해파리: 반투명이라 물빛 띠(AQ_BANDS)마다 미리 섞음. (편 그림, 오므린 그림), 글자 → (색, 알파)
+JELLY_COLORS = {"q": ((250, 170, 235), 200), "p": ((236, 140, 220), 150), "w": ((255, 255, 255), 220),
+                "t": ((240, 170, 230), 120)}
+JELLY_ART = (("..qqqqq..",
+              ".qwwpppq.",
+              "qwppppppq",
+              "qpppppppq",
+              "qqqqqqqqq",
+              ".t.t.t.t.",
+              ".t.t.t.t.",
+              ".t..t..t.",
+              "..t.t.t..",
+              ".t..t..t.",
+              ".t.....t."),
+             ("...qqq...",
+              "..qwppq..",
+              ".qwppppq.",
+              ".qpppppq.",
+              ".qqqqqqq.",
+              "..t.t.t..",
+              "..t.t.t..",
+              "..t.t.t..",
+              ".t..t..t.",
+              "..t...t..",
+              "........."))
+# 해파리 수 · 오므려 밀어 오르는 간격 초 · 그때 오르는 빠르기 px/초 · 가라앉는 빠르기 px/초 · 오므린 그림 보이는 초
+JELLY_N, JELLY_PULSE, JELLY_PUSH, JELLY_SINK, JELLY_SQUEEZE = 3, (2.0, 3.5), 42, 7, 0.35
 
 KINDS = {1: ("snow", "눈"), 2: ("rain", "비"), 3: ("storm", "뇌우"), 4: ("hail", "우박"), 6: ("fireflies", "반딧불이"),
          5: ("fireworks", "불꽃놀이"), 8: ("aquarium", "어항"), 7: ("none", "날씨 없음")}  # 없음은 동물만. id 는 설정 파일과 무관해 순서만 바꿔도 됨
@@ -565,6 +704,25 @@ def weed(height, rng):
         leaf = j % 9 in (4, 5) and u < 0.85
         rows.append(col * (n + leaf * 2))
     return rows
+
+
+def tinted(rows, colors, under):
+    """글자 판 → pet.stamp 조각 (pet.segments 꼴). colors 는 글자 → (색, 알파) — 반투명 칸은 물빛 under 위에 미리
+    섞음. 행 안의 빈 칸은 끊어서 밑에 찍힌 물고기를 안 지움."""
+    cell = {c: over((1, [(0, pixel(col, a))]), under)[1][0][1] * pet.SCALE for c, (col, a) in colors.items()}
+    out = []
+    for y, line in enumerate(rows):
+        x = 0
+        while x < len(line):
+            if line[x] == ".":
+                x += 1
+                continue
+            start = x
+            while x < len(line) and line[x] != ".":
+                x += 1
+            data = b"".join(cell[c] for c in line[start:x])
+            out += [(y * pet.SCALE + sy, start * pet.SCALE * 4, data) for sy in range(pet.SCALE)]
+    return out
 
 
 def load_settings():
@@ -1039,13 +1197,30 @@ class Weather:
         다시, 물고기·거품·빛줄기 자리는 고를 때마다 새로."""
         w, h, s = self.w, self.h, self.stride
         if "aquarium" not in self.sprite_cache:
-            rng, spots = random.Random(), []
+            rng, spots = random.Random(random.random()), []  # 전역 random 을 따름 — 검사(random.seed)에서 같은 자리
             x = rng.uniform(10, WEED_EVERY)
             while x < w - 10:
                 spots.append(int(x))
                 x += rng.uniform(0.4, 1.6) * WEED_EVERY
             frames = [(rows, tuple(a + r[len(a):] for r, a in zip(rows, alt))) for rows, alt in FISH_ART]
+            size = lambda rows: (len(rows[0]) * pet.SCALE, len(rows) * pet.SCALE)
+            # 상자는 화면 60% 자리에 제일 가까운 넉넉한 틈에, 나머지 틈엔 DECOR_SHARE 확률로 장식 하나 (해초와 6px 띄움)
+            gaps, cw = list(zip([0, *spots], [*spots, w])), size(CHEST_ART[0])[0]
+            chest = min((g for g in gaps if g[1] - g[0] >= cw + 16), key=lambda g: abs(sum(g) / 2 - w * 0.6), default=None)
+            decor = []
+            for g in gaps:
+                k = rng.randrange(len(DECOR_ART))
+                dw = size(DECOR_ART[k])[0]
+                if g != chest and g[1] - g[0] >= dw + 12 and rng.random() < DECOR_SHARE:
+                    decor.append((int(rng.uniform(g[0] + 6, g[1] - 6 - dw)), k))
             self.sprite_cache["aquarium"] = {
+                "decor": [(x, size(DECOR_ART[k]), pet.segments(DECOR_ART[k], rng.random() < 0.5, DECOR_COLORS))
+                          for x, k in decor],
+                "chest_x": None if chest is None else (sum(chest) - cw) // 2,
+                "chest": [pet.segments(rows, False, DECOR_COLORS) for rows in CHEST_ART],
+                "chest_size": [size(rows) for rows in CHEST_ART],
+                "crab": [pet.segments(rows, False, DECOR_COLORS) for rows in CRAB_ART], "crab_size": size(CRAB_ART[0]),
+                "jelly_size": size(JELLY_ART[0]),
                 "bubbles": [[[bubble(r, layer[3], fx / 4, fy / 4) for fy in range(4) for fx in range(4)]
                              for r in layer[1]] for layer in BUBBLE_LAYERS],
                 "rays": [ray_shape(tw, int(h * RAY_REACH)) for tw in RAY_WIDTHS],
@@ -1063,9 +1238,10 @@ class Weather:
                 "water": b"".join(p * w for p in rows), "strip": b"".join(rows[h - self.strip_h:]),
                 "bubbles": [[[[place(over(sp, under), s) for sp in subs] for subs in radii] for radii in aq["bubbles"]]
                             for under in bands],
-                "rays": [[tint_ray(shape, rows, lv) for lv in RAY_LEVELS] for shape in aq["rays"]]})
+                "rays": [[tint_ray(shape, rows, lv) for lv in RAY_LEVELS] for shape in aq["rays"]],
+                "jelly": [[tinted(art, JELLY_COLORS, under) for art in JELLY_ART] for under in bands]})
         t = self.aq_tint[1]
-        self.water, self.bubble_sprites, self.ray_rows = t["water"], t["bubbles"], t["rays"]
+        self.water, self.bubble_sprites, self.ray_rows, self.jelly_sprites = t["water"], t["bubbles"], t["rays"], t["jelly"]
         self.sand = aq["sand_h"]
         self.pile.h = list(self.sand)  # 모래는 안 녹는 더미 — 동물이 그 위를 걷고 거품이 거기서 나옴
         self.sand_base = None  # 다음 프레임에 모래 띠를 그림
@@ -1080,6 +1256,98 @@ class Weather:
                                              random.randrange(len(RAY_WIDTHS)), random.uniform(0, math.tau),
                                              random.uniform(0.08, 0.16)] for i in range(RAY_COUNT)]
         self.fish = [self.new_fish() for _ in range(FISH_N)]
+        cw = aq["crab_size"][0]
+        # 게 [x, 1 오른쪽 · -1 왼쪽, 지금 짓이 끝나는 시각, 걷는 중, 화면 y] · 해파리 [x, y, 오르내리는 px/초, 다음에
+        # 오므릴 시각, 오므린 시각, 위상, 가려는 높이] · 상자 [열리는 시각, 다음 거품 시각]. 시각은 첫 프레임에 정함
+        self.crab = [[random.uniform(0, max(0, w - cw)), random.choice((1, -1)), None, False, None] for _ in range(CRAB_N)]
+        self.jelly = [self.new_jelly() for _ in range(JELLY_N)]
+        self.chest = None
+
+    def floor_at(self, x, width):
+        """x 부터 width px 밑에서 바닥(틀 윗변 + 모래)이 제일 높은 곳의 화면 y — 장식과 게가 그 위에 얹힘."""
+        lo, hi = max(0, x), min(self.w, x + width)
+        return self.h - max((b + s for b, s in zip(self.base[lo:hi], self.pile.h[lo:hi])), default=0)
+
+    def place_decor(self):
+        """장식 · 상자가 앉을 화면 y. 틀 모양이 바뀔 때만 (render_sand 와 같이)."""
+        self.decor_at = [(x, self.floor_at(x, dw) - dh, segs) for x, (dw, dh), segs in self.aq["decor"]]
+        cx = self.aq["chest_x"]
+        self.chest_floor = None if cx is None else self.floor_at(cx, self.aq["chest_size"][0][0])
+
+    def decor(self, now):
+        """바닥 장식과 보물상자. 상자는 CHEST_SHUT 동안 닫혀 있다 CHEST_OPEN 동안 열리고, 열린 동안 CHEST_PUFF 마다
+        상자 입에서 거품 하나 — 숨 거품 목록에 넣어 위로 오르다 사라짐."""
+        px, stride, w, h, aq = self.surface.pixels, self.stride, self.w, self.h, self.aq
+        for x, y, segs in self.decor_at:
+            pet.stamp(px, stride, x, y, segs, w, h)
+        if self.chest_floor is None:
+            return
+        if self.chest is None:  # 처음엔 조금만 기다렸다 열림
+            self.chest = [now + random.uniform(2, CHEST_SHUT[0]), now]
+        c = self.chest
+        if now >= c[0] + CHEST_OPEN:
+            c[0] = now + random.uniform(*CHEST_SHUT)
+        is_open = int(now >= c[0])
+        (cw, ch), x = aq["chest_size"][is_open], aq["chest_x"]
+        pet.stamp(px, stride, x, self.chest_floor - ch, aq["chest"][is_open], w, h)
+        if is_open and now >= c[1]:
+            c[1] = now + CHEST_PUFF
+            f = self.new_flake(random.randrange(len(BUBBLE_LAYERS)), False, BUBBLE_LAYERS)
+            f[0], f[1] = x + cw / 2 + random.uniform(-cw * 0.3, cw * 0.3), self.chest_floor - ch + 3 * pet.SCALE
+            self.breaths.append(f)
+
+    def crabs(self, dt, now):
+        """게: 모래 위를 옆걸음으로 CRAB_WALK 동안 걷다 CRAB_REST 동안 서서 집게를 들썩임. 걸음을 뗄 때 반은 돌아서고
+        화면 끝에선 돌아섬. 틀 단은 300px/초로 기어오르내림."""
+        px, stride, w, h, aq = self.surface.pixels, self.stride, self.w, self.h, self.aq
+        cw, ch = aq["crab_size"]
+        for c in self.crab:
+            if c[2] is None or now >= c[2]:
+                c[3] = not c[3]
+                c[2] = now + random.uniform(*(CRAB_WALK if c[3] else CRAB_REST))
+                if c[3] and random.random() < 0.5:
+                    c[1] = -c[1]
+            if c[3]:
+                c[0] += c[1] * CRAB_SPEED * dt
+                if c[0] <= 0 or c[0] >= w - cw:
+                    c[0] = min(max(c[0], 0), max(0, w - cw))
+                    c[1] = 1 if c[0] <= 0 else -1
+            y = self.floor_at(int(c[0]), cw) - ch
+            c[4] = y if c[4] is None else c[4] + max(-300 * dt, min(300 * dt, y - c[4]))
+            frame = int(now / 0.15) % 2 if c[3] else 2 * (int(now / 0.4) % 2)
+            pet.stamp(px, stride, int(c[0]), int(c[4]), aq["crab"][frame], w, h)
+
+    def jelly_band(self):
+        """해파리가 오가는 높이 (위, 아래) — 위 10% 아래부터 모래 40px 위까지."""
+        lo = self.h * 0.1
+        return lo, max(lo, self.h - self.rise - SAND_H[1] - self.aq["jelly_size"][1] - 40)
+
+    def new_jelly(self):
+        lo, hi = self.jelly_band()
+        return [random.uniform(0, max(0, self.w - self.aq["jelly_size"][0])), random.uniform(lo, hi), JELLY_SINK, None,
+                -1e9, random.uniform(0, math.tau), random.uniform(lo, hi)]
+
+    def jellies(self, dt, now):
+        """해파리: 가려는 높이보다 낮으면 JELLY_PULSE 마다 오므려 JELLY_PUSH 로 밀려 오르고, 빠르기는 천천히 가라앉는
+        쪽(JELLY_SINK)으로 풀림. 높이에 닿으면 안 오므리고 가라앉다 가끔 새 높이를 고름. 옆으로는 느리게 흘러감.
+        반투명이라 물고기·동물·거품보다 먼저(뒤에) 그림 — 위에 그리면 물빛을 섞어 둔 픽셀이 그것들을 지움."""
+        px, stride, w, h = self.surface.pixels, self.stride, self.w, self.h
+        jw, jh = self.aq["jelly_size"]
+        lo, hi = self.jelly_band()
+        for j in self.jelly:
+            if j[3] is None:
+                j[3] = now + random.uniform(*JELLY_PULSE)
+            if now >= j[3]:
+                j[3] = now + random.uniform(*JELLY_PULSE)
+                if j[1] > j[6]:
+                    j[2], j[4] = -JELLY_PUSH, now
+                elif random.random() < 0.3:
+                    j[6] = random.uniform(lo, hi)
+            j[2] += (JELLY_SINK - j[2]) * min(1.0, 1.2 * dt)
+            j[1] = min(max(j[1] + j[2] * dt, lo), hi)
+            j[0] = min(max(j[0] + 8 * math.sin(now * 0.15 + j[5]) * dt, 0), max(0, w - jw))
+            band = min(AQ_BANDS - 1, max(0, int((j[1] + jh / 2) * AQ_BANDS / h)))
+            pet.stamp(px, stride, int(j[0]), int(j[1]), self.jelly_sprites[band][int(now - j[4] < JELLY_SQUEEZE)], w, h)
 
     def rays(self, now):
         """빛줄기: 위 끝을 축으로 아래가 천천히 좌우로 흔들리고 밝기가 오감. 행마다 그 행 물빛이 섞인 조각을 덮어씀."""
@@ -1285,9 +1553,13 @@ class Weather:
             if self.sand_base is not self.base:  # 처음이거나 틀이 바뀜
                 self.pile.h = list(self.sand)  # set_base 가 솟은 틀만큼 묻은 모래를 되살림
                 self.render_sand()
+                self.place_decor()
             self.rays(now)
             self.surface.pixels[(self.h - self.strip_h) * self.stride:] = self.strip
+            self.decor(now)
             self.weeds(now)
+            self.crabs(dt, now)
+            self.jellies(dt, now)
         if self.pets:  # 더미 위, 내리는 것 아래
             self.walk_pet(dt, now)
         if kind == "snow":
@@ -1595,7 +1867,7 @@ def check():
     a.surface = types.SimpleNamespace(pixels=bytearray(aw * ah * 4), clear=lambda top=0: None, present=lambda top=0: None)
     a.surface.fill = lambda src: a.surface.pixels.__setitem__(slice(None), src)
     a.reset()
-    a.flakes = []  # 해초 뿌리 밑을 거품이 가리지 않게
+    a.flakes, a.crab = [], []  # 해초 뿌리 밑을 거품·게가 가리지 않게
     a.frame(1 / 60, 0.0)
     px, st = a.surface.pixels, a.stride
     at = lambda x, y: bytes(px[y * st + x * 4:y * st + x * 4 + 4])
@@ -1649,6 +1921,73 @@ def check():
             pinned[k] += f[0] in (0, aw - fw)
             seen.add(f[2])
     assert max(pinned) < 60 * 120 * 0.05 and seen == {1, -1}, ("끝에 닿으면 돌아섬", pinned)
+    # 바닥 장식 · 보물상자 · 게 · 해파리 · 새 물고기
+    arts = [*((r, DECOR_COLORS) for r in (*DECOR_ART, *CHEST_ART, *CRAB_ART)), *((r, JELLY_COLORS) for r in JELLY_ART),
+            *((r, FISH_COLORS) for r, _ in FISH_ART)]
+    for rows, colors in arts:
+        assert len({len(r) for r in rows}) == 1 and set("".join(rows)) <= {".", *colors}, ("그림 칸이 맞음", rows[0])
+    assert all(len(alt) == len(rows) for rows, alt in FISH_ART), "꼬리 그림 행 수"
+    a.kind, a.pets = "aquarium", {}
+    del a.sprite_cache["aquarium"]  # 폭 400 이라 틈이 몇 없음 — 장식 · 상자가 다 놓이는 자리로 다시 고름
+    random.seed(1)  # 장식 둘 · 상자 (scratchpad 에서 찾은 값)
+    a.reset()
+    a.flakes, a.crab, aq = [], [], a.aq
+
+    def sits(x, y, sh, segs):  # 그림 맨 아래 행이 (x, y) 에 찍혀 있음
+        return all(px[(y + dy) * st + x * 4 + k:(y + dy) * st + x * 4 + k + len(d)] == d for dy, k, d in segs if dy == sh - 1)
+    assert aq["decor"] and aq["chest_x"] is not None, ("장식과 상자가 놓임", len(aq["decor"]))
+    for t, nb in ((20.0, None), (20.1, [0] * 100 + [rise] * 300)):  # 틀이 바뀌면 새 바닥 위로
+        if nb:
+            a.next_base = nb
+        a.frame(1 / 60, t)
+        for x, (dw, dh), segs in aq["decor"]:
+            assert sits(x, a.floor_at(x, dw) - dh, dh, segs), ("장식은 바닥 위", x, nb is not None)
+    cx, (cw, ch) = aq["chest_x"], aq["chest_size"][1]
+    a.chest, a.breaths = [30.0, 30.0], []
+    for i in range(int(60 * CHEST_OPEN)):
+        a.frame(1 / 60, 30 + i / 60)
+        assert sits(cx, a.chest_floor - ch, ch, aq["chest"][1]), "열린 상자는 바닥 위"
+    opened = len(a.breaths)
+    assert CHEST_OPEN / CHEST_PUFF * 0.8 <= opened <= CHEST_OPEN / CHEST_PUFF + 2, ("열린 동안 거품", opened)
+    mouth = a.chest_floor - ch + 3 * pet.SCALE
+    assert all(abs(f[0] - cx - cw / 2) <= cw * 0.3 + 1 and f[1] <= mouth for f in a.breaths), "거품은 상자 입에서 위로"
+    assert max(f[1] for f in a.breaths) > mouth - 10, "막 나온 거품은 상자 입 가까이"
+    for i in range(60):
+        a.frame(1 / 60, 30 + CHEST_OPEN + i / 60)
+        sh = aq["chest_size"][0][1]
+        assert sits(cx, a.chest_floor - sh, sh, aq["chest"][0]), "닫힌 상자"
+    assert len(a.breaths) <= opened, "닫히면 안 뿜음"
+    a.reset()
+    cw, ch = aq["crab_size"]
+    walked, settled, sides = 0, 0, set()
+    for i in range(60 * 120):
+        old = [c[:] for c in a.crab]
+        a.crabs(1 / 60, 40 + i / 60)
+        for c, b in zip(a.crab, old):
+            assert 0 <= c[0] <= aw - cw, ("게는 화면 안", c)
+            assert b[3] or c[3] or c[0] == b[0], "서 있을 땐 안 걸음"
+            assert b[4] is None or abs(c[4] - b[4]) <= 300 / 60 + 1e-9, "틀 단은 기어오름"
+            settled += c[4] == a.floor_at(int(c[0]), cw) - ch
+            walked += c[3]
+            sides.add(c[1])
+    n = 60 * 120 * CRAB_N
+    assert sides == {1, -1} and 0.3 < walked / n < 0.9 and settled / n > 0.9, ("게는 모래 위를 걷다 섬", walked / n, settled / n)
+    lo, hi = a.jelly_band()
+    jw = aq["jelly_size"][0]
+    ys, pulses, rising = [], 0, 0
+    for i in range(60 * 180):
+        old = [j[:] for j in a.jelly]
+        a.jellies(1 / 60, 200 + i / 60)
+        for j, b in zip(a.jelly, old):
+            assert lo <= j[1] <= hi and 0 <= j[0] <= aw - jw, ("해파리는 제 높이 안", j)
+            pulses += j[4] != b[4]
+            rising += j[1] < b[1]
+            ys.append(j[1])
+    n = 60 * 180 * JELLY_N
+    assert pulses >= 20 and 0.05 < rising / n < 0.6 and max(ys) - min(ys) > 60, ("해파리는 오므려 오르고 가라앉음", pulses, rising / n)
+    datas = [d for band in a.jelly_sprites for fr in band for _, _, d in fr]
+    assert all(d[i + c] <= d[i + 3] for d in datas for i in range(0, len(d), 4) for c in range(3)), "해파리는 premultiplied"
+    assert any(d[i + 3] < 255 for d in datas for i in range(0, len(d), 4)), "해파리는 비침"
     assert parse_amount("many") == 100 and parse_amount(0) == 0 and parse_amount(35) == 35
     assert all(parse_amount(a) is None for a in (101, -1, True, "x", [1], None, 2.5))
     assert amount_arg("normal") == 50 and amount_arg("7") == 7
