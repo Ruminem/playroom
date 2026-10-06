@@ -9,7 +9,7 @@ A hobby playroom. One folder per experiment, each with its own short README.
 ## Contents
 
 - [usage-hud](usage-hud/) — Claude Code subscription limits as a retro game HUD: hearts for the weekly limit, a bolt for the five-hour one, a coin for what today would have cost at API prices. A click-through overlay that stays on top of everything, plus a browser page with the last seven days. On macOS it sits in the menu bar instead
-- [weather](weather/) — snow, rain, a thunderstorm, hail, fireflies, fireworks or an aquarium over every window, picture-in-picture video included. Clicks go straight through to whatever you are working on; snow piles up on the taskbar and slowly melts. Optional pixel animals — a cat, bird, dog, rabbit or penguin, several at once — wander along the taskbar, with or without weather. Also runs on macOS, with its icon in the menu bar
+- [weather](weather/) — snow, sleet, rain, a thunderstorm, hail, fog, fireflies, soap bubbles, fireworks or an aquarium over every window, picture-in-picture video included. Clicks go straight through to whatever you are working on; snow piles up on the taskbar and slowly melts. Optional pixel animals — a cat, bird, dog, rabbit or penguin, several at once — wander along the taskbar, with or without weather. Also runs on macOS, with its icon in the menu bar
 - [sysmon](sysmon/) — CPU and memory use in two small lines on the taskbar, just left of the notification icons. Turns orange above 70% and red above 90%. A pixel theme matches usage-hud, which can sit on the taskbar right next to it. Also runs on macOS, in the menu bar
 - [layers](layers/) — decides which always-on-top window goes in front: the overlays here, a picture-in-picture video, any window you add. Without it the overlays take turns jumping in front of each other
 - [launcher](launcher/) — one window to run or stop the tools above, keep each on top or not, start it with Windows, and install or uninstall it as a Start menu shortcut
@@ -36,7 +36,7 @@ Apache-2.0. See [LICENSE](LICENSE).
 ### 구성
 
 - [usage-hud](usage-hud/) — Claude Code 구독 한도를 레트로 게임 HUD 로 보여 줌. 하트는 7일 한도, 번개는 5시간 한도, 동전은 오늘 쓴 양을 API 정가로 친 값. 모든 창 위에 떠 있되 클릭은 통과시키는 오버레이와, 7일치를 함께 보는 브라우저 페이지. 맥에서는 메뉴 막대에 뜸
-- [weather](weather/) — PIP 영상까지 포함해 모든 창 위로 눈·비·뇌우·우박을 내리거나 반딧불이·불꽃놀이·어항을 띄움. 클릭은 하던 작업으로 그대로 통과하고, 눈은 작업 표시줄 위에 쌓였다가 천천히 녹음. 픽셀 고양이·새·강아지·토끼·펭귄을 켜면(여럿도 됨) 날씨와 같이 또는 혼자 작업 표시줄 위를 돌아다님. 맥에서도 돌고, 아이콘은 메뉴 막대에 뜸
+- [weather](weather/) — PIP 영상까지 포함해 모든 창 위로 눈·진눈깨비·비·뇌우·우박을 내리거나 안개·반딧불이·비눗방울·불꽃놀이·어항을 띄움. 클릭은 하던 작업으로 그대로 통과하고, 눈은 작업 표시줄 위에 쌓였다가 천천히 녹음. 픽셀 고양이·새·강아지·토끼·펭귄을 켜면(여럿도 됨) 날씨와 같이 또는 혼자 작업 표시줄 위를 돌아다님. 맥에서도 돌고, 아이콘은 메뉴 막대에 뜸
 - [sysmon](sysmon/) — 작업 표시줄의 알림 아이콘 바로 왼쪽에 CPU·메모리 사용률을 작은 두 줄로 띄움. 70% 를 넘으면 주황, 90% 를 넘으면 빨강. 픽셀 테마는 usage-hud 와 같은 모양이고, usage-hud 를 작업 표시줄에 두면 바로 옆에 붙음. 맥에서도 돌고, 메뉴 막대에 뜸
 - [layers](layers/) — 맨 위에 뜨는 창들 중 무엇이 앞에 올지 정함. 여기 오버레이들, PIP 영상, 직접 넣은 아무 창이나. 없으면 오버레이들이 서로 번갈아 앞으로 튀어나옴
 - [launcher](launcher/) — 위 도구들을 한 창에서 실행·중단하고, 항상 위·윈도우 시작 시 실행을 켜고 끄고, 시작 메뉴 바로가기로 설치·제거함

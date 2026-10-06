@@ -296,7 +296,7 @@ STEP, RUN_STEP = 0.2, 0.08  # 걸음 그림 바꾸는 간격 초
 HOP_V, GRAVITY = 420, 1500  # 깜짝 뛰기: 처음 위로 px/초, 중력 px/초²
 ZZ_EVERY, ZZ_RISE = 1.4, 3.0  # Z 하나가 나오는 간격 초, 떠오르는 데 걸리는 초
 POUNCE_V, CALM = 320, (4, 10)  # 반딧불이로 폴짝: 처음 위로 px/초 · 한 번 반응한 뒤 쉬는 초
-WET = ("rain", "storm")
+WET = ("rain", "storm", "sleet")
 HOP_EVERY, HOP_DX, HOP_UP = 0.32, 14, 7  # 새 콩콩 뛰기: 간격 초, 한 번에 px, 높이 px
 FLY, FLY_ALT, FLAP = 170, 60, 0.09  # 새가 날 때 px/초, 높이 px(weather 가 다시 그리는 바닥 띠 안), 날갯짓 간격 초
 # 어항 헤엄: 바닥 위로 뜨는 높이 px · 오르내림 px · 높이를 옮기는 px/초(weather 거품보다 느리게 — 제 숨을 앞지르지 않게) · 돌아서거나 높이를 바꾸는 간격 초 ·
@@ -374,7 +374,7 @@ def stamp(px, stride, x, y, segs, width, height, floor=None):
 class Pet:
     """동물 공통: 날씨 종류, 머리 위 표시, 날씨에 맞춘 반응. 반응은 한 번 하면 CALM 초 쉼."""
     kind = "none"  # 지금 날씨 종류. weather 가 매 프레임 넣음
-    snowy = False  # 눈·우박 더미가 있는 날 (펭귄이 봄)
+    snowy = False  # 눈·진눈깨비·우박 더미가 있는 날 (펭귄이 봄)
     mood = None    # (표시, 나온 시각, 끝 시각)
     calm = 0.0     # 이 시각까지는 불꽃·반딧불이에 반응 안 함
     # 틀 단을 뛰어 오르내림: 걸리는 초, 두 끝 중 높은 쪽보다 더 뜨는 px. 이 상태 동안엔 새로 안 뜀(이미 떠 있음)
@@ -745,7 +745,7 @@ class Dog(Cat):
     DIVER, SWIM_V, PEEK = "dog", 60, 4  # 빼꼼하면 흔드는 꼬리 끝도 같이 보임
 
     def next_state(self, now, rainy):
-        if self.kind in ("rain", "snow") and self.state != "run" and self.rng.random() < 0.3:
+        if self.kind in ("rain", "snow", "sleet") and self.state != "run" and self.rng.random() < 0.3:
             self.right = self.rng.random() < 0.5
             self.go("run", now)
             self.emote("♪", now, self.until - now)
