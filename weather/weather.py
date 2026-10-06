@@ -150,10 +150,17 @@ AURORA_PHASES = 2   # 행을 1/이만큼 px 씩 옮겨 본 벌 수 — 정수 px
 #                     캐시를 넘쳐 프레임이 1ms 늘었음(둘은 18MB, 이웃 행 차가 0.35px 아래라 반 px 계단은 안 보임)
 AURORA_RAYQ = 16    # 빛살 높이 단계 수 — 단계마다 본 하나(2560×1440 에 54KB)
 # 커튼마다 (아랫단 깊이 비율, 세기, 빛살 높이) — 앞(아래) 커튼이 밝고 빛살이 김
-AURORA_RIBBONS = ((0.82, 1.0, 0.28), (0.64, 0.7, 0.2), (0.46, 0.45, 0.14))
+AURORA_RIBBONS = ((0.82, 1.0, 0.45), (0.64, 0.7, 0.32), (0.46, 0.45, 0.22))  # 빛살 높이 2배면 위가 보라로 꽉 참
 # 아랫단에서 잰 높이(비율) → 색: 밑은 분홍 술, 아랫단은 흰빛 초록, 위로 초록 · 청록 · 보라
 AURORA_COLORS = ((-0.03, (255, 70, 160)), (0.0, (200, 255, 220)), (0.04, (80, 255, 140)), (0.15, (40, 225, 170)),
                  (0.3, (120, 110, 255)), (0.5, (190, 80, 255)))
+# 오로라에 곁들인 유성: 양 50% 에서 초당 오는 수 · 그중 유성우(한 복사점에서 몰아 떨어짐)인 몫 · 유성우 개수 · 그 사이 초
+METEOR_RATE, METEOR_SHOWER, METEOR_BURST, METEOR_GAP = 1 / 6, 0.15, (5, 9), (0.15, 0.6)
+METEOR_LIFE, METEOR_SPEED, METEOR_TAIL_SEC = (0.4, 1.0), (900, 1600), 0.17  # 꼬리 길이 = 빠르기 × 이 초
+FIREBALL = 0.1     # 불덩이 비율 — 밝아 심이 굵어 보이고, 느리고 오래 가며 끝에서 번쩍
+# 단면: 심 σ · 번짐 σ · 번짐 세기 · 머리 빛 σ (px) · 머리 빛 세기 · 심선에서 이 px 밖은 안 셈. 머리 빛이 크면 올챙이처럼 보임
+METEOR_CORE, METEOR_GLOW, METEOR_GLOW_K, METEOR_HEAD_R, METEOR_HEAD_K, METEOR_R = 0.7, 1.6, 0.25, 1.2, 0.7, 4
+METEOR_HEAD, METEOR_TAIL = (235, 255, 235), (140, 185, 255)  # 머리 흰빛 초록 → 꼬리 옅은 파랑
 
 # 비눗방울: 양 → 방울 수 ('보통' 9개) · 반지름들 px · 오르는 빠르기 px/초 · 터지기까지 초 · 무지갯빛이 도는 그림 수 · 초당 바퀴
 # 그림 수 8 이면 한 번에 45° 씩 뚝뚝 넘어가 돌아가는 게 보였음. 32 면 11°
@@ -984,6 +991,63 @@ def subpixel(rows, n):
     return out
 
 
+# 유성 표: 심선에서 거리(1/8 px) → 단면 세기 · 머리에서 거리²(1/4 px²) → 머리 빛 · 꼬리 32 마디 색 × 알파 → 픽셀
+METEOR_CROSS = [math.exp(-(i / 8) ** 2 / (2 * METEOR_CORE ** 2)) + METEOR_GLOW_K * math.exp(-(i / 8) ** 2 / (2 * METEOR_GLOW ** 2))
+                for i in range(METEOR_R * 8 + 1)]
+METEOR_BLOOM = [METEOR_HEAD_K * math.exp(-(i / 4) / (2 * METEOR_HEAD_R ** 2)) for i in range(METEOR_R ** 2 * 4 + 1)]
+METEOR_PX = [[pixel(tuple(int(a + (b - a) * min(1.0, c / 31 * 1.5)) for a, b in zip(METEOR_HEAD, METEOR_TAIL)), q)
+              for q in range(256)] for c in range(32)]
+
+
+def meteor_streak(hx, hy, ux, uy, length, k):
+    """유성 한 줄: 머리 (hx, hy) 에서 (ux, uy) 반대쪽으로 length px 꼬리. 소수 좌표 그대로 픽셀마다 셈해 어느 각도 ·
+    자리에서도 계단이나 떨림이 없음. 단면은 가는 심에 옅은 번짐, 꼬리 끝으로 exp(−3s) · (1 − s) 만큼 옅어지고, 머리에
+    둥근 빛. 색은 머리 흰빛 초록 → 꼬리 옅은 파랑. k 는 밝기 배수(1 넘으면 심이 하얗게 차 굵어 보임).
+    [(y, x, premultiplied BGRA 바이트)…] — 꼬리 250px 에 2,700–3,300px · 1.5–1.7ms."""
+    R, rows, inv, ty = METEOR_R, [], 1 / length, hy - uy * length
+    cross, bloom, pxs, zero = METEOR_CROSS, METEOR_BLOOM, METEOR_PX, METEOR_PX[0][0]
+    for y in range(math.floor(min(hy, ty) - R), math.ceil(max(hy, ty) + R) + 1):
+        ry = y - hy
+        if abs(uy) > 1e-6:  # 이 행에서 심선이 R 안에 드는 꼬리 구간
+            s0, s1 = sorted(((-ry - R) / uy, (-ry + R) / uy))
+            s0, s1 = max(-R, s0), min(length, s1)
+        else:
+            s0, s1 = -R, length
+        if s0 > s1:
+            continue
+        xa, xb = hx - ux * s0, hx - ux * s1
+        x0, out = math.floor(min(xa, xb) - R), []
+        for x in range(x0, math.ceil(max(xa, xb) + R) + 1):
+            rx = x - hx
+            d = abs(rx * uy - ry * ux)
+            if d >= R:
+                out.append(zero)
+                continue
+            s, r2 = -(rx * ux + ry * uy), rx * rx + ry * ry
+            v = bloom[int(r2 * 4)] if r2 < R * R else 0.0
+            c = 0
+            if 0 <= s < length:
+                f = s * inv
+                v += math.exp(-3 * f) * (1 - f) * cross[int(d * 8)]
+                c = int(f * 32)
+            out.append(pxs[c][min(255, int(255 * k * v))])
+        rows.append((y, x0, b"".join(out)))
+    return rows
+
+
+def glint(px, stride, w, h, rows):
+    """meteor_streak 의 행들을 바이트마다 밝은 쪽을 남기며 찍음 — 덮어쓰면 둘레의 옅은 픽셀이 밑의 오로라를 검게 파먹음.
+    premultiplied 라 채널마다 큰 쪽을 골라도 색 ≤ 알파가 지켜짐. 화면 밖으로 나간 몫은 잘라 냄.
+    ponytail: map(max) 라 유성 하나에 0.5ms 쯤. 수십 개를 한꺼번에 띄우려면 큰 정수 SWAR 로"""
+    for y, x, data in rows:
+        if 0 <= y < h:
+            a = x * 4
+            lo, hi = max(a, 0), min(a + len(data), w * 4)
+            if lo < hi:
+                o = y * stride
+                px[o + lo:o + hi] = bytes(map(max, px[o + lo:o + hi], data[lo - a:hi - a]))
+
+
 def pane_drop(r):
     """유리에 맺힌 물방울: 거의 투명한 몸통, 위 테두리는 남색으로 어둡고 아래는 밝은 초승달, 왼쪽 위에 반짝이는 점 —
     둥근 렌즈가 위쪽 어둠과 아래쪽 빛을 뒤집어 비추는 모양. 밝은 창 위에서는 남색 테두리가, 어두운 창 위에서는 밝은
@@ -1723,6 +1787,40 @@ class Weather:
             rows.append((bytes(px),))
         return self.amount, rows
 
+    def meteors(self, dt, now):
+        """오로라에 곁들인 유성. 가끔 하나씩, 드물게 한 복사점에서 몇 초에 걸쳐 몰아 떨어지는 유성우. 복사점은 화면 위
+        바깥이라 늘 아래쪽으로 남. 차차 밝아져 수명 70% 에서 가장 밝고 빨리 꺼짐, 불덩이는 85% 에서 한 번 번쩍. 꼬리는
+        떨어지기 시작한 점 뒤로는 안 늘어남."""
+        w, h = self.w, self.h
+        if random.random() < METEOR_RATE * self.amount / 50 * dt:
+            rad, t = (random.uniform(-0.5 * w, 1.5 * w), -random.uniform(0.3, 1.0) * h), now
+            for _ in range(random.randint(*METEOR_BURST) if random.random() < METEOR_SHOWER else 1):
+                self.meteor_due.append((t, rad))
+                t += random.uniform(*METEOR_GAP)
+        if self.meteor_due and self.meteor_due[0][0] <= now:
+            due = [d for d in self.meteor_due if d[0] <= now]
+            self.meteor_due = [d for d in self.meteor_due if d[0] > now]
+            for _, (rx, ry) in due:
+                x, y = random.uniform(0, w), random.uniform(0.03, 0.4) * h
+                a, fire = math.atan2(y - ry, x - rx), random.random() < FIREBALL
+                # [x, y, 방향 x, 방향 y, 빠르기, 나이, 수명, 밝기, 불덩이]
+                self.shooting.append([x, y, math.cos(a), math.sin(a), random.uniform(*METEOR_SPEED) * (0.6 if fire else 1),
+                                      0.0, random.uniform(*METEOR_LIFE) * (1.6 if fire else 1),
+                                      1.6 if fire else random.uniform(0.45, 1.0), fire])
+        px, stride, live = self.surface.pixels, self.stride, []
+        for m in self.shooting:
+            x, y, ux, uy, v, age, life, k, fire = m
+            age += dt
+            if age >= life:
+                continue
+            live.append(m)
+            m[0], m[1], m[5], t = x + ux * v * dt, y + uy * v * dt, age, age / life
+            k *= math.sin(math.pi * t ** 1.94) + (0.8 * math.exp(-((t - 0.85) / 0.04) ** 2) if fire else 0)
+            tail = v * min(METEOR_TAIL_SEC, age)
+            if k > 0.01 and tail > 1:
+                glint(px, stride, w, h, meteor_streak(m[0], m[1], ux, uy, tail, k))
+        self.shooting = live
+
     def fog(self, now):
         """안개는 작업 표시줄 바로 위에 깔림."""
         rows = self.fog_px[1]
@@ -2231,6 +2329,7 @@ class Weather:
         elif kind == "aurora":
             if "aurora" not in self.sprite_cache:
                 self.sprite_cache["aurora"] = aurora_field(self.w, int(self.h * AURORA_REACH), random)
+            self.shooting, self.meteor_due = [], []
         elif kind == "window":
             if "window" not in self.sprite_cache:
                 self.sprite_cache["window"] = [place(pane_drop(1 + k / 2), self.stride)
@@ -2485,6 +2584,7 @@ class Weather:
             self.fog(now)
         elif kind == "aurora":
             self.slide(self.aurora_px[1], 0, now, AURORA_DRIFT, AURORA_SWAY)
+            self.meteors(dt, now)  # 하늘 멀리라 동물 뒤
         if self.pets:  # 더미 위, 내리는 것 아래
             self.walk_pet(dt, now)
         if kind == "snow":
@@ -2736,6 +2836,40 @@ def check():
     Weather.slide(sp, one * 2, 0, 0.0, 0.0, ((4, 0.0, 1.0),))  # 행 j 는 4·sin(j) px 밀림
     lit = [min(x for x in range(200) if sp.surface.pixels[j * 800 + x * 4 + 3]) for j in range(2)]
     assert lit[0] == 10 and lit[1] == 6, ("행마다 출렁임", lit)
+    # 유성: 덮어쓰지 않고 바이트마다 밝은 쪽을 남김 · 화면 밖은 잘라 냄
+    gp = bytearray([90]) * 16
+    glint(memoryview(gp), 8, 2, 1, [(0, -1, bytes([10, 200] * 4)), (1, 0, bytes([255] * 8))])  # 첫 픽셀은 왼쪽 밖, 둘째 행은 아래 밖
+    assert gp == bytearray([90, 200] * 2 + [90] * 12), ("밝은 쪽만 남김", list(gp))
+
+    def alphas(rows):  # (x, y) → 알파
+        return {(x + i, y): d[i * 4 + 3] for y, x, d in rows for i in range(len(d) // 4) if d[i * 4 + 3]}
+    a0, a1 = alphas(meteor_streak(50.0, 50.0, 0.6, 0.8, 100, 1.0)), alphas(meteor_streak(50.5, 50.0, 0.6, 0.8, 100, 1.0))
+    cx = [sum(x * a for (x, _), a in m.items()) / sum(m.values()) for m in (a0, a1)]
+    assert 0.4 < cx[1] - cx[0] < 0.6, ("반 px 옮기면 반 px 만큼 — 정수로 반올림하지 않음", cx)
+    assert a0[50, 50] == 255 > a0[26, 18] > a0[2, -14] > 0, "머리가 가장 밝고 꼬리 끝으로 옅어짐"
+    assert all((x - 50) * 0.6 + (y - 50) * 0.8 <= METEOR_R for x, y in a0), "머리 앞으로는 안 뻗음"
+    mf = big(kind="aurora", amount=0, shooting=[], meteor_due=[(0.0, (100.0, -400.0))])
+    Weather.meteors(mf, 0.01, 0.0)
+    m = mf.shooting[0]
+    assert len(mf.shooting) == 1 and not mf.meteor_due, "때가 된 유성이 나타남"
+    assert m[3] > 0 and (m[0] - 100) * m[2] >= 0, "복사점에서 멀어지는 아래쪽으로"
+    mf.shooting = [[100.0, 50.0, 0.6, 0.8, 100.0, 0.5, 1.0, 1.0, False]]  # 수명 60% 쯤 — 거의 가장 밝음
+    Weather.meteors(mf, 0.1, 0.0)
+    assert mf.surface.pixels[(58 * 200 + 106) * 4 + 3] > 200, "머리 자리가 밝음"
+    Weather.meteors(mf, 0.5, 0.0)
+    assert not mf.shooting, "수명이 다하면 사라짐"
+    mf.surface.pixels[:] = bytes(len(mf.surface.pixels))
+    mf.shooting = [[100.0, 50.0, 0.6, 0.8, 100.0, 0.0, 0.03, 1.0, False]]  # 막 떨어지기 시작함 — 2px 왔음
+    Weather.meteors(mf, 0.02, 0.0)
+    assert mf.surface.pixels[(52 * 200 + 101) * 4 + 3] and not mf.surface.pixels[(44 * 200 + 95) * 4 + 3], "시작점 뒤로 꼬리 없음"
+    random.seed(4)
+    mf.amount, showers = 100, []
+    for i in range(300):
+        mf.meteor_due = []
+        Weather.meteors(mf, 50.0, i)  # 50초면 늘 하나는 옴 — 유성우면 나머지가 줄 서서 기다림
+        showers += [mf.meteor_due] if mf.meteor_due else []
+    assert 10 < len(showers) < 100, ("유성우는 가끔", len(showers))
+    assert all(len(s) >= METEOR_BURST[0] - 1 and len({r for _, r in s}) == 1 for s in showers), "유성우는 한 복사점에서"
     # 비눗방울: 오르고, 수명이 다하거나 동물에 닿으면 터져 물방울이 튀고, 닿은 동물은 ♪
     mark = []
     toy = types.SimpleNamespace(box=lambda: (90, 150, 30, 30), emote=lambda m, now: mark.append(m))
