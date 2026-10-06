@@ -218,6 +218,12 @@ DRAGONFLY_ART = (("....w..w....",  # 위에서 본 그림, 오른쪽을 봄. 날
 # 지나간 자리에 남기는 작은 방울 사이 px
 PANE_SHARE, PANE_RATE, PANE_R, PANE_HEAVY, PANE_GO, PANE_RMAX = 1.0, 22, (1.5, 6), 6, 0.12, 13
 PANE_RUN, PANE_RUN_T, PANE_STOP_T, PANE_TRAIL = (70, 230), (0.08, 0.35), (0.05, 0.7), (10, 22)
+# 새 방울이 유리에 부딪히는 모양: 퍼졌다 오므라드는 초 · 처음 퍼진 배수 · 이 반지름 이상이면 둘레에 잔방울이 튐 (개수, 거리 배수)
+PANE_SPLAT_T, PANE_SPLAT_K, PANE_SPRAY_R, PANE_SPRAY = 0.15, 1.8, 2.5, ((0, 3), (1.5, 2.8))
+# 소나기: 사이 초 · 이어지는 초 · 가장 셀 때 초당 빗줄기 수(양 50%) · 빗줄기 중 유리에 부딪혀 맺는 몫 · 빗줄기 기울기(SLANTS 번호) ·
+# 빗줄기가 보이는 초 · 맺힌 방울이 넘치면 마르는 수/초(넘친 수의 1/8 을 더함 — 소나기 뒤 한꺼번에 사라지지 않게)
+PANE_SHOWER_EVERY, PANE_SHOWER_LEN, PANE_SHOWER_RAIN, PANE_STICK = (40, 90), (3, 6), 420, 0.3
+PANE_SHOWER_SLANT, PANE_STREAK_T, PANE_DRY = 4, (0.08, 0.3), 8
 
 # 어항. 물빛은 행마다 색 하나로 화면 전체를 덮음 — 위는 옅은 하늘색, 아래로 갈수록 짙은 파랑
 AQ_TOP, AQ_DEEP = (96, 178, 226), (26, 92, 178)
@@ -594,6 +600,13 @@ def streak(length, alpha, width, slant=SLANT, color=RAIN_COLOR):
                        for x in range(sw))
         rows.append(trim(row))
     return shade((sw, rows))
+
+
+def shower_set(stride):
+    """창문 소나기 빗줄기. rain_set 과 같은 꼴([번쩍임][기울기][층] → {길이: 그림})이되 PANE_SHOWER_SLANT 칸만 그림
+    — 16벌을 다 그리면 200ms 걸림."""
+    return [[None] * PANE_SHOWER_SLANT + [[{n: place(streak(n, ly[3], ly[4], SLANTS[PANE_SHOWER_SLANT]), stride)
+                                            for n in range(ly[1][0], ly[1][1] + 1)} for ly in RAIN_LAYERS]]]
 
 
 def crown(k):
@@ -1963,13 +1976,35 @@ class Weather:
     def pane(self, dt):
         """유리창에 빗방울이 맺힘: 맺힌 방울은 가만히 있다 옆에 새 방울이 닿으면 합쳐 커지고, 커진 방울은 가끔 흘러내림.
         흐르는 방울은 달리다 멈칫하기를 되풀이하며 길 위의 방울을 삼켜 커지고, 지나간 자리에 작은 방울을 떨굼. 바닥
-        (작업 표시줄 위)에 닿으면 사라짐. 맺힌 방울이 pane_cap 을 넘으면 오래된 것부터 마름."""
+        (작업 표시줄 위)에 닿으면 사라짐. 맺힌 방울이 pane_cap 을 넘으면 오래된 것부터 초당 PANE_DRY 개 남짓씩 마름.
+        새 방울은 splats 에서 PANE_SPLAT_T 동안 퍼졌다 오므라든 뒤 맺힘."""
         px, stride, w, h, panes, sprites = self.surface.pixels, self.stride, self.w, self.h, self.panes, self.pane_sprites
         self.pane_due += PANE_RATE * self.amount / 50 * dt
+        quiet = self.pane_due > 3  # 처음 반쯤 채울 때 · 숨겼다 돌아옴 — 한꺼번에 부딪히지 않고 그냥 맺힘
         while self.pane_due >= 1:
             self.pane_due -= 1
-            self.wet(random.uniform(0, w), random.uniform(0, h - self.rise - 20), random.uniform(*PANE_R))
-        del panes[:max(0, len(panes) - self.pane_cap)]
+            x, y, r = random.uniform(0, w), random.uniform(0, h - self.rise - 20), random.uniform(*PANE_R)
+            if quiet:
+                self.wet(x, y, r)
+            else:
+                self.splats.append([x, y, r, 0.0])
+        live = []
+        for s in self.splats:  # [x, y, r, 나이]
+            s[3] += dt
+            if s[3] < PANE_SPLAT_T:
+                live.append(s)
+                continue
+            self.wet(*s[:3])
+            if s[2] >= PANE_SPRAY_R:  # 큰 방울은 둘레에 잔방울을 튀김
+                for _ in range(random.randint(*PANE_SPRAY[0])):
+                    a, d = random.uniform(0, math.tau), s[2] * random.uniform(*PANE_SPRAY[1])
+                    self.wet(s[0] + d * math.cos(a), s[1] + d * math.sin(a), random.uniform(0.7, 1.3))
+        self.splats = live
+        extra = len(panes) - self.pane_cap
+        self.pane_dry = self.pane_dry + (PANE_DRY + extra / 8) * dt if extra > 0 else 0.0
+        if self.pane_dry >= 1:
+            del panes[:min(extra, int(self.pane_dry))]
+            self.pane_dry -= int(self.pane_dry)
         for d in panes:
             if d[2] >= PANE_HEAVY and random.random() < PANE_GO * dt:
                 panes.remove(d)  # 흐르기 시작 — 리스트를 도는 중이라 한 프레임에 한 방울만
@@ -1996,11 +2031,51 @@ class Weather:
                     s[2], s[7] = math.sqrt(max(9.0, s[2] ** 2 - 0.6 * t * t)), random.uniform(*PANE_TRAIL)
             if s[1] + s[2] >= h - self.base[min(max(int(s[0]), 0), w - 1)] or not 0 <= s[0] < w:
                 self.runs.remove(s)
-        for x, y, r, *_ in panes + self.runs:
+        # 부딪히는 방울은 탁 퍼졌다 오므라듦. 번지는 고리는 물웅덩이 것이라 유리엔 안 그림(그렸더니 웃는 얼굴처럼 보였음)
+        splat = [(x, y, r * (1 + (PANE_SPLAT_K - 1) * (1 - t / PANE_SPLAT_T) ** 2)) for x, y, r, t in self.splats]
+        for x, y, r, *_ in panes + self.runs + splat:
             n, rows = sprites[min(len(sprites) - 1, max(0, round((r - 1) * 2)))]
             xi, yi = int(x - n / 2), int(y - n / 2)
             if 0 <= xi <= w - n and 0 <= yi <= h - n:
                 stamp(px, stride, xi, yi, rows)
+
+    def shower(self, dt):
+        """창문 빗방울의 소나기: PANE_SHOWER_EVERY 초에 한 번 PANE_SHOWER_LEN 초 동안 비스듬한 빗줄기가 유리 바깥으로 쏟아짐
+        (동물 뒤). 빗줄기는 잠깐 보이다 사라지며 PANE_STICK 만큼은 그 자리에서 유리에 부딪혀 맺힘(splats)."""
+        px, stride, w, h = self.surface.pixels, self.stride, self.w, self.h
+        if self.shower_left > 0:
+            self.shower_left -= dt
+            f = math.sin(math.pi * max(0.0, self.shower_left) / self.shower_len)  # 차차 세졌다 잦아듦
+        else:
+            f = 0.0
+            self.shower_in -= dt
+            if self.shower_in <= 0:
+                self.shower_len = self.shower_left = random.uniform(*PANE_SHOWER_LEN)
+                self.shower_in = random.uniform(*PANE_SHOWER_EVERY)
+        slant, floor = SLANTS[PANE_SHOWER_SLANT], h - self.rise - 20
+        self.streak_due += PANE_SHOWER_RAIN * self.amount / 50 * f * dt
+        while self.streak_due >= 1:
+            self.streak_due -= 1
+            li = 1 + (random.random() < 0.4)  # 가운데 · 가까운 층
+            n = random.randint(*RAIN_LAYERS[li][1])
+            # [x, y, 빠르기, 층, 길이, 남은 초]
+            self.streaks.append([random.uniform(-h * slant, w), random.uniform(-n, floor - n),
+                                 random.uniform(*RAIN_LAYERS[li][2]), li, n, random.uniform(*PANE_STREAK_T)])
+        sprites, live = self.rain_sprites[0][PANE_SHOWER_SLANT], []
+        for s in self.streaks:
+            s[5] -= dt
+            s[0] += s[2] * slant * dt
+            s[1] += s[2] * dt
+            if s[5] <= 0 or s[1] + s[4] >= floor:
+                if random.random() < PANE_STICK:  # 아래 끝이 유리에 닿음
+                    self.splats.append([s[0] + s[4] * slant, min(s[1] + s[4], floor), random.uniform(*PANE_R), 0.0])
+                continue
+            live.append(s)
+            sw, rows = sprites[s[3]][s[4]]
+            xi, yi = int(s[0]), int(s[1])
+            if yi >= 0 and 0 <= xi and xi + sw <= w:
+                stamp(px, stride, xi, yi, rows)
+        self.streaks = live
 
     def wet(self, x, y, r):
         """(x, y) 에 반지름 r 방울이 맺힘. 닿는 맺힌 방울이 있으면 합쳐 하나로 — 물 양(넓이)을 더하고 큰 쪽으로 쏠림."""
@@ -2335,6 +2410,11 @@ class Weather:
                 self.sprite_cache["window"] = [place(pane_drop(1 + k / 2), self.stride)
                                                for k in range(int((PANE_RMAX - 1) * 2) + 1)]
             self.pane_sprites, self.panes, self.runs = self.sprite_cache["window"], [], []
+            if "window_rain" not in self.sprite_cache:
+                self.sprite_cache["window_rain"] = shower_set(self.stride)
+            self.rain_sprites = self.sprite_cache["window_rain"]
+            self.splats, self.streaks, self.streak_due, self.pane_dry, self.shower_left = [], [], 0.0, 0.0, 0.0
+            self.shower_in, self.shower_len = random.uniform(*PANE_SHOWER_EVERY) / 3, 1.0  # 첫 소나기는 일찍
             self.pane_due = count(self.amount) * PANE_SHARE / 2  # 첫 프레임에 반쯤 맺힌 채로 시작
         elif kind == "bugs":
             self.bugs = []
@@ -2585,6 +2665,8 @@ class Weather:
         elif kind == "aurora":
             self.slide(self.aurora_px[1], 0, now, AURORA_DRIFT, AURORA_SWAY)
             self.meteors(dt, now)  # 하늘 멀리라 동물 뒤
+        elif kind == "window":  # 소나기 빗줄기는 유리 바깥이라 동물 뒤
+            self.shower(dt)
         if self.pets:  # 더미 위, 내리는 것 아래
             self.walk_pet(dt, now)
         if kind == "snow":
@@ -2922,7 +3004,7 @@ def check():
     assert seen == {"hover", "dart"}, "잠자리가 날아갔다 다시 멈춤"
     assert all(0 <= b[0] <= 200 and 0 <= b[1] <= 200 for b in gf.bugs), "화면 안"
     # 창문 빗방울: 닿는 방울은 합쳐지고, 흐르는 방울은 아래 방울을 삼키고 위에 자국을 남기다 바닥에서 사라짐
-    wf = big(rise=20, panes=[], runs=[], pane_cap=99, pane_due=0.0, amount=0,
+    wf = big(rise=20, panes=[], runs=[], pane_cap=99, pane_due=0.0, amount=0, splats=[], pane_dry=0.0,
              pane_sprites=[place(pane_drop(1 + k / 2), 800) for k in range(int((PANE_RMAX - 1) * 2) + 1)])
     wf.wet = Weather.wet.__get__(wf)
     wf.wet(50, 50, 3)
@@ -2940,8 +3022,51 @@ def check():
         Weather.pane(wf, 0.1)
     assert not wf.runs, "바닥에서 사라짐"
     wf.pane_cap, n = 1, len(wf.panes)
-    Weather.pane(wf, 0.1)
-    assert n > 1 and len(wf.panes) == 1, "너무 많으면 오래된 것부터 마름"
+    Weather.pane(wf, 0.01)
+    assert n > 1 and len(wf.panes) == n, "넘쳐도 한꺼번에 안 마름"
+    Weather.pane(wf, 1.0)
+    assert len(wf.panes) == 1, "너무 많으면 오래된 것부터 마름"
+    wf.panes, wf.pane_dry, amount, wf.amount = [[10.0 + 4 * i, 50.0, 1.0] for i in range(40)], 0.0, wf.amount, 0
+    Weather.pane(wf, 0.2)  # 넘친 39개 → (8 + 39/8) × 0.2 = 2.6 이라 오래된 둘만
+    assert len(wf.panes) == 38 and wf.panes[0][0] == 18.0, ("소나기 뒤에도 조금씩 마름", len(wf.panes))
+    wf.amount = amount
+    # 새 방울은 유리에 탁 부딪혀 퍼졌다 오므라든 뒤 맺히고, 큰 방울은 잔방울을 튀김. 처음 채울 때는 그냥 맺힘
+    random.seed(3)
+
+    def spread():  # 칠한 칸이 가장 넓은 행의 폭
+        p = wf.surface.pixels
+        lit = [[x for x in range(200) if p[(y * 200 + x) * 4 + 3]] for y in range(200)]
+        return max((r[-1] - r[0] for r in lit if r), default=0)
+    wf.panes, wf.pane_cap, wf.splats = [], 99, [[100.0, 100.0, 5.0, 0.0]]
+    for dt in (0.01, 0.2):
+        wf.surface.pixels[:] = bytes(len(wf.surface.pixels))
+        Weather.pane(wf, dt)
+        if dt < 0.1:
+            hit = spread()
+            assert not wf.panes and len(wf.splats) == 1, "부딪히는 동안은 아직 안 맺힘"
+    assert hit > spread() + 3 and wf.panes and wf.panes[0][2] >= 5 and not wf.splats, ("퍼졌다 오므라들어 맺힘", hit, spread())
+    for r, want in ((2.0, 10), (5.0, 11)):  # 16px 씩 띄워 서로 안 닿음
+        wf.panes, wf.splats = [], [[20.0 + 16 * i, 100.0, r, 0.0] for i in range(10)]
+        Weather.pane(wf, 0.2)
+        assert len(wf.panes) >= want if r > PANE_SPRAY_R else len(wf.panes) == want, ("큰 방울만 잔방울을 튀김", r, len(wf.panes))
+    wf.panes, wf.amount, wf.pane_due = [], 50, 0.99
+    Weather.pane(wf, 0.01)
+    assert len(wf.splats) == 1 and not wf.panes, "새 방울은 부딪히며 생김"
+    wf.splats, wf.pane_due = [], 10.0
+    Weather.pane(wf, 0.01)
+    assert not wf.splats and wf.panes, "처음 채울 때 · 돌아왔을 때는 한꺼번에 부딪히지 않고 그냥 맺힘"
+    # 소나기: 때가 되면 몇 초 동안 빗줄기가 쏟아지고 몇은 유리에 부딪혀 맺힘, 지나가면 그침
+    random.seed(7)
+    sf = big(rise=20, amount=50, splats=[], streaks=[], streak_due=0.0, shower_in=0.05, shower_left=0.0, shower_len=1.0,
+             rain_sprites=shower_set(800))
+    seen = []
+    for _ in range(400):  # 8초
+        Weather.shower(sf, 0.02)
+        seen.append(len(sf.streaks))
+    assert not any(seen[:2]) and max(seen) > 3 and sf.splats, ("때가 되면 쏟아지고 몇은 유리에 부딪힘", max(seen), len(sf.splats))
+    assert any(bytes(sf.surface.pixels)[3::4]), "빗줄기가 그려짐"
+    assert all(s[1] <= 160 for s in sf.splats), "작업 표시줄 위에서만 맺힘"
+    assert not sf.streaks and sf.shower_left <= 0 and sf.shower_in > 30, "지나가면 그침"
     # 틀 단을 만나면 순간 이동하지 않고 뛰어 내려옴 (뛰는 모양은 pet.check 가 봄)
     walker = pet.Cat(200, random.Random(4))
     gf = big(pets={"cat": walker}, pile=Pile(200), base=[48] * 200, pet_sprites=pet.sprites(),
