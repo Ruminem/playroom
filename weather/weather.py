@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""모든 창 위에 내리는 눈·진눈깨비·비·뇌우·우박과 안개, 떠다니는 반딧불이·비눗방울, 불꽃놀이, 어항. 보이기만 하고 클릭은 그대로 아래 창으로 간다.
+"""모든 창 위에 내리는 눈·비·뇌우·우박, 유리창에 맺히는 빗방울, 안개·오로라, 떠다니는 반딧불이·나비·잠자리·비눗방울, 불꽃놀이, 어항. 보이기만 하고 클릭은 그대로 아래 창으로 간다.
 
   pythonw weather.py            띄우기 (창 없이 뒤에서 돎)
   python weather.py --toggle    떠 있으면 치우고, 없으면 띄움 (weather.bat 이 이걸 부름)
@@ -77,7 +77,7 @@ RAIN_LAYERS = ((0.45, (9, 15), (460, 580), 75, 0.8),       # 멀리 — 가늘�
                (0.25, (30, 44), (900, 1150), 190, 1.6))
 SLANT = 0.12       # 빗줄기 기본 기울기 (가로 / 세로)
 SLANTS = tuple(i * 0.05 for i in range(8))  # 미리 그려 두는 기울기들. 돌풍은 이 사이를 오감
-GUST = {"rain": (0.06, 0.10), "storm": (0.16, 0.20), "sleet": (0.10, 0.12)}  # 종류 → (기본에 더함, 출렁임 폭)
+GUST = {"rain": (0.06, 0.10), "storm": (0.16, 0.20)}  # 종류 → (기본에 더함, 출렁임 폭)
 CROWN_SEC = 0.09   # 빗방울이 바닥에 닿는 순간 ㅅ자 튐을 보여 주는 시간
 RAIN_MULT = 2      # 비는 빨리 지나가 같은 개수면 듬성듬성해 보여서 눈의 두 배
 
@@ -130,9 +130,8 @@ FW_COLORS = (((255, 222, 212), (255, 62, 52)),    # (알갱이, 번짐) 빨강
              ((246, 222, 255), (192, 82, 255)),   # 보라
              ((255, 255, 255), (204, 212, 232)))  # 흰
 
-# 진눈깨비: 눈·비를 같이 내림. 눈 · 비 수에 곱하는 비율 · 더미가 눈보다 몇 배 빨리 녹나(젖은 눈)
-SLEET_SNOW, SLEET_RAIN, SLEET_MELT = 0.5, 0.5, 3
-RAINY = ("rain", "storm", "sleet")  # 빗소리가 나고 동물이 비 맞는 날처럼 구는 종류
+RAINY = ("rain", "storm")  # 빗줄기가 내리고 동물이 비 맞는 날처럼 구는 종류
+SOUNDY = (*RAINY, "window")  # 빗소리가 나는 종류 — 창문 빗방울은 실내라 동물은 안 젖음
 
 # 안개: 화면 아래에서 닿는 높이(비율) · 양 50% 의 맨 아래 불투명도 · 색 · 흐르는 빠르기 px/초
 # 행마다 같은 빠르기에, 높이를 따라 위상이 밀리는 출렁임(폭 px · 빠르기 rad/초 · 행당 위상)을 더함 — 행마다 빠르기가
@@ -142,9 +141,67 @@ FOG_SWAY, FOG_SWAY_V, FOG_SWAY_K = 40, 0.12, 0.012
 FOG_KNOT = 90      # 이 행마다 가로 무늬를 하나씩 새로 뽑고 그 사이 행은 섞음
 FOG_MIX = 16       # 섞는 비율 단계 수 — 단계마다 한 번만 셈
 
+# 오로라: 화면 위에서 닿는 깊이(비율) · 양 50% 의 가장 짙은 불투명도 · 커튼 아래 색 · 위 색. 흐름은 안개처럼
+AURORA_REACH, AURORA_ALPHA, AURORA_LOW, AURORA_HIGH = 0.5, 0.42, (84, 255, 168), (178, 98, 255)
+AURORA_DRIFT, AURORA_SWAY, AURORA_SWAY_V, AURORA_SWAY_K = 6, 70, 0.17, 0.009
+AURORA_STEP = 3    # 무늬를 이 행 · 4열마다 한 번 셈 — 픽셀마다면 2560×720 에 몇 초
+
 # 비눗방울: 양 → 방울 수 ('보통' 9개) · 반지름들 px · 오르는 빠르기 px/초 · 터지기까지 초 · 무지갯빛이 도는 그림 수 · 초당 바퀴
+# 그림 수 8 이면 한 번에 45° 씩 뚝뚝 넘어가 돌아가는 게 보였음. 32 면 11°
 SOAP_SHARE, SOAP_R, SOAP_RISE, SOAP_LIFE = 0.06, (6, 9, 13, 18), (18, 46), (5, 14)
-SOAP_HUES, SOAP_SPIN, SOAP_SWAY = 8, 0.35, 9  # 흔들림 폭 px
+SOAP_HUES, SOAP_SPIN, SOAP_SWAY = 32, 0.25, 9  # 흔들림 폭 px
+
+# 나비·잠자리: 양 → 마리 수 ('보통' 8마리) · 그중 잠자리 몫. 나비는 팔랑이는 빠르기 px/초 · 날갯짓 Hz · 초당 내려앉을
+# 확률 · 앉아 쉬는 초 · 동물이 이 px 안에 오면 날아오름. 잠자리는 휙 나는 최고 px/초 · 멈춰 떠 있는 초
+BUG_SHARE, BUG_DRAGON = 0.05, 0.3
+FLUTTER_V, FLUTTER_HZ, BUG_LAND, BUG_REST, BUG_SHY = (30, 70), 7, 0.07, (2.5, 7), 70
+DART_V, DART_HOVER = 320, (0.4, 2.2)
+BUG_COLORS = ({"a": (247, 140, 30), "b": (38, 30, 30), "c": (252, 204, 126), "k": (38, 43, 68)},     # 제주왕나비 빛
+              {"a": (250, 250, 244), "b": (70, 72, 84), "c": (232, 234, 214), "k": (38, 43, 68)},    # 배추흰나비
+              {"a": (64, 142, 255), "b": (24, 34, 76), "c": (128, 194, 255), "k": (38, 43, 68)},     # 파랑
+              {"a": (255, 218, 60), "b": (96, 74, 24), "c": (255, 240, 156), "k": (38, 43, 68)},     # 노랑
+              {"b": (52, 122, 232), "g": (40, 90, 180), "e": (30, 40, 82), "w": (170, 196, 226)},   # 파란 잠자리
+              {"b": (226, 62, 46), "g": (170, 52, 40), "e": (92, 32, 32), "w": (196, 186, 206)})    # 고추잠자리
+BUTTERFLY_ART = (("..k...k..",  # 날개를 활짝 → 반쯤 → 접음 → 반쯤 으로 돌림
+                  "...k.k...",
+                  "bba.k.abb",
+                  "baaakaaab",
+                  "baaakaaab",
+                  ".aaakaaa.",
+                  "..cakac..",
+                  "..cc.cc.."),
+                 ("..k...k..",
+                  "...k.k...",
+                  ".ba.k.ab.",
+                  ".baakaab.",
+                  "..aakaa..",
+                  "..aakaa..",
+                  "..cakac..",
+                  "...c.c..."),
+                 ("..k...k..",
+                  "...k.k...",
+                  "...bkb...",
+                  "...aka...",
+                  "...aka...",
+                  "...aka...",
+                  "...ckc...",
+                  "........."))
+DRAGONFLY_ART = (("....w..w....",  # 위에서 본 그림, 오른쪽을 봄. 날개 두 쌍이 프레임마다 앞뒤로 젖혀짐 — 빨라서 떨려 보임
+                  "...ww.ww....",
+                  "bbbbbbbbggee",
+                  "...ww.ww....",
+                  "....w..w...."),
+                 ("...w..w.....",
+                  "...ww.ww....",
+                  "bbbbbbbbggee",
+                  "...ww.ww....",
+                  "...w..w....."))
+
+# 창문 빗방울: 양 → 유리에 맺혀 있는 방울 수 ('보통' 150개) · 양 50% 에 초당 새로 맺히는 수 · 새 방울 반지름 범위 px ·
+# 이 반지름이 넘으면 초당 PANE_GO 확률로 흘러내리기 시작 · 반지름 최대 · 흐를 때 달리는 px/초 · 달리는 초 · 멈칫하는 초 ·
+# 지나간 자리에 남기는 작은 방울 사이 px
+PANE_SHARE, PANE_RATE, PANE_R, PANE_HEAVY, PANE_GO, PANE_RMAX = 1.0, 22, (1.5, 6), 6, 0.12, 13
+PANE_RUN, PANE_RUN_T, PANE_STOP_T, PANE_TRAIL = (70, 230), (0.08, 0.35), (0.05, 0.7), (10, 22)
 
 # 어항. 물빛은 행마다 색 하나로 화면 전체를 덮음 — 위는 옅은 하늘색, 아래로 갈수록 짙은 파랑
 AQ_TOP, AQ_DEEP = (96, 178, 226), (26, 92, 178)
@@ -371,9 +428,9 @@ JELLY_ART = (("..qqqqq..",
 # 해파리 수 · 오므려 밀어 오르는 간격 초 · 그때 오르는 빠르기 px/초 · 가라앉는 빠르기 px/초 · 오므린 그림 보이는 초
 JELLY_N, JELLY_PULSE, JELLY_PUSH, JELLY_SINK, JELLY_SQUEEZE = 3, (2.0, 3.5), 42, 7, 0.35
 
-KINDS = {1: ("snow", "눈"), 9: ("sleet", "진눈깨비"), 2: ("rain", "비"), 3: ("storm", "뇌우"), 4: ("hail", "우박"),
-         31: ("fog", "안개"), 6: ("fireflies", "반딧불이"), 32: ("soap", "비눗방울"), 5: ("fireworks", "불꽃놀이"),
-         8: ("aquarium", "어항"), 7: ("none", "날씨 없음")}  # 없음은 동물만. id 는 설정 파일과 무관해 순서만 바꿔도 됨
+KINDS = {1: ("snow", "눈"), 2: ("rain", "비"), 3: ("storm", "뇌우"), 4: ("hail", "우박"), 35: ("window", "창문 빗방울"),
+         31: ("fog", "안개"), 33: ("aurora", "오로라"), 6: ("fireflies", "반딧불이"), 34: ("bugs", "나비·잠자리"),
+         32: ("soap", "비눗방울"), 5: ("fireworks", "불꽃놀이"), 8: ("aquarium", "어항"), 7: ("none", "날씨 없음")}  # 없음은 동물만. id 는 설정 파일과 무관해 순서만 바꿔도 됨
 KIND_NAMES = tuple(k for k, _ in KINDS.values())
 SHOW, PANEL, AUTOSTART, EXIT = 20, 30, 50, 99
 DRAG = 27  # 동물을 왼쪽 단추로 집어 옮기기. 윈도우만 — 맥은 창을 누르면 앱이 앞으로 나와 포커스를 뺏을 수 있어 아직 안 함
@@ -428,8 +485,8 @@ def amount_arg(s):
 
 
 def hearing(kind, visible, sound, volume):
-    """지금 울릴 빗소리 크기, 조용해야 하면 None. 비·뇌우·진눈깨비가 보이는 동안만 — 숨기면 소리도 멈춤."""
-    return volume if sound and visible and kind in RAINY and volume else None
+    """지금 울릴 빗소리 크기, 조용해야 하면 None. 비·뇌우·창문 빗방울이 보이는 동안만 — 숨기면 소리도 멈춤."""
+    return volume if sound and visible and kind in SOUNDY and volume else None
 
 ICON_COLORS = {"b": "#0099db", "w": "#ffffff"}
 ICON = ("...b...",
@@ -795,8 +852,75 @@ def bubble(r, alpha, fx=0.0, fy=0.0):
     return shade((n, rows))
 
 
-def soap_ball(r, hue):
-    """비눗방울: 거의 투명한 속에 무지갯빛 테두리(각도를 따라 색이 돌고, hue 0–1 만큼 돌려 둠)와 왼쪽 위 반짝임."""
+def soap_balls(r, hues):
+    """비눗방울 hues 벌: 거의 투명한 속에 무지갯빛 테두리(각도를 따라 색이 돌고, 벌마다 1/hues 바퀴씩 돌려 둠)와
+    왼쪽 위 반짝임. 알파와 그림자는 색과 무관해 한 번만 셈 — 그림자는 색 없는 그림에 깔고 벌마다 색만 더함
+    (그림자 픽셀 = 원래 + 그림자 × (255 − 알파) 라 색이 덧셈으로 떨어짐). 벌마다 shade 를 다 돌리면 32벌 0.3초."""
+    n = int(math.ceil(2 * r)) + 3
+    c = n / 2 - 0.5
+    rows, dots = [], []  # dots: 색을 칠할 픽셀 (행, 바이트 자리, 각도 칸 0–255, 색 몫 a·(1−반짝임), 흰 몫 a·반짝임)
+    for y in range(n):
+        row = b""
+        for x in range(n):
+            dx, dy = x - c, y - c
+            d = math.hypot(dx, dy)
+            cov = min(1.0, max(0.0, r + 0.5 - d))
+            rim = max(0.0, 1 - abs(d - r + 0.6) / 1.1)
+            shine = max(0.0, 1 - math.hypot(dx + r * 0.45, dy + r * 0.45) / max(0.8, r * 0.28))
+            a = 235 * cov * max(0.08, rim, shine)
+            row += pixel((0, 0, 0), a)
+            if int(a):  # 반짝임 쪽은 하얗게: 채널 = a·(f + (1−f)·반짝임) = f·a(1−반짝임) + a·반짝임
+                dots.append((y, 4 * (x + 1), int(math.atan2(dy, dx) / math.tau * 256) & 255, a * (1 - shine), a * shine))
+        rows.append(trim(row))
+    w, base = shade((n, rows))  # 그림은 1px 오른쪽에 앉음 — dots 의 x + 1
+    base = [bytes(skip) + d + bytes(4 * w - skip - len(d)) for skip, d in base]
+    film = [colorsys.hsv_to_rgb(i / 256, 0.45, 1.0) for i in range(256)]
+    out = []
+    for k in range(hues):
+        off, px = k * 256 // hues, [bytearray(b) for b in base]
+        for y, i, ang, m, s in dots:
+            fr, fg, fb = film[(ang + off) & 255]
+            row = px[y]
+            row[i] += int(fb * m + s)
+            row[i + 1] += int(fg * m + s)
+            row[i + 2] += int(fr * m + s)
+        out.append((w, [trim(bytes(b)) for b in px]))
+    return out
+
+
+def aurora_field(w, rows, rng):
+    """오로라 무늬: rows 행의 행마다 알파 0–255 바이트(폭 w, 끝이 처음과 이어짐). 열마다 커튼 아랫단 깊이가 있고,
+    아랫단 밑은 빠르게 사라지고 위로는 천천히 옅어짐. 세기는 넓은 띠(사인 셋)에 가는 빛살(높은 사인 다섯)을 곱해
+    세로 결이 보임. 사인은 폭에 정수 번 돌아 이어짐. AURORA_STEP 행 · 4열마다 셈해 늘림."""
+    def waves(ks, n):
+        return [(k, rng.uniform(0, math.tau), rng.uniform(0.5, 1)) for k in rng.sample(ks, n)]
+
+    def wave(ws, x):  # −1–1
+        return sum(a * math.sin(math.tau * k * x / w + p) for k, p, a in ws) / sum(a for _, _, a in ws)
+
+    band, rays, edge = waves(range(1, 5), 3), waves(range(30, 90), 5), waves(range(2, 7), 3)
+    xs = range(0, w, 4)
+    power = [(0.25 + 0.75 * max(0.0, 0.3 + 0.7 * wave(band, x))) * (0.55 + 0.45 * wave(rays, x)) for x in xs]
+    low = [0.74 + 0.14 * wave(edge, x) for x in xs]  # 아랫단: 위에서 잰 깊이 비율
+    out, step = [], AURORA_STEP
+    for j in range(0, rows, step):
+        u = (j + step / 2) / rows
+        line = b"".join(bytes((int(255 * p * (math.exp((e - u) / 0.025) if u > e else math.exp((u - e) / 0.32))),)) * 4
+                        for p, e in zip(power, low))[:w]
+        out += [line] * min(step, rows - j)
+    return out
+
+
+def aurora_color(u):
+    """오로라 색 — u 는 위에서 잰 깊이 비율(0 꼭대기). 위는 보라, 아래로 갈수록 초록."""
+    t = min(1.0, max(0.0, (u - 0.15) / 0.5))
+    return tuple(round(a + (b - a) * t) for a, b in zip(AURORA_HIGH, AURORA_LOW))
+
+
+def pane_drop(r):
+    """유리에 맺힌 물방울: 거의 투명한 몸통, 위 테두리는 남색으로 어둡고 아래는 밝은 초승달, 왼쪽 위에 반짝이는 점 —
+    둥근 렌즈가 위쪽 어둠과 아래쪽 빛을 뒤집어 비추는 모양. 밝은 창 위에서는 남색 테두리가, 어두운 창 위에서는 밝은
+    초승달이 보임."""
     n = int(math.ceil(2 * r)) + 3
     c = n / 2 - 0.5
     rows = []
@@ -806,11 +930,15 @@ def soap_ball(r, hue):
             dx, dy = x - c, y - c
             d = math.hypot(dx, dy)
             cov = min(1.0, max(0.0, r + 0.5 - d))
-            rim = max(0.0, 1 - abs(d - r + 0.6) / 1.1)
-            shine = max(0.0, 1 - math.hypot(dx + r * 0.45, dy + r * 0.45) / max(0.8, r * 0.28))
-            film = colorsys.hsv_to_rgb((math.atan2(dy, dx) / math.tau + hue) % 1, 0.45, 1.0)
-            col = tuple(int(255 * (f + (1 - f) * shine)) for f in film)  # 반짝임 쪽은 하얗게
-            row += pixel(col, 235 * cov * max(0.08, rim, shine))
+            edge = max(0.0, 1 - abs(d - r + 0.7) / 1.2) if r >= 1.5 else 1.0
+            up = -dy / max(r, 0.5)  # 1 위 · −1 아래
+            dark, lit = edge * max(0.0, up) ** 0.7, edge * max(0.0, -up) ** 1.2
+            shine = max(0.0, 1 - math.hypot(dx + r * 0.35, dy + r * 0.35) / max(0.7, r * 0.3))
+            if shine > 0.05 or lit > dark:
+                col, a = (255, 255, 255), 230 * max(shine, lit * 0.8, 0.12)
+            else:
+                col, a = (36, 44, 72), 200 * max(dark * 0.75, 0.12)
+            row += pixel(col, a * cov)
         rows.append(trim(row))
     return shade((n, rows))
 
@@ -1506,31 +1634,41 @@ class Weather:
                 stamp(px, stride, xi, yi, rows)
         self.sparks = live
 
-    # ── 안개 ──
-    def fog_tint(self):
-        """안개 무늬에 색과 높이별 진하기(위는 0, 작업 표시줄 위 맨 아래가 제일 짙음)를 입혀 행마다 두 벌 이어 붙인
-        픽셀 바이트로 — fog 가 행마다 한 번 잘라 붙이게. 양이 바뀔 때만 (2560 폭이면 12MB)."""
-        if self.fog_px is not None and self.fog_px[0] == self.amount:
-            return
-        field = self.sprite_cache["fog"]
-        k, n, scales, rows = FOG_ALPHA * self.amount / 50, len(field), {}, []
-        chans = [bytes(c * v // 255 for v in range(256)) for c in FOG_COLOR[::-1]]  # premultiplied B, G, R
+    # ── 안개 · 오로라 ──
+    def tint(self, name, cur, color, alpha, ramp):
+        """sprite_cache[name] 의 알파 행 무늬에 색과 높이별 진하기를 입혀 행마다 두 벌 이어 붙인 픽셀 바이트로 — slide 가
+        행마다 한 번 잘라 붙이게. color(u)·ramp(u) 는 위 0 → 아래 1 인 u 의 색·진하기 배수. 양이 바뀔 때만 새로
+        만들고(2560 폭이면 행 600개에 12MB) 아니면 cur 를 그대로 돌려줌."""
+        if cur is not None and cur[0] == self.amount:
+            return cur
+        field = self.sprite_cache[name]
+        k, n, scales, chans, rows = alpha * self.amount / 50, len(field), {}, {}, []
         for j, a in enumerate(field):
-            q = min(255, int(255 * k * ((j + 1) / n) ** 1.6))
+            u = (j + 1) / n
+            q = min(255, int(255 * k * ramp(u)))
             tab = scales.get(q) or scales.setdefault(q, bytes(v * q // 255 for v in range(256)))
+            c = color(round(u * 32) / 32)  # 색은 32 단계로 — 단계마다 표를 한 번만 셈
+            if c not in chans:  # premultiplied B, G, R
+                chans[c] = [bytes(ch * v // 255 for v in range(256)) for ch in c[::-1]]
             a = (a + a).translate(tab)
             px = bytearray(len(a) * 4)
-            px[0::4], px[1::4], px[2::4], px[3::4] = (*(a.translate(t) for t in chans), a)
+            px[0::4], px[1::4], px[2::4], px[3::4] = (*(a.translate(t) for t in chans[c]), a)
             rows.append(bytes(px))
-        self.fog_px = (self.amount, rows)
+        return self.amount, rows
 
     def fog(self, now):
-        """행마다 무늬를 시간만큼 옆으로 밀어 잘라 붙임. 밀리는 양은 모든 행이 같은 빠르기에 높이를 따라 위상이 밀린
-        출렁임을 더한 것 — 이웃 행끼리는 늘 1px 안팎만 어긋나 무늬가 안 찢어지고, 위아래가 서로 엇갈려 흘러 보임."""
-        px, stride, w, rows = self.surface.pixels, self.stride, self.w, self.fog_px[1]
-        y0, drift = self.h - self.rise - len(rows), FOG_DRIFT * now
+        """안개는 작업 표시줄 바로 위에 깔림."""
+        rows = self.fog_px[1]
+        self.slide(rows, self.h - self.rise - len(rows), now, FOG_DRIFT, FOG_SWAY, FOG_SWAY_V, FOG_SWAY_K)
+
+    def slide(self, rows, y0, now, drift, sway, sway_v, sway_k):
+        """행마다 무늬를 시간만큼 옆으로 밀어 y0 부터 잘라 붙임. 밀리는 양은 모든 행이 같은 빠르기에 높이를 따라 위상이
+        밀린 출렁임을 더한 것 — 이웃 행끼리는 늘 1px 안팎만 어긋나 무늬가 안 찢어지고, 위아래가 서로 엇갈려 흘러 보임.
+        행마다 빠르기가 다르면 오래 둘수록 이웃 행이 벌어져 가로 줄무늬가 됨."""
+        px, stride, w = self.surface.pixels, self.stride, self.w
+        drift *= now
         for j, row in enumerate(rows):
-            o = int(drift + FOG_SWAY * math.sin(now * FOG_SWAY_V + j * FOG_SWAY_K)) % w * 4
+            o = int(drift + sway * math.sin(now * sway_v + j * sway_k)) % w * 4
             s = (y0 + j) * stride
             px[s:s + stride] = row[o:o + stride]
 
@@ -1541,9 +1679,9 @@ class Weather:
         x = random.uniform(0, self.w - 2 * SOAP_R[size] - 4)
         col = min(max(int(x), 0), self.w - 1)
         y = self.h - self.base[col] - random.uniform(30, 90) if bottom else random.uniform(self.h * 0.2, self.h - 60)
-        # [x, y, 오르는 빠르기, 크기, 흔들림 위상, 흔들림 빠르기, 남은 초, 무지개 위상]
+        # [x, y, 오르는 빠르기, 크기, 흔들림 위상, 흔들림 빠르기, 남은 초, 무지개 위상, 흔들려 그린 x — 클릭이 봄]
         return [x, y, random.uniform(*SOAP_RISE), size, random.uniform(0, math.tau), random.uniform(0.8, 1.6),
-                random.uniform(*SOAP_LIFE), random.random()]
+                random.uniform(*SOAP_LIFE), random.random(), x]
 
     def soap(self, dt, now):
         """오르며 흔들리다 수명이 다하거나 화면 위로 나가거나 동물 몸에 닿으면 톡 — 물방울이 튀고, 닿은 동물은 ♪."""
@@ -1554,7 +1692,7 @@ class Weather:
             b[6] -= dt
             frames = self.soap_sprites[b[3]]
             n = frames[0][0]
-            x = b[0] + math.sin(b[4] + now * b[5]) * SOAP_SWAY
+            x = b[8] = b[0] + math.sin(b[4] + now * b[5]) * SOAP_SWAY
             cx, cy = x + n / 2, b[1] + n / 2
             hit = next((p for p, bx in boxes if bx and bx[0] <= cx < bx[0] + bx[2] and bx[1] <= cy < bx[1] + bx[3]), None)
             if hit or b[6] <= 0 or b[1] + n < 0:
@@ -1576,6 +1714,129 @@ class Weather:
             ang, v = random.uniform(0, math.tau), random.uniform(50, 110)
             self.splashes.append([x + math.cos(ang) * r - d / 2, y + math.sin(ang) * r - d / 2,
                                   math.cos(ang) * v, math.sin(ang) * v - 40, random.uniform(0.18, 0.3)])
+
+    # ── 나비 · 잠자리 ──
+    def bug_sprites(self):
+        """([종류][프레임][오른쪽을 보나] 조각, 종류마다 (폭, 높이)). 나비는 위에서 본 그림이라 좌우가 같음."""
+        if "bugs" not in self.sprite_cache:
+            fly = [[{r: pet.segments(rows, False, c) for r in (True, False)} for rows in BUTTERFLY_ART]
+                   for c in BUG_COLORS[:4]]
+            dragon = [[{r: pet.segments(rows, not r, c) for r in (True, False)} for rows in DRAGONFLY_ART]
+                      for c in BUG_COLORS[4:]]
+            size = lambda art: (len(art[0][0]) * pet.SCALE, len(art[0]) * pet.SCALE)
+            self.sprite_cache["bugs"] = fly + dragon, [size(BUTTERFLY_ART)] * 4 + [size(DRAGONFLY_ART)] * 2
+        return self.sprite_cache["bugs"]
+
+    def new_bug(self):
+        """화면 아래쪽 2/3 어딘가에서 날고 있음. x, y 는 가운데."""
+        dragon = random.random() < BUG_DRAGON
+        sp = random.randrange(4, 6) if dragon else random.randrange(4)
+        x, y = random.uniform(0, self.w), random.uniform(self.h * 0.35, self.h * 0.85)
+        # [x, y, 종류, 상태, 상태가 끝나는 시각, 방향(라디안), 방향이 틀어지는 빠르기, 위상, 빠르기, 가려는 x, 가려는 y]
+        return [x, y, sp, "hover" if dragon else "fly", 0.0, random.uniform(0, math.tau), 0.0,
+                random.uniform(0, math.tau), random.uniform(*FLUTTER_V), x, y]
+
+    def flutter(self, dt, now):
+        """나비는 이리저리 팔랑이다 가끔 바닥에 내려앉아 쉬고, 동물이 다가오면 날아오름. 잠자리는 휙 날아가 멈춰 떠
+        있기를 되풀이. 둘 다 화면 아래쪽 2/3 안에서."""
+        px, stride, w, h = self.surface.pixels, self.stride, self.w, self.h
+        sprites, sizes = self.bug_sprites()
+        near = [bx[0] + bx[2] / 2 for bx in (p.box() for p in self.pets.values() if not p.held) if bx]
+        for b in self.bugs:
+            bw, bh = sizes[b[2]]
+            floor = h - self.base[min(max(int(b[0]), 0), w - 1)] - bh / 2
+            s, right = b[3], True
+            if s == "fly":
+                b[6] = max(-3.0, min(3.0, b[6] + random.gauss(0, 6) * dt))
+                b[5] += b[6] * dt
+                b[0] = (b[0] + math.cos(b[5]) * b[8] * dt) % w
+                b[1] += math.sin(b[5]) * b[8] * 0.6 * dt
+                if (b[1] < h * 0.3 and math.sin(b[5]) < 0) or (b[1] > floor - 30 and math.sin(b[5]) > 0):
+                    b[5] = -b[5]  # 화면 아래쪽 2/3 안에서 위아래로 튕김
+                if random.random() < BUG_LAND * dt:
+                    b[3] = "down"
+                y, frame = b[1] + 5 * math.sin(now * 5 + b[7]), (0, 1, 2, 1)[int(now * FLUTTER_HZ * 4 + b[7]) % 4]
+            elif s == "down":  # 팔랑이며 비스듬히 내려감
+                b[0] = (b[0] + math.cos(b[5]) * b[8] * 0.5 * dt) % w
+                b[1] = min(floor, b[1] + b[8] * dt)
+                if b[1] >= floor:
+                    b[3], b[4] = "rest", now + random.uniform(*BUG_REST)
+                y, frame = b[1], (0, 1, 2, 1)[int(now * FLUTTER_HZ * 4 + b[7]) % 4]
+            elif s == "rest":  # 바닥에 앉아 날개를 천천히 접었다 폄
+                b[1] = floor
+                if now >= b[4] or any(abs(cx - b[0]) < BUG_SHY for cx in near):
+                    b[3], b[5], b[6] = "fly", -math.pi / 2 + random.uniform(-0.6, 0.6), 0.0
+                    b[1] -= 4
+                y, frame = b[1], (0, 1, 2, 1)[int(now * 1.2 + b[7]) % 4]
+            else:  # 잠자리: 떠 있다(hover) 휙 날아감(dart)
+                if s == "hover" and now >= b[4]:
+                    b[3] = "dart"
+                    b[9] = min(max(b[0] + random.uniform(-500, 500), bw), w - bw)
+                    b[10] = random.uniform(h * 0.3, max(h * 0.3, floor - 40))
+                if b[3] == "dart":
+                    dx, dy = b[9] - b[0], b[10] - b[1]
+                    d = math.hypot(dx, dy)
+                    if d < 2:
+                        b[3], b[4] = "hover", now + random.uniform(*DART_HOVER)
+                    else:
+                        v = min(DART_V, d * 5) * dt  # 가까워지며 멈춰 섬
+                        b[0], b[1], b[5] = b[0] + dx / d * v, b[1] + dy / d * v, math.atan2(dy, dx)
+                right = math.cos(b[5]) >= 0
+                y, frame = b[1] + 1.5 * math.sin(now * 3 + b[7]), int(now * 30 + b[7]) % 2
+            pet.stamp(px, stride, int(b[0] - bw / 2), int(y - bh / 2), sprites[b[2]][frame][right], w, h)
+
+    # ── 창문 빗방울 ──
+    def pane(self, dt):
+        """유리창에 빗방울이 맺힘: 맺힌 방울은 가만히 있다 옆에 새 방울이 닿으면 합쳐 커지고, 커진 방울은 가끔 흘러내림.
+        흐르는 방울은 달리다 멈칫하기를 되풀이하며 길 위의 방울을 삼켜 커지고, 지나간 자리에 작은 방울을 떨굼. 바닥
+        (작업 표시줄 위)에 닿으면 사라짐. 맺힌 방울이 pane_cap 을 넘으면 오래된 것부터 마름."""
+        px, stride, w, h, panes, sprites = self.surface.pixels, self.stride, self.w, self.h, self.panes, self.pane_sprites
+        self.pane_due += PANE_RATE * self.amount / 50 * dt
+        while self.pane_due >= 1:
+            self.pane_due -= 1
+            self.wet(random.uniform(0, w), random.uniform(0, h - self.rise - 20), random.uniform(*PANE_R))
+        del panes[:max(0, len(panes) - self.pane_cap)]
+        for d in panes:
+            if d[2] >= PANE_HEAVY and random.random() < PANE_GO * dt:
+                panes.remove(d)  # 흐르기 시작 — 리스트를 도는 중이라 한 프레임에 한 방울만
+                # [x, y, r, 이 상태가 끝나기까지 초, 달리나, 달리는 빠르기, 좌우 빠르기, 다음 자국까지 px]
+                self.runs.append([d[0], d[1], d[2], 0.0, False, 0.0, 0.0, random.uniform(*PANE_TRAIL)])
+                break
+        for s in self.runs[:]:
+            s[3] -= dt
+            if s[3] <= 0:
+                s[4] = not s[4]
+                s[3] = random.uniform(*(PANE_RUN_T if s[4] else PANE_STOP_T))
+                s[5] = random.uniform(*PANE_RUN) * min(1.5, s[2] / 7)  # 큰 방울이 빠름
+                s[6] = random.uniform(-0.2, 0.2) * s[5]
+            if s[4]:
+                step = s[5] * dt
+                s[0], s[1], s[7] = s[0] + s[6] * dt, s[1] + step, s[7] - step
+                for d in [d for d in panes if d[1] > s[1] - s[2] and abs(d[0] - s[0]) < s[2] + d[2]
+                          and math.hypot(d[0] - s[0], d[1] - s[1]) < s[2] + d[2]]:
+                    panes.remove(d)  # 길 위의 방울을 삼킴 — 위 끝보다 아래 것만(지나온 자국은 그 위에 떨굼)
+                    s[2] = min(PANE_RMAX, math.hypot(s[2], d[2]))
+                if s[7] <= 0:  # 자국을 떨구며 조금 작아짐
+                    t = random.uniform(1.2, 2.2)
+                    panes.append([s[0] + random.uniform(-1, 1), s[1] - s[2] - t - 1, t])
+                    s[2], s[7] = math.sqrt(max(9.0, s[2] ** 2 - 0.6 * t * t)), random.uniform(*PANE_TRAIL)
+            if s[1] + s[2] >= h - self.base[min(max(int(s[0]), 0), w - 1)] or not 0 <= s[0] < w:
+                self.runs.remove(s)
+        for x, y, r, *_ in panes + self.runs:
+            n, rows = sprites[min(len(sprites) - 1, max(0, round((r - 1) * 2)))]
+            xi, yi = int(x - n / 2), int(y - n / 2)
+            if 0 <= xi <= w - n and 0 <= yi <= h - n:
+                stamp(px, stride, xi, yi, rows)
+
+    def wet(self, x, y, r):
+        """(x, y) 에 반지름 r 방울이 맺힘. 닿는 맺힌 방울이 있으면 합쳐 하나로 — 물 양(넓이)을 더하고 큰 쪽으로 쏠림."""
+        for d in self.panes:
+            if abs(d[0] - x) < d[2] + r and math.hypot(d[0] - x, d[1] - y) < d[2] + r:
+                big = d[2] * d[2] / (d[2] * d[2] + r * r)
+                d[0], d[1] = d[0] * big + x * (1 - big), d[1] * big + y * (1 - big)
+                d[2] = min(PANE_RMAX, math.hypot(d[2], r))
+                return
+        self.panes.append([x, y, r])
 
     # ── 어항 ──
     def aquarium(self):
@@ -1891,10 +2152,20 @@ class Weather:
         elif kind == "fog":
             if "fog" not in self.sprite_cache:
                 self.sprite_cache["fog"] = fog_field(self.w, int(self.h * FOG_REACH), random)
+        elif kind == "aurora":
+            if "aurora" not in self.sprite_cache:
+                self.sprite_cache["aurora"] = aurora_field(self.w, int(self.h * AURORA_REACH), random)
+        elif kind == "window":
+            if "window" not in self.sprite_cache:
+                self.sprite_cache["window"] = [place(pane_drop(1 + k / 2), self.stride)
+                                               for k in range(int((PANE_RMAX - 1) * 2) + 1)]
+            self.pane_sprites, self.panes, self.runs = self.sprite_cache["window"], [], []
+            self.pane_due = count(self.amount) * PANE_SHARE / 2  # 첫 프레임에 반쯤 맺힌 채로 시작
+        elif kind == "bugs":
+            self.bugs = []
         elif kind == "soap":
             if "soap" not in self.sprite_cache:
-                self.sprite_cache["soap"] = [[place(soap_ball(r, k / SOAP_HUES), self.stride) for k in range(SOAP_HUES)]
-                                             for r in SOAP_R]
+                self.sprite_cache["soap"] = [[place(sp, self.stride) for sp in soap_balls(r, SOAP_HUES)] for r in SOAP_R]
             self.soap_sprites, self.soaps = self.sprite_cache["soap"], []
         elif kind == "fireflies":
             self.flies_sprites = self.fly_sprites()
@@ -1909,7 +2180,7 @@ class Weather:
             self.aquarium()
         if kind != "aquarium":  # 화면 크기 물빛·빛줄기 조각(2560×1440 에서 20MB)을 돌려줌. 다시 고르면 water_tint 가 40ms 에 만듦
             self.aq_tint = self.water = self.ray_rows = self.bubble_sprites = self.jelly_sprites = None
-        self.fog_px = None  # 안개 행들(12MB)도. 무늬는 sprite_cache 에 남아 다시 고르면 색만 입힘
+        self.fog_px = self.aurora_px = None  # 안개·오로라 행들(12·15MB)도. 무늬는 sprite_cache 에 남아 다시 고르면 색만 입힘
         self.rockets, self.sparks, self.next_launch = [], [], math.inf
         self.retune()
 
@@ -1917,14 +2188,20 @@ class Weather:
         """양·어항 막대에 수를 맞춤 — 다시 깔지 않아 쌓인 눈·모래와 떠 있던 것은 제자리, 모자라면 새로 띄우고 남으면
         버림. 설정 창이 막대를 끄는 동안 0.1초마다 부름. 불꽃놀이·뇌우 번개는 그릴 때 양을 바로 읽어 할 게 없음."""
         n, kind, layer = count(self.amount), self.kind, lambda layers, k: [round(n * k * l[0]) for l in layers]
-        if kind in ("snow", "sleet"):
-            k = SLEET_SNOW if kind == "sleet" else 1
-            self.flakes = refit(self.flakes, layer(SNOW_LAYERS, k), lambda li: self.new_flake(li, False))
-        if kind in RAINY:
-            mult = RAIN_MULT * {"storm": STORM_MULT, "sleet": SLEET_RAIN}.get(kind, 1)
+        if kind == "snow":
+            self.flakes = refit(self.flakes, layer(SNOW_LAYERS, 1), lambda li: self.new_flake(li, False))
+        elif kind in RAINY:
+            mult = RAIN_MULT * (STORM_MULT if kind == "storm" else 1)
             self.drops = refit(self.drops, layer(RAIN_LAYERS, mult), lambda li: self.new_drop(li, False))
         elif kind == "fog":
-            self.fog_tint()
+            self.fog_px = self.tint("fog", self.fog_px, lambda u: FOG_COLOR, FOG_ALPHA, lambda u: u ** 1.6)  # 아래가 짙음
+        elif kind == "aurora":  # 진하기는 무늬에 들어 있음
+            self.aurora_px = self.tint("aurora", self.aurora_px, aurora_color, AURORA_ALPHA, lambda u: 1)
+        elif kind == "window":
+            self.pane_cap = round(n * PANE_SHARE)
+            del self.panes[:max(0, len(self.panes) - self.pane_cap)]  # 남으면 오래된 것부터 마름
+        elif kind == "bugs":
+            self.bugs = refit(self.bugs, [round(n * BUG_SHARE)], lambda _: self.new_bug(), False)
         elif kind == "soap":
             self.soaps = refit(self.soaps, [round(n * SOAP_SHARE)], lambda _: self.new_soap(False), False)
         elif kind == "fireflies":
@@ -1970,16 +2247,17 @@ class Weather:
 
     # ── 동물 ──
     def react(self, now):
-        """날씨에서 일어난 일을 동물들에게 알림 — 번개, 가까이 터진 불꽃, 낮게 나는 반딧불이·비눗방울."""
+        """날씨에서 일어난 일을 동물들에게 알림 — 번개, 가까이 터진 불꽃, 낮게 나는 반딧불이·비눗방울·나비·잠자리."""
         bolt = self.bolt and self.bolt[0] != self.bolt_seen
         if bolt:
             self.bolt_seen = self.bolt[0]
         base, w = self.base, self.w  # 높이는 그 자리 바닥에서 셈. 거르는 건 동물이
         pts = [(f[0], f[1]) for f in self.flies] if self.kind == "fireflies" else \
-            [(b[0] + SOAP_R[b[3]], b[1] + SOAP_R[b[3]]) for b in self.soaps] if self.kind == "soap" else []
+            [(b[0] + SOAP_R[b[3]], b[1] + SOAP_R[b[3]]) for b in self.soaps] if self.kind == "soap" else \
+            [(b[0], b[1]) for b in self.bugs] if self.kind == "bugs" else []
         low = [(x, self.h - y - base[min(max(int(x), 0), w - 1)]) for x, y in pts]
         for p in self.pets.values():
-            p.kind, p.snowy = self.kind, self.kind in ("snow", "hail", "sleet")
+            p.kind, p.snowy = self.kind, self.kind in ("snow", "hail")
             if p.held or p.air or p.under:  # 들렸거나 떨어지는 중, 틀 뒤에 묻혀 빼꼼하는 동안은 날씨에 반응 안 함
                 continue
             if bolt:
@@ -2000,19 +2278,38 @@ class Weather:
                 return p
         return None
 
+    def soap_at(self):
+        """커서 밑의 비눗방울 — 위에 그린 것부터, 테두리 3px 밖까지 봐줌. 없거나 비눗방울 날이 아니면 None."""
+        if self.kind != "soap":
+            return None
+        cx, cy = self.surface.cursor()
+        for b in reversed(self.soaps):
+            n, r = self.soap_sprites[b[3]][0][0], SOAP_R[b[3]] + 3
+            if (cx - b[8] - n / 2) ** 2 + (cy - b[1] - n / 2) ** 2 <= r * r:
+                return b
+        return None
+
     def aim(self):
-        """커서가 동물 위에 있거나 동물을 들고 있는 동안만 창이 클릭을 받게 함 — 그 밖은 늘 아래 창으로 통과.
-        창 스타일은 바뀔 때만 고침."""
-        on = self.drag and self.visible and (any(p.held for p in self.pets.values()) or self.hover() is not None)
+        """커서가 동물·비눗방울 위에 있거나 동물을 들고 있는 동안만 창이 클릭을 받게 함 — 그 밖은 늘 아래 창으로 통과.
+        비눗방울은 동물 집기를 꺼도 터트릴 수 있음. 창 스타일은 바뀔 때만 고침."""
+        on = self.visible and (self.drag and (any(p.held for p in self.pets.values()) or self.hover() is not None)
+                               or self.soap_at() is not None)
         if on != self.catching:
             self.catching = on
             self.surface.catch(on)
 
     def press(self, down):
-        """창이 받은 왼쪽 단추 — Surface 가 pump 중에 부름. 누르면 커서 밑 동물을 집고, 떼면 놓음(놓인 동물은 떨어짐)."""
+        """창이 받은 왼쪽 단추 — Surface 가 pump 중에 부름. 누르면 커서 밑 비눗방울을 터트리거나(동물보다 위에 그려짐)
+        동물을 집고, 떼면 놓음(놓인 동물은 떨어짐)."""
         if not down:
             for p in self.pets.values():
                 p.held = None
+            return
+        b = self.soap_at() if self.visible else None
+        if b:
+            n = self.soap_sprites[b[3]][0][0]
+            self.pop(b[8] + n / 2, b[1] + n / 2, SOAP_R[b[3]])
+            b[:] = self.new_soap(True)
             return
         hit = self.hover() if self.drag and self.visible else None
         if hit:
@@ -2083,10 +2380,10 @@ class Weather:
             self.surface.clear(top)
         else:
             self.surface.clear()
-        piled = kind in ("snow", "hail", "sleet")
+        piled = kind in ("snow", "hail")
         if piled:
             if now - self.last_settle >= SETTLE_SEC:
-                melt = MELT_PER_SEC * {"hail": HAIL_MELT, "sleet": SLEET_MELT}.get(kind, 1)
+                melt = MELT_PER_SEC * (HAIL_MELT if kind == "hail" else 1)
                 el = now - self.last_settle
                 self.pile.settle(melt * el)
                 if kind == "snow":  # 우박 알은 무거워 안 날림
@@ -2108,12 +2405,18 @@ class Weather:
             self.jellies(dt, now)
         elif kind == "fog":  # 동물은 안개 앞을 지나감
             self.fog(now)
+        elif kind == "aurora":
+            self.slide(self.aurora_px[1], 0, now, AURORA_DRIFT, AURORA_SWAY, AURORA_SWAY_V, AURORA_SWAY_K)
         if self.pets:  # 더미 위, 내리는 것 아래
             self.walk_pet(dt, now)
-        if kind in ("snow", "sleet"):
+        if kind == "snow":
             self.snow(dt, now)
-        if kind == "soap":
+        elif kind == "soap":
             self.soap(dt, now)
+        elif kind == "bugs":
+            self.flutter(dt, now)
+        elif kind == "window":  # 유리에 맺힌 것이라 동물 앞
+            self.pane(dt)
         elif kind == "hail":
             self.hail(dt, now)
         elif kind == "fireworks":
@@ -2139,7 +2442,7 @@ class Weather:
         dt = min(now - self.last, 0.1)  # 멈췄다 돌아와도 한 번에 순간 이동하지 않게
         self.last = now
         if not MAC:
-            self.aim()  # 집기를 껐으면 커서도 안 읽음
+            self.aim()  # 집기를 껐고 비눗방울 날이 아니면 커서도 안 읽음
         if not self.visible:
             return False
         if self.kind == "none" and not self.pets:  # 그릴 게 없으면 한 번 지우고 숨겼을 때처럼 쉼(180fps 에서 29% 를 쓰던 자리)
@@ -2291,20 +2594,18 @@ def check():
     cat.go("walk", 0.0)
     Weather.react(rf, cat.calm)
     assert cat.state == "hop" and cat.pounce, "낮은 비눗방울로도 폴짝"
-    # 진눈깨비는 눈 반 · 비 반
-    tf = big(flakes=[], drops=[], new_flake=lambda li, top: [0, 0, 0, li], new_drop=lambda li, top: [0, 0, 0, li])
-    got = {}
-    for k in ("snow", "rain", "sleet"):
-        tf.kind, tf.flakes, tf.drops = k, [], []
-        Weather.retune(tf)
-        got[k] = len(tf.flakes), len(tf.drops)
-    assert abs(got["sleet"][0] - got["snow"][0] * SLEET_SNOW) <= len(SNOW_LAYERS) and got["sleet"][0] > 0 \
-        and abs(got["sleet"][1] - got["rain"][1] * SLEET_RAIN) <= len(RAIN_LAYERS) and got["sleet"][1] > 0, got
+    rf.kind, rf.bugs = "bugs", [[cat.x + 140, 200 - 40], [cat.x + 140, 200 - 150]]
+    cat.go("walk", 0.0)
+    Weather.react(rf, cat.calm)
+    assert cat.state == "hop" and cat.pounce, "낮은 나비로도 폴짝"
+    assert "window" in SOUNDY and "window" not in RAINY and hearing("window", True, True, 0.5) == 0.5, \
+        "창문 빗방울은 빗소리만 — 동물은 안 젖음"
     # 안개: 작업 표시줄 위 FOG_REACH 만 칠하고, 아래로 짙고, 시간 따라 흐르고, 무늬 끝이 처음과 이어짐
     row = fog_field(2000, 1, random.Random(1))[0]
     assert abs(row[0] - row[-1]) <= max(abs(a - b) for a, b in zip(row, row[1:])) + 1, "무늬가 화면 끝에서 이어짐"
-    fg = big(rise=20, fog_px=None, sprite_cache={"fog": fog_field(200, int(200 * FOG_REACH), random.Random(1))})
-    Weather.fog_tint(fg)
+    fg = big(rise=20, kind="fog", fog_px=None, sprite_cache={"fog": fog_field(200, int(200 * FOG_REACH), random.Random(1))})
+    fg.slide, fg.tint = Weather.slide.__get__(fg), Weather.tint.__get__(fg)
+    Weather.retune(fg)
     shots = []
     for now in (0.0, 5.0):
         fg.surface.pixels[:] = bytes(len(fg.surface.pixels))
@@ -2315,22 +2616,100 @@ def check():
     assert not any(alpha[:top]) and not any(alpha[180:]) and alpha[top + 2] < alpha[170], "칠하는 자리와 진하기"
     assert all(p[i + c] <= p[i + 3] for i in range(0, len(p), 4) for c in range(3)), "색은 알파를 곱한 값"
     assert shots[0] != shots[1], "흐름"
+    # 오로라: 위 AURORA_REACH 만 칠하고, 위는 보라 아래는 초록, 흐르고, 무늬 끝이 처음과 이어짐
+    rows = aurora_field(2000, 60, random.Random(2))
+    row = rows[45]
+    assert abs(row[0] - row[-1]) <= max(abs(a - b) for a, b in zip(row, row[1:])) + 1 and max(row) > 60, "끝이 이어짐"
+    assert len(rows) == 60 and len(row) == 2000, "크기"
+    af = big(kind="aurora", aurora_px=None, sprite_cache={"aurora": aurora_field(200, int(200 * AURORA_REACH), random.Random(1))})
+    af.slide, af.tint = Weather.slide.__get__(af), Weather.tint.__get__(af)
+    Weather.retune(af)
+    shots = []
+    for now in (0.0, 5.0):
+        af.surface.pixels[:] = bytes(len(af.surface.pixels))
+        Weather.slide(af, af.aurora_px[1], 0, now, AURORA_DRIFT, AURORA_SWAY, AURORA_SWAY_V, AURORA_SWAY_K)
+        shots.append(bytes(af.surface.pixels))
+    p, reach = shots[0], int(200 * AURORA_REACH)
+    assert any(p[3:reach * 800:4]) and not any(p[reach * 800 + 3::4]), "위 AURORA_REACH 만 칠함"
+    assert all(p[i + c] <= p[i + 3] for i in range(0, len(p), 4) for c in range(3)), "색은 알파를 곱한 값"
+    hue = lambda y: max((p[i + 1] - p[i + 2], i) for i in range(y * 800, y * 800 + 800, 4))[0]  # 초록 − 빨강 최대
+    assert hue(int(reach * 0.75)) > 0 > min(p[i + 1] - p[i + 2] for i in range(4 * 800, 5 * 800, 4) if p[i + 3] > 8), \
+        "아래는 초록, 위는 보라"
+    lit = lambda y: sum(p[y * 800 + 3:y * 800 + 800:4])
+    assert lit(4) < lit(int(reach * 0.62)) / 2, "아랫단 위로 갈수록 옅어짐"
+    assert shots[0] != shots[1], "흐름"
     # 비눗방울: 오르고, 수명이 다하거나 동물에 닿으면 터져 물방울이 튀고, 닿은 동물은 ♪
     mark = []
     toy = types.SimpleNamespace(box=lambda: (90, 150, 30, 30), emote=lambda m, now: mark.append(m))
     bf = big(pets={"toy": toy}, splashes=[], crowns=[], droplet=place(disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR), 800),
-             soap_sprites=[[place(soap_ball(r, k / SOAP_HUES), 800) for k in range(SOAP_HUES)] for r in SOAP_R])
-    for m in ("new_soap", "pop", "splatter"):
+             soap_sprites=[[place(sp, 800) for sp in soap_balls(r, SOAP_HUES)] for r in SOAP_R])
+    for m in ("new_soap", "pop", "splatter", "soap_at"):
         setattr(bf, m, getattr(Weather, m).__get__(bf))
-    bf.soaps = [[20.0, 60.0, 30.0, 0, 0.0, 1.0, 9.0, 0.0]]
+    bf.soaps = [[20.0, 60.0, 30.0, 0, 0.0, 1.0, 9.0, 0.0, 20.0]]
     Weather.soap(bf, 0.1, 0.0)
     assert bf.soaps[0][1] == 57 and not bf.splashes and not mark, "오름"
     bf.soaps[0][6] = 0.05
     Weather.soap(bf, 0.1, 0.0)
     assert bf.splashes and bf.soaps[0][6] > 1 and not mark, "수명이 다하면 터지고 새 방울"
-    bf.splashes, bf.soaps = [], [[100.0 - SOAP_R[0], 165.0 - SOAP_R[0], 0.0, 0, 0.0, 0.0, 9.0, 0.0]]
+    bf.splashes, bf.soaps = [], [[100.0 - SOAP_R[0], 165.0 - SOAP_R[0], 0.0, 0, 0.0, 0.0, 9.0, 0.0, 0.0]]
     Weather.soap(bf, 0.0, 0.0)
     assert bf.splashes and mark == ["♪"], "동물에 닿으면 터지고 ♪"
+    # 비눗방울을 누르면 집기를 꺼 둬도 그 자리에서 톡. 빗나간 클릭은 아래 창으로
+    caught = []
+    n0 = bf.soap_sprites[0][0][0]
+    bf.splashes, bf.soaps = [], [[0.0, 30.0, 0.0, 0, 0.0, 0.0, 9.0, 0.0, 40.0]]
+    bf.kind, bf.visible, bf.drag, bf.catching = "soap", True, False, False
+    bf.surface.catch = caught.append
+    bf.surface.cursor = lambda: (40 + n0 // 2 + SOAP_R[0], 30 + n0 // 2)  # 그린 자리(b[8]) 의 오른쪽 끝
+    Weather.aim(bf)
+    assert caught == [True], "방울 위에선 클릭을 받음"
+    Weather.press(bf, True)
+    assert bf.splashes and bf.soaps[0][1] > 100, "누르면 터지고 새 방울"
+    bf.surface.cursor = lambda: (5, 5)
+    Weather.aim(bf)
+    assert caught == [True, False], "방울 밖에선 통과"
+    bf.splashes = []
+    Weather.press(bf, True)
+    assert not bf.splashes, "빗나간 클릭은 안 터트림"
+    # 나비: 동물이 다가오면 날아오르고, 내려오다 바닥에 앉음. 잠자리: 떠 있다 휙 날아가 다시 멈춤 — 화면 안에서
+    toy.held = None
+    gf = big(pets={"toy": toy}, sprite_cache={}, bugs=[])
+    gf.bug_sprites = Weather.bug_sprites.__get__(gf)
+    bw, bh = gf.bug_sprites()[1][0]
+    gf.bugs = [[100.0, 200 - bh / 2, 0, "rest", 99.0, 0.0, 0.0, 0.0, 40.0, 0, 0],
+               [10.0, 200 - bh / 2, 1, "rest", 99.0, 0.0, 0.0, 0.0, 40.0, 0, 0],
+               [180.0, 100.0, 2, "down", 0.0, math.pi / 2, 0.0, 0.0, 40.0, 0, 0],
+               [100.0, 100.0, 4, "hover", 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0]]
+    Weather.flutter(gf, 0.02, 0.0)
+    assert [b[3] for b in gf.bugs] == ["fly", "rest", "down", "dart"], "가까운 동물에 날아오름 · 먼 건 그대로"
+    seen = set()
+    for i in range(150):  # 3초 — 2.2초에 앉고 BUG_REST 동안은 그대로
+        Weather.flutter(gf, 0.02, i * 0.02)
+        seen.add(gf.bugs[3][3])
+    assert gf.bugs[2][3] == "rest" and gf.bugs[2][1] == 200 - bh / 2, "내려와 바닥에 앉음"
+    assert seen == {"hover", "dart"}, "잠자리가 날아갔다 다시 멈춤"
+    assert all(0 <= b[0] <= 200 and 0 <= b[1] <= 200 for b in gf.bugs), "화면 안"
+    # 창문 빗방울: 닿는 방울은 합쳐지고, 흐르는 방울은 아래 방울을 삼키고 위에 자국을 남기다 바닥에서 사라짐
+    wf = big(rise=20, panes=[], runs=[], pane_cap=99, pane_due=0.0, amount=0,
+             pane_sprites=[place(pane_drop(1 + k / 2), 800) for k in range(int((PANE_RMAX - 1) * 2) + 1)])
+    wf.wet = Weather.wet.__get__(wf)
+    wf.wet(50, 50, 3)
+    wf.wet(54, 50, 3)
+    wf.wet(150, 50, 3)
+    assert len(wf.panes) == 2 and abs(wf.panes[0][2] - math.hypot(3, 3)) < 1e-9, "닿으면 하나로, 물 양은 더함"
+    wf.panes = [[100.0, 120.0, 5.0]]
+    wf.runs = [[100.0, 60.0, 6.0, 9.0, True, 100.0, 0.0, 5.0]]
+    Weather.pane(wf, 0.1)
+    assert len(wf.panes) == 2 and wf.panes[1][1] < 70 and wf.panes[0][1] == 120, "자국은 지나온 위에"
+    for _ in range(6):
+        Weather.pane(wf, 0.1)
+    assert all(p[2] < 2.5 for p in wf.panes) and wf.runs and wf.runs[0][2] > 6, "아래 방울을 삼켜 커짐 — 자국만 남음"
+    for _ in range(30):
+        Weather.pane(wf, 0.1)
+    assert not wf.runs, "바닥에서 사라짐"
+    wf.pane_cap, n = 1, len(wf.panes)
+    Weather.pane(wf, 0.1)
+    assert n > 1 and len(wf.panes) == 1, "너무 많으면 오래된 것부터 마름"
     # 틀 단을 만나면 순간 이동하지 않고 뛰어 내려옴 (뛰는 모양은 pet.check 가 봄)
     walker = pet.Cat(200, random.Random(4))
     gf = big(pets={"cat": walker}, pile=Pile(200), base=[48] * 200, pet_sprites=pet.sprites(),
@@ -3153,12 +3532,12 @@ def panel():
         root.after(50, outside)
 
     def fit():
-        """어항일 때만 어항 막대를, 비·뇌우·진눈깨비일 때만 빗소리 상자·크기 막대를 보이고, 창 밑변을 작업 표시줄 위에 다시
+        """어항일 때만 어항 막대를, 비·뇌우·창문 빗방울일 때만 빗소리 상자·크기 막대를 보이고, 창 밑변을 작업 표시줄 위에 다시
         맞춤 — 줄이 늘면 창은 아래로 자람."""
         for wd in tank_bars:
             wd.grid() if kind.get() == "aquarium" else wd.grid_remove()
         for wd in (*volume_bar, boxes["sound"]):
-            wd.grid() if kind.get() in RAINY else wd.grid_remove()
+            wd.grid() if kind.get() in SOUNDY else wd.grid_remove()
         root.update_idletasks()
         w, h = root.winfo_reqwidth(), root.winfo_reqheight()
         l, r, b, at = shown["l"], shown["r"], shown["b"], shown["at"]
