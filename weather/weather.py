@@ -141,10 +141,16 @@ FOG_SWAY, FOG_SWAY_V, FOG_SWAY_K = 40, 0.12, 0.012
 FOG_KNOT = 90      # 이 행마다 가로 무늬를 하나씩 새로 뽑고 그 사이 행은 섞음
 FOG_MIX = 16       # 섞는 비율 단계 수 — 단계마다 한 번만 셈
 
-# 오로라: 화면 위에서 닿는 깊이(비율) · 양 50% 의 가장 짙은 불투명도 · 커튼 아래 색 · 위 색. 흐름은 안개처럼
-AURORA_REACH, AURORA_ALPHA, AURORA_LOW, AURORA_HIGH = 0.5, 0.42, (84, 255, 168), (178, 98, 255)
-AURORA_DRIFT, AURORA_SWAY, AURORA_SWAY_V, AURORA_SWAY_K = 6, 70, 0.17, 0.009
-AURORA_STEP = 3    # 무늬를 이 행 · 4열마다 한 번 셈 — 픽셀마다면 2560×720 에 몇 초
+# 오로라: 화면 위에서 닿는 깊이(비율) · 양 50% 의 가장 짙은 불투명도 · 옆 흐름(px/초) · 출렁임 물결들(폭 px, 빠르기,
+# 행마다 밀리는 위상) — 폭과 빠르기가 다른 둘을 섞어 빛살이 모두 같은 S 자로 휘지 않음
+AURORA_REACH, AURORA_ALPHA, AURORA_DRIFT = 0.6, 0.5, 6
+AURORA_SWAY = ((50, 0.11, 0.004), (14, 0.23, 0.011))
+AURORA_STEP = 3, 2    # 무늬를 이 행 · 열마다 한 번 셈 — 픽셀마다면 2560×860 에 몇 초
+# 커튼마다 (아랫단 깊이 비율, 세기, 빛살 높이) — 앞(아래) 커튼이 밝고 빛살이 김
+AURORA_RIBBONS = ((0.82, 1.0, 0.28), (0.64, 0.7, 0.2), (0.46, 0.45, 0.14))
+# 아랫단에서 잰 높이(비율) → 색: 밑은 분홍 술, 아랫단은 흰빛 초록, 위로 초록 · 청록 · 보라
+AURORA_COLORS = ((-0.03, (255, 70, 160)), (0.0, (200, 255, 220)), (0.04, (80, 255, 140)), (0.15, (40, 225, 170)),
+                 (0.3, (120, 110, 255)), (0.5, (190, 80, 255)))
 
 # 비눗방울: 양 → 방울 수 ('보통' 9개) · 반지름들 px · 오르는 빠르기 px/초 · 터지기까지 초 · 무지갯빛이 도는 그림 수 · 초당 바퀴
 # 그림 수 8 이면 한 번에 45° 씩 뚝뚝 넘어가 돌아가는 게 보였음. 32 면 11°
@@ -889,32 +895,62 @@ def soap_balls(r, hues):
 
 
 def aurora_field(w, rows, rng):
-    """오로라 무늬: rows 행의 행마다 알파 0–255 바이트(폭 w, 끝이 처음과 이어짐). 열마다 커튼 아랫단 깊이가 있고,
-    아랫단 밑은 빠르게 사라지고 위로는 천천히 옅어짐. 세기는 넓은 띠(사인 셋)에 가는 빛살(높은 사인 다섯)을 곱해
-    세로 결이 보임. 사인은 폭에 정수 번 돌아 이어짐. AURORA_STEP 행 · 4열마다 셈해 늘림."""
-    def waves(ks, n):
-        return [(k, rng.uniform(0, math.tau), rng.uniform(0.5, 1)) for k in rng.sample(ks, n)]
+    """오로라 무늬: rows 행의 행마다 premultiplied BGRA 픽셀 바이트(폭 w, 끝이 처음과 이어짐). 커튼 AURORA_RIBBONS 겹이
+    겹쳐 있고, 커튼마다 아랫단이 큰 굽이와 잔 굽이를 섞어 구불거림. 아랫단 밑은 가는 분홍 술로 빠르게 사라지고, 위로는
+    무작위 자리 · 굵기 · 세기의 빛살 수백 줄이 제 높이만큼 뻗음. 아랫단이 가파르게 접힌 곳(주름)은 더 밝고, 커튼마다
+    옆으로 짙어졌다 끊겼다 함. 색은 아랫단에서 잰 높이로 — 흰빛 초록 → 초록 → 청록 → 보라. 사인은 폭에 정수 번 돌아
+    이어지고 빛살은 폭을 넘으면 처음으로 감김. AURORA_STEP 행 · 열마다 셈해 늘림."""
+    sy, sx = AURORA_STEP
+    cols = range(0, w, sx)
 
-    def wave(ws, x):  # −1–1
-        return sum(a * math.sin(math.tau * k * x / w + p) for k, p, a in ws) / sum(a for _, _, a in ws)
+    def noise(ks, n, amp):  # 폭에 정수 번 도는 사인 n 개, 진폭이 1/k 로 줄어 굽이가 자연스러움
+        ws = [(k, rng.uniform(0, math.tau), amp * rng.uniform(0.5, 1) / k) for k in rng.sample(ks, n)]
+        return [sum(a * math.sin(math.tau * k * x / w + p) for k, p, a in ws) for x in cols]
 
-    band, rays, edge = waves(range(1, 5), 3), waves(range(30, 90), 5), waves(range(2, 7), 3)
-    xs = range(0, w, 4)
-    power = [(0.25 + 0.75 * max(0.0, 0.3 + 0.7 * wave(band, x))) * (0.55 + 0.45 * wave(rays, x)) for x in xs]
-    low = [0.74 + 0.14 * wave(edge, x) for x in xs]  # 아랫단: 위에서 잰 깊이 비율
-    out, step = [], AURORA_STEP
-    for j in range(0, rows, step):
-        u = (j + step / 2) / rows
-        line = b"".join(bytes((int(255 * p * (math.exp((e - u) / 0.025) if u > e else math.exp((u - e) / 0.32))),)) * 4
-                        for p, e in zip(power, low))[:w]
-        out += [line] * min(step, rows - j)
+    lut = []  # 아랫단에서 잰 높이 d(−0.04–0.6, 1/400 칸) → 색 0–1
+    for i in range(257):
+        d = i / 400 - 0.04
+        lo = max(s for s in AURORA_COLORS if s[0] <= d) if d >= AURORA_COLORS[0][0] else AURORA_COLORS[0]
+        hi = min((s for s in AURORA_COLORS if s[0] > d), default=AURORA_COLORS[-1])
+        t = (d - lo[0]) / (hi[0] - lo[0]) if hi[0] > lo[0] else 0
+        lut.append(tuple((a + (b - a) * min(1, max(0, t))) / 255 for a, b in zip(lo[1], hi[1])))
+    ribbons = []
+    for base, power, reach in AURORA_RIBBONS:
+        hem = [min(0.9, max(0.12, base + a + b)) for a, b in zip(noise(range(1, 4), 2, 0.12), noise(range(4, 16), 4, 0.15))]
+        env = [min(1.0, max(0.0, 0.6 + e)) ** 1.5 for e in noise(range(1, 7), 3, 0.8)]
+        streak = [0.0] * w
+        for _ in range(w // 8):  # 2560 폭에 320 줄
+            c, s, a = rng.uniform(0, w), rng.uniform(1, 5), rng.uniform(0.2, 1.2)
+            for x in range(int(c - 3 * s), int(c + 3 * s) + 1):
+                streak[x % w] += a * math.exp(-((x - c) / s) ** 2 / 2)
+        cs = []
+        for i, x in enumerate(cols):
+            slope = abs(hem[(i + 1) % len(hem)] - hem[i - 1]) * rows / (2 * sx)
+            ray = 0.15 + 0.85 * (1 - math.exp(-sum(streak[x:x + sx]) / sx))
+            cs.append((hem[i], power * env[i] * (1 + min(1.0, 0.7 * slope)), ray, reach * (0.35 + 0.65 * ray), power))
+        ribbons.append(cs)
+    out = []
+    for j in range(0, rows, sy):
+        u = (j + sy / 2) / rows
+        line = bytearray()
+        for col in zip(*ribbons):
+            r = g = b = 0.0
+            for e, k, ray, h, pw in col:  # 뒤(흐린) 커튼일수록 아랫단 빛줄이 옅고 밑이 흐림 — 안 그러면 산등성이처럼 보임
+                d = e - u
+                if d < -0.25 or k < 0.01:
+                    continue
+                if d < 0:  # 밑으로 흐린 깊이는 pw² 로 늘림 — 분홍 술도 앞 커튼에만 짙게
+                    d *= pw * pw
+                    s, d0 = math.exp(d / 0.012), 0
+                else:
+                    s, d0 = 1.0, d
+                i = k * s * (0.5 * pw * math.exp(-d0 / 0.025) + ray * math.exp(-d0 / h))
+                cr, cg, cb = lut[min(256, max(0, int((d + 0.04) * 400)))]
+                r, g, b = r + i * cr, g + i * cg, b + i * cb
+            m = max(r, g, b, 1.0)  # 넘치면 색은 두고 세기만 1 로
+            line += bytes((int(255 * b / m), int(255 * g / m), int(255 * r / m), int(255 * max(r, g, b) / m))) * sx
+        out += [bytes(line[:w * 4])] * min(sy, rows - j)
     return out
-
-
-def aurora_color(u):
-    """오로라 색 — u 는 위에서 잰 깊이 비율(0 꼭대기). 위는 보라, 아래로 갈수록 초록."""
-    t = min(1.0, max(0.0, (u - 0.15) / 0.5))
-    return tuple(round(a + (b - a) * t) for a, b in zip(AURORA_HIGH, AURORA_LOW))
 
 
 def pane_drop(r):
@@ -1659,16 +1695,16 @@ class Weather:
     def fog(self, now):
         """안개는 작업 표시줄 바로 위에 깔림."""
         rows = self.fog_px[1]
-        self.slide(rows, self.h - self.rise - len(rows), now, FOG_DRIFT, FOG_SWAY, FOG_SWAY_V, FOG_SWAY_K)
+        self.slide(rows, self.h - self.rise - len(rows), now, FOG_DRIFT, ((FOG_SWAY, FOG_SWAY_V, FOG_SWAY_K),))
 
-    def slide(self, rows, y0, now, drift, sway, sway_v, sway_k):
+    def slide(self, rows, y0, now, drift, sways):
         """행마다 무늬를 시간만큼 옆으로 밀어 y0 부터 잘라 붙임. 밀리는 양은 모든 행이 같은 빠르기에 높이를 따라 위상이
-        밀린 출렁임을 더한 것 — 이웃 행끼리는 늘 1px 안팎만 어긋나 무늬가 안 찢어지고, 위아래가 서로 엇갈려 흘러 보임.
+        밀린 출렁임(sways 의 (폭, 빠르기, 위상) 물결들의 합)을 더한 것 — 이웃 행끼리는 늘 1px 안팎만 어긋나 무늬가 안 찢어지고, 위아래가 서로 엇갈려 흘러 보임.
         행마다 빠르기가 다르면 오래 둘수록 이웃 행이 벌어져 가로 줄무늬가 됨."""
         px, stride, w = self.surface.pixels, self.stride, self.w
         drift *= now
         for j, row in enumerate(rows):
-            o = int(drift + sway * math.sin(now * sway_v + j * sway_k)) % w * 4
+            o = int(drift + sum(a * math.sin(now * v + j * k) for a, v, k in sways)) % w * 4
             s = (y0 + j) * stride
             px[s:s + stride] = row[o:o + stride]
 
@@ -2180,7 +2216,7 @@ class Weather:
             self.aquarium()
         if kind != "aquarium":  # 화면 크기 물빛·빛줄기 조각(2560×1440 에서 20MB)을 돌려줌. 다시 고르면 water_tint 가 40ms 에 만듦
             self.aq_tint = self.water = self.ray_rows = self.bubble_sprites = self.jelly_sprites = None
-        self.fog_px = self.aurora_px = None  # 안개·오로라 행들(12·15MB)도. 무늬는 sprite_cache 에 남아 다시 고르면 색만 입힘
+        self.fog_px = self.aurora_px = None  # 안개·오로라 행들(12·18MB)도. 무늬(오로라는 9MB)는 sprite_cache 에 남아 다시 고르면 양만 입힘
         self.rockets, self.sparks, self.next_launch = [], [], math.inf
         self.retune()
 
@@ -2195,8 +2231,10 @@ class Weather:
             self.drops = refit(self.drops, layer(RAIN_LAYERS, mult), lambda li: self.new_drop(li, False))
         elif kind == "fog":
             self.fog_px = self.tint("fog", self.fog_px, lambda u: FOG_COLOR, FOG_ALPHA, lambda u: u ** 1.6)  # 아래가 짙음
-        elif kind == "aurora":  # 진하기는 무늬에 들어 있음
-            self.aurora_px = self.tint("aurora", self.aurora_px, aurora_color, AURORA_ALPHA, lambda u: 1)
+        elif kind == "aurora" and (self.aurora_px is None or self.aurora_px[0] != self.amount):  # 색은 무늬에 들어 있음
+            q = min(255, int(255 * AURORA_ALPHA * self.amount / 50))
+            tab = bytes(v * q // 255 for v in range(256))
+            self.aurora_px = self.amount, [(r + r).translate(tab) for r in self.sprite_cache["aurora"]]
         elif kind == "window":
             self.pane_cap = round(n * PANE_SHARE)
             del self.panes[:max(0, len(self.panes) - self.pane_cap)]  # 남으면 오래된 것부터 마름
@@ -2406,7 +2444,7 @@ class Weather:
         elif kind == "fog":  # 동물은 안개 앞을 지나감
             self.fog(now)
         elif kind == "aurora":
-            self.slide(self.aurora_px[1], 0, now, AURORA_DRIFT, AURORA_SWAY, AURORA_SWAY_V, AURORA_SWAY_K)
+            self.slide(self.aurora_px[1], 0, now, AURORA_DRIFT, AURORA_SWAY)
         if self.pets:  # 더미 위, 내리는 것 아래
             self.walk_pet(dt, now)
         if kind == "snow":
@@ -2615,19 +2653,21 @@ def check():
     alpha = [sum(p[(y * 200 + x) * 4 + 3] for x in range(200)) for y in range(200)]
     assert not any(alpha[:top]) and not any(alpha[180:]) and alpha[top + 2] < alpha[170], "칠하는 자리와 진하기"
     assert all(p[i + c] <= p[i + 3] for i in range(0, len(p), 4) for c in range(3)), "색은 알파를 곱한 값"
+    i = max(range(0, len(p), 4), key=lambda i: p[i + 3])
+    assert max(p[i:i + 3]) < p[i + 3], "안개 색을 입힘"
     assert shots[0] != shots[1], "흐름"
-    # 오로라: 위 AURORA_REACH 만 칠하고, 위는 보라 아래는 초록, 흐르고, 무늬 끝이 처음과 이어짐
+    # 오로라: 위 AURORA_REACH 만 칠하고, 위는 보라 아래는 초록, 아랫단 밑은 분홍 술, 흐르고, 무늬 끝이 처음과 이어짐
     rows = aurora_field(2000, 60, random.Random(2))
-    row = rows[45]
+    row = max(rows, key=lambda r: sum(r[3::4]))[3::4]  # 가장 밝은 행의 알파
     assert abs(row[0] - row[-1]) <= max(abs(a - b) for a, b in zip(row, row[1:])) + 1 and max(row) > 60, "끝이 이어짐"
-    assert len(rows) == 60 and len(row) == 2000, "크기"
+    assert len(rows) == 60 and len(rows[0]) == 2000 * 4, "크기"
     af = big(kind="aurora", aurora_px=None, sprite_cache={"aurora": aurora_field(200, int(200 * AURORA_REACH), random.Random(1))})
-    af.slide, af.tint = Weather.slide.__get__(af), Weather.tint.__get__(af)
+    af.slide = Weather.slide.__get__(af)
     Weather.retune(af)
     shots = []
     for now in (0.0, 5.0):
         af.surface.pixels[:] = bytes(len(af.surface.pixels))
-        Weather.slide(af, af.aurora_px[1], 0, now, AURORA_DRIFT, AURORA_SWAY, AURORA_SWAY_V, AURORA_SWAY_K)
+        Weather.slide(af, af.aurora_px[1], 0, now, AURORA_DRIFT, AURORA_SWAY)
         shots.append(bytes(af.surface.pixels))
     p, reach = shots[0], int(200 * AURORA_REACH)
     assert any(p[3:reach * 800:4]) and not any(p[reach * 800 + 3::4]), "위 AURORA_REACH 만 칠함"
@@ -2637,7 +2677,12 @@ def check():
         "아래는 초록, 위는 보라"
     lit = lambda y: sum(p[y * 800 + 3:y * 800 + 800:4])
     assert lit(4) < lit(int(reach * 0.62)) / 2, "아랫단 위로 갈수록 옅어짐"
+    assert any(p[i + 2] > p[i + 1] + 8 for i in range(int(reach * 0.8) * 800, reach * 800, 4)), "아랫단 밑은 분홍"
     assert shots[0] != shots[1], "흐름"
+    full = max(max(r[3::4]) for r in af.aurora_px[1])
+    af.amount = 50
+    Weather.retune(af)
+    assert abs(max(max(r[3::4]) for r in af.aurora_px[1]) - full // 2) <= 2, "양에 비례"
     # 비눗방울: 오르고, 수명이 다하거나 동물에 닿으면 터져 물방울이 튀고, 닿은 동물은 ♪
     mark = []
     toy = types.SimpleNamespace(box=lambda: (90, 150, 30, 30), emote=lambda m, now: mark.append(m))
