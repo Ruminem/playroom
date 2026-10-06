@@ -146,6 +146,8 @@ FOG_MIX = 16       # 섞는 비율 단계 수 — 단계마다 한 번만 셈
 # 행마다 밀리는 위상) — 폭과 빠르기가 다른 둘을 섞어 빛살이 모두 같은 S 자로 휘지 않음
 AURORA_REACH, AURORA_ALPHA, AURORA_DRIFT = 0.6, 0.5, 6
 AURORA_SWAY = ((50, 0.11, 0.004), (14, 0.23, 0.011))
+AURORA_PHASES = 2   # 행을 1/이만큼 px 씩 옮겨 본 벌 수 — 정수 px 로 밀면 기운 빛살에 1px 계단이 보임. 넷이면 35MB 라
+#                     캐시를 넘쳐 프레임이 1ms 늘었음(둘은 18MB, 이웃 행 차가 0.35px 아래라 반 px 계단은 안 보임)
 AURORA_RAYQ = 16    # 빛살 높이 단계 수 — 단계마다 본 하나(2560×1440 에 54KB)
 # 커튼마다 (아랫단 깊이 비율, 세기, 빛살 높이) — 앞(아래) 커튼이 밝고 빛살이 김
 AURORA_RIBBONS = ((0.82, 1.0, 0.28), (0.64, 0.7, 0.2), (0.46, 0.45, 0.14))
@@ -970,6 +972,18 @@ def aurora_field(w, rows, rng):
     return rows_out
 
 
+def subpixel(rows, n):
+    """행(BGRA 바이트)마다 1/n 픽셀씩 옮겨 본 n 벌 — p 벌째는 (n − p)/n · 제 픽셀 + p/n · 오른쪽 이웃(끝은 처음과 이어짐).
+    slide 가 정수 px 아래 몫으로 벌을 골라 계단 없이 밀게. 두 몫의 칸 합이 255 를 안 넘어 큰 정수 하나로 더함."""
+    tabs = [(bytes(v * (n - p) // n for v in range(256)), bytes(v * p // n for v in range(256))) for p in range(1, n)]
+    out = []
+    for r in rows:
+        right, size = r[4:] + r[:4], len(r)
+        out.append((r, *((int.from_bytes(r.translate(a), "little") + int.from_bytes(right.translate(b), "little"))
+                         .to_bytes(size, "little") for a, b in tabs)))
+    return out
+
+
 def pane_drop(r):
     """유리에 맺힌 물방울: 거의 투명한 몸통, 위 테두리는 남색으로 어둡고 아래는 밝은 초승달, 왼쪽 위에 반짝이는 점 —
     둥근 렌즈가 위쪽 어둠과 아래쪽 빛을 뒤집어 비추는 모양. 밝은 창 위에서는 남색 테두리가, 어두운 창 위에서는 밝은
@@ -1689,9 +1703,9 @@ class Weather:
 
     # ── 안개 · 오로라 ──
     def tint(self, name, cur, color, alpha, ramp):
-        """sprite_cache[name] 의 알파 행 무늬에 색과 높이별 진하기를 입혀 행마다 두 벌 이어 붙인 픽셀 바이트로 — slide 가
-        행마다 한 번 잘라 붙이게. color(u)·ramp(u) 는 위 0 → 아래 1 인 u 의 색·진하기 배수. 양이 바뀔 때만 새로
-        만들고(2560 폭이면 행 600개에 12MB) 아니면 cur 를 그대로 돌려줌."""
+        """sprite_cache[name] 의 알파 행 무늬에 색과 높이별 진하기를 입혀 행마다 (픽셀 바이트,) 로 — slide 가 받는 꼴(옮겨 본
+        벌이 하나). color(u)·ramp(u) 는 위 0 → 아래 1 인 u 의 색·진하기 배수. 양이 바뀔 때만 새로 만들고(2560 폭이면
+        행 600개에 6MB) 아니면 cur 를 그대로 돌려줌."""
         if cur is not None and cur[0] == self.amount:
             return cur
         field = self.sprite_cache[name]
@@ -1703,10 +1717,10 @@ class Weather:
             c = color(round(u * 32) / 32)  # 색은 32 단계로 — 단계마다 표를 한 번만 셈
             if c not in chans:  # premultiplied B, G, R
                 chans[c] = [bytes(ch * v // 255 for v in range(256)) for ch in c[::-1]]
-            a = (a + a).translate(tab)
+            a = a.translate(tab)
             px = bytearray(len(a) * 4)
             px[0::4], px[1::4], px[2::4], px[3::4] = (*(a.translate(t) for t in chans[c]), a)
-            rows.append(bytes(px))
+            rows.append((bytes(px),))
         return self.amount, rows
 
     def fog(self, now):
@@ -1715,15 +1729,24 @@ class Weather:
         self.slide(rows, self.h - self.rise - len(rows), now, FOG_DRIFT, ((FOG_SWAY, FOG_SWAY_V, FOG_SWAY_K),))
 
     def slide(self, rows, y0, now, drift, sways):
-        """행마다 무늬를 시간만큼 옆으로 밀어 y0 부터 잘라 붙임. 밀리는 양은 모든 행이 같은 빠르기에 높이를 따라 위상이
+        """행마다 무늬를 시간만큼 옆으로 밀어 y0 부터 잘라 붙임. 행은 subpixel 의 옮겨 본 벌들이라 정수 px 아래 몫은 벌을
+        골라 맞추고, 무늬 끝에서 처음으로 감기는 자리는 두 번에 나눠 붙임. 밀리는 양은 모든 행이 같은 빠르기에 높이를 따라 위상이
         밀린 출렁임(sways 의 (폭, 빠르기, 위상) 물결들의 합)을 더한 것 — 이웃 행끼리는 늘 1px 안팎만 어긋나 무늬가 안 찢어지고, 위아래가 서로 엇갈려 흘러 보임.
         행마다 빠르기가 다르면 오래 둘수록 이웃 행이 벌어져 가로 줄무늬가 됨."""
         px, stride, w = self.surface.pixels, self.stride, self.w
         drift *= now
-        for j, row in enumerate(rows):
-            o = int(drift + sum(a * math.sin(now * v + j * k) for a, v, k in sways)) % w * 4
-            s = (y0 + j) * stride
-            px[s:s + stride] = row[o:o + stride]
+        n, offs = len(rows[0]), [drift] * len(rows)
+        for a, v, k in sways:  # 물결마다 한 번에 — 행마다 sum(…) 이면 864행에 0.4ms 더 듦
+            p = now * v
+            offs = [f + a * math.sin(p + j * k) for j, f in enumerate(offs)]
+        for j, (cuts, f) in enumerate(zip(rows, offs)):
+            f %= w  # 0 ≤ f < w
+            o = int(f)
+            row = cuts[int((f - o) * n)]
+            o *= 4
+            s, rest = (y0 + j) * stride, stride - o
+            px[s:s + rest] = row[o:]
+            px[s + rest:s + stride] = row[:o]
 
     # ── 비눗방울 ──
     def new_soap(self, bottom):
@@ -2233,7 +2256,7 @@ class Weather:
             self.aquarium()
         if kind != "aquarium":  # 화면 크기 물빛·빛줄기 조각(2560×1440 에서 20MB)을 돌려줌. 다시 고르면 water_tint 가 40ms 에 만듦
             self.aq_tint = self.water = self.ray_rows = self.bubble_sprites = self.jelly_sprites = None
-        self.fog_px = self.aurora_px = None  # 안개·오로라 행들(12·18MB)도. 무늬(오로라는 9MB)는 sprite_cache 에 남아 다시 고르면 양만 입힘
+        self.fog_px = self.aurora_px = None  # 안개·오로라 행들(6·18MB)도. 무늬(오로라는 9MB)는 sprite_cache 에 남아 다시 고르면 양만 입힘
         self.rockets, self.sparks, self.next_launch = [], [], math.inf
         self.retune()
 
@@ -2251,7 +2274,7 @@ class Weather:
         elif kind == "aurora" and (self.aurora_px is None or self.aurora_px[0] != self.amount):  # 색은 무늬에 들어 있음
             q = min(255, int(255 * AURORA_ALPHA * self.amount / 50))
             tab = bytes(v * q // 255 for v in range(256))
-            self.aurora_px = self.amount, [(r + r).translate(tab) for r in self.sprite_cache["aurora"]]
+            self.aurora_px = self.amount, subpixel([r.translate(tab) for r in self.sprite_cache["aurora"]], AURORA_PHASES)
         elif kind == "window":
             self.pane_cap = round(n * PANE_SHARE)
             del self.panes[:max(0, len(self.panes) - self.pane_cap)]  # 남으면 오래된 것부터 마름
@@ -2696,10 +2719,23 @@ def check():
     assert lit(4) < lit(int(reach * 0.62)) / 2, "아랫단 위로 갈수록 옅어짐"
     assert any(p[i + 2] > p[i + 1] + 8 for i in range(int(reach * 0.8) * 800, reach * 800, 4)), "아랫단 밑은 분홍"
     assert shots[0] != shots[1], "흐름"
-    full = max(max(r[3::4]) for r in af.aurora_px[1])
+    full = max(max(r[0][3::4]) for r in af.aurora_px[1])
     af.amount = 50
     Weather.retune(af)
-    assert abs(max(max(r[3::4]) for r in af.aurora_px[1]) - full // 2) <= 2, "양에 비례"
+    assert abs(max(max(r[0][3::4]) for r in af.aurora_px[1]) - full // 2) <= 2, "양에 비례"
+    # 옮겨 본 벌: p 벌째는 오른쪽 이웃과 p/n 만큼 섞임. slide 는 정수 px 아래 몫으로 벌을 고름
+    assert subpixel([bytes([0] * 4 + [200] * 4 + [0] * 4)], 2)[0][1] == bytes([100] * 8 + [0] * 4), "반 픽셀"
+    sp = big()
+    one = subpixel([bytes(40) + bytes([200] * 4) + bytes(756)], 4)
+    for f, want in ((0.5, {9: 100, 10: 100}), (1.25, {8: 50, 9: 150}), (195.0, {15: 200})):  # 195 는 끝에서 감김
+        sp.surface.pixels[:] = bytes(len(sp.surface.pixels))
+        Weather.slide(sp, one, 0, 1.0, f, ())
+        got = {x: sp.surface.pixels[x * 4 + 3] for x in range(200) if sp.surface.pixels[x * 4 + 3]}
+        assert got == want, ("정수 px 아래 몫만큼 밀림", f, got)
+    sp.surface.pixels[:] = bytes(len(sp.surface.pixels))
+    Weather.slide(sp, one * 2, 0, 0.0, 0.0, ((4, 0.0, 1.0),))  # 행 j 는 4·sin(j) px 밀림
+    lit = [min(x for x in range(200) if sp.surface.pixels[j * 800 + x * 4 + 3]) for j in range(2)]
+    assert lit[0] == 10 and lit[1] == 6, ("행마다 출렁임", lit)
     # 비눗방울: 오르고, 수명이 다하거나 동물에 닿으면 터져 물방울이 튀고, 닿은 동물은 ♪
     mark = []
     toy = types.SimpleNamespace(box=lambda: (90, 150, 30, 30), emote=lambda m, now: mark.append(m))
