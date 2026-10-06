@@ -71,7 +71,12 @@ SHADES = {}  # k 별 알파 → 그림자 픽셀 표
 # 눈 층: (비율, 반지름들 px, 속도 px/초, 알파, 번짐 px, 흔들림 px, 바람을 받는 정도, 바닥에 쌓이나)
 SNOW_LAYERS = ((0.45, (0.7, 0.9, 1.1), (16, 28), 150, 0.8, 4, 0.4, False),   # 멀리
                (0.42, (1.3, 1.6, 2.0), (32, 52), 225, 0.9, 10, 0.7, True),   # 가운데
-               (0.13, (2.4, 3.0, 3.6), (58, 88), 235, 1.8, 18, 1.0, True))   # 가까이 — 크고 번짐
+               (0.13, (2.4, 3.0, 3.6), (58, 88), 235, 1.8, 18, 1.0, True),   # 가까이 — 크고 번짐
+               (0.03, (5.0, 6.5, 8.0), (110, 160), 120, 6.0, 30, 1.3, False))  # 눈앞 — 초점 밖처럼 크고 흐림
+SNOW_NEAR = 3      # 눈앞 층 번호. 쌓인 눈 앞을 지나 화면 밑으로 빠짐
+SNOW_FLUTTER = 0.25  # 낙하 빠르기가 송이마다 이 비율만큼 오르내림 — 팔랑임
+LAND_T = (0.5, 1.1)  # 쌓인 눈에 닿은 송이가 표면에 얹혀 보이는 초. 그동안 작아지며 스밈
+GLINT_RATE, GLINT_T, GLINT_LEVELS = 40, (0.3, 0.8), 4  # 쌓인 눈 반짝임: 2560 폭에 초당 시도 수(눈 1.5px 아래 열이면 거름) · 깜빡이는 초 · 밝기 단계
 # 비 층: (비율, 길이 px, 속도 px/초, 알파, 굵기 px)
 RAIN_LAYERS = ((0.45, (9, 15), (460, 580), 75, 0.8),       # 멀리 — 가늘고 흐리고 느림, 안 튐
                (0.35, (16, 26), (650, 820), 120, 1.0),
@@ -84,6 +89,9 @@ RAIN_MULT = 2      # 비는 빨리 지나가 같은 개수면 듬성듬성해 �
 
 PILE_CAP = 16      # 쌓인 눈의 최대 높이 px. 군데군데 솟는 둔덕이 화면을 덜 가리게
 PILE_STRIP = PILE_CAP + 2
+# 쌓인 눈 윗면: 맨 위 1px 테두리 색(어두운 창에서 회색 띠로 안 보이고 밝은 창에서 안 끊기게 둘 사이) · 왼쪽 위 빛을 받는
+# 비탈 · 등진 비탈의 색 · 비탈 단계(−3..3) · 양옆 열 높이 차 → 단계 배수
+PILE_RIM, PILE_LIT, PILE_SHADOW, PILE_SLOPES, PILE_LIGHT = (205, 213, 230), (255, 255, 255), (196, 208, 234), 3, 2.0
 PILE_PER_FLAKE = 10.0  # 눈송이 하나가 보태는 부피 = 이 값 × 반지름. 실제보다 부풀려 몇 분 안에 쌓이게.
                        # 멈추는 높이가 이 값에 비례함 (21 이면 보통 11px·많이 21px, 10 이면 그 절반쯤)
                        # 반지름²에 비례시키면 큰 눈송이 하나에 둔덕이 툭 솟음
@@ -736,6 +744,21 @@ def bolt_sprite(segs):
     return bx, by, levels
 
 
+def snow_set(stride):
+    """눈송이 그림 [층][반지름][1/4 px 위치 16벌]. 눈앞 층은 흐려 1/4 px 가 안 보이고 그림이 커서 한 벌을 16번 가리킴."""
+    return [[[place(disc(rad, ly[4], ly[3], SNOW_COLOR, SNOW_RIM, fx / 4, fy / 4), stride)
+              for fy in range(4) for fx in range(4)] if li != SNOW_NEAR
+             else [place(disc(rad, ly[4], ly[3], SNOW_COLOR, SNOW_RIM), stride)] * 16
+             for rad in ly[1]] for li, ly in enumerate(SNOW_LAYERS)]
+
+
+def settled_set():
+    """쌓인 눈 위에 얹는 그림(place 안 함 — lay 가 밝은 쪽을 남기며 찍음): 내려앉은 송이 [층][반지름] 과
+    반짝이 [밝기 단계]."""
+    return ([[disc(rad, ly[4], ly[3], SNOW_COLOR, SNOW_RIM) for rad in ly[1]] for ly in SNOW_LAYERS],
+            [glow(0.5, 1.6, (lv + 1) / GLINT_LEVELS, 0, 0, (255, 255, 255), (190, 215, 255)) for lv in range(GLINT_LEVELS)])
+
+
 # ── 쌓인 눈 ──
 class Pile:
     """픽셀 열마다 높이(실수 px). 떨어진 자리에 둔덕을 보태고, settle() 이 흘러내림·퍼짐·녹음을 한다."""
@@ -823,12 +846,21 @@ def drop(t, g, vt=math.inf):
 
 
 def pile_column_parts(depth=PILE_STRIP):
-    """열 하나를 그릴 조각: 윗면 가장자리(높이의 소수부 16단계 알파)와 위에서 아래로 몸통(depth px)."""
+    """열 하나를 그릴 조각: 윗면 가장자리(높이의 소수부 16단계 알파)와 비탈 단계(−PILE_SLOPES..PILE_SLOPES)마다 위에서
+    아래로 몸통(depth px). 몸통 맨 위 1px 은 테두리 색 — 소수부 알파로만 그리면 밝은 창 위에서 테두리가 점선으로 끊김.
+    그 밑 4px 은 왼쪽 위 빛을 받는 비탈이면 하얗게, 등지면 푸르스름하게."""
     top, deep = (240, 244, 252), (212, 221, 238)
     edges = [pixel(SNOW_RIM, 255 * q / 16) for q in range(16)]
-    body = b"".join(pixel(tuple(int(a + (b - a) * min(1.0, d / 14)) for a, b in zip(top, deep)), 255)
-                    for d in range(depth))
-    return edges, body
+    bodies = []
+    for s in range(-PILE_SLOPES, PILE_SLOPES + 1):
+        tint, k = (PILE_LIT if s > 0 else PILE_SHADOW), abs(s) / PILE_SLOPES
+        col = [pixel(PILE_RIM, 255)]
+        for d in range(1, depth):
+            c = [a + (b - a) * min(1.0, d / 14) for a, b in zip(top, deep)]
+            m = k * max(0.0, 1 - (d - 1) / 4)
+            col.append(pixel(tuple(int(v + (t - v) * m) for v, t in zip(c, tint)), 255))
+        bodies.append(b"".join(col))
+    return edges, bodies
 
 
 def pile_column(v, edges, body, zero, room=PILE_STRIP):
@@ -1061,6 +1093,12 @@ def glint(px, stride, w, h, rows):
                 px[o + lo:o + hi] = bytes(map(max, px[o + lo:o + hi], data[lo - a:hi - a]))
 
 
+def lay(px, stride, w, h, sprite, x, y):
+    """(크기, [(건너뜀, 데이터) 행…]) 그림을 왼쪽 위 (x, y) 에 glint 로 찍음 — 쌓인 눈 위에 덮어 찍으면 옅은 가장자리가
+    흰 몸통에 구멍을 냄."""
+    glint(px, stride, w, h, [(y + j, x + skip, d) for j, (skip, d) in enumerate(sprite[1]) if d])
+
+
 def pane_drop(r):
     """유리에 맺힌 물방울: 거의 투명한 몸통, 위 테두리는 남색으로 어둡고 아래는 밝은 초승달, 왼쪽 위에 반짝이는 점 —
     둥근 렌즈가 위쪽 어둠과 아래쪽 빛을 뒤집어 비추는 모양. 밝은 창 위에서는 남색 테두리가, 어두운 창 위에서는 밝은
@@ -1275,9 +1313,7 @@ class Weather:
             self.surface.topmost(False)
         self.stride = self.w * 4
         s = self.stride
-        self.snow_sprites = [[[place(disc(rad, layer[4], layer[3], SNOW_COLOR, SNOW_RIM, fx / 4, fy / 4), s)
-                               for fy in range(4) for fx in range(4)] for rad in layer[1]]
-                             for layer in SNOW_LAYERS]
+        self.snow_sprites = snow_set(s)
         self.droplet = place(disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR), s)
         self.crown = [place(crown(k), s) for k in range(3)]
         self.full_clear, self.blank = True, False  # 다음 프레임은 화면 전체를 지움 · 빈 화면이라 쉬는 중
@@ -1500,28 +1536,68 @@ class Weather:
             layer = SNOW_LAYERS[f[3]]
             sprites = self.snow_sprites[f[3]][f[4]]
             n = sprites[0][0]
-            f[1] += f[2] * dt
+            f[1] += f[2] * (1 + SNOW_FLUTTER * math.sin(1.7 * f[5] + 2.3 * now * f[6])) * dt  # 팔랑임
             f[0] = (f[0] + wind * layer[6] * dt) % w
-            x = f[0] + math.sin(f[5] + now * f[6]) * layer[5]
+            x = f[0] + (math.sin(f[5] + now * f[6]) + 0.3 * math.sin(3.1 * f[5] + 2.9 * now * f[6])) * layer[5]
             xi, yi = int(x), int(f[1])
             col = min(max(xi + n // 2, 0), w - 1)
-            if yi + n >= h - base[col] - ph[col]:  # 쌓인 눈이나 바닥에 닿음. 먼 층은 쌓이지 않고 그 뒤로 사라짐
+            # 쌓인 눈이나 바닥에 닿음. 먼 층은 쌓이지 않고 그 뒤로 사라지고, 눈앞 층은 그 앞을 지나 화면 밑변까지
+            if yi + n >= (h if f[3] == SNOW_NEAR else h - base[col] - ph[col]):
                 if layer[7]:
                     self.pile.add(col, layer[1][f[4]])
+                    self.landed.append([x, col, f[3], f[4], 0.0, random.uniform(*LAND_T)])
                 f[:] = self.new_flake(f[3], True)
                 continue
             if yi < 0 or xi < 0 or xi + n > w:
                 continue
             stamp(px, stride, xi, yi, sprites[int((f[1] - yi) * 4) * 4 + int((x - xi) * 4)][1])
+        self.settled(dt)
+
+    def settled(self, dt):
+        """쌓인 눈 위: 내려앉은 송이는 표면에 얹혀 LAND_T 동안 한 단계씩 작아지다 스미고, 눈이 1.5px 넘게 쌓인 열에는
+        반짝이가 GLINT_T 동안 켜졌다 꺼짐. 표면 높이를 프레임마다 다시 읽어 더미가 꺼지거나 솟아도 따라감."""
+        px, stride, w, h, ph, base = self.surface.pixels, self.stride, self.w, self.h, self.pile.h, self.base
+        flakes, glints = self.settled_sprites
+        live = []
+        for s in self.landed:  # [x, 열, 층, 반지름 번호, 나이, 수명]
+            s[4] += dt
+            if s[4] >= s[5]:
+                continue
+            live.append(s)
+            ri = s[3] - int(s[4] / s[5] * (s[3] + 1))
+            sp = flakes[s[2]][ri]
+            r = SNOW_LAYERS[s[2]][1][ri]
+            lay(px, stride, w, h, sp, int(s[0] - sp[0] / 2), int(h - base[s[1]] - ph[s[1]] - 0.4 * r - sp[0] / 2))
+        self.landed = live
+        self.glint_due += GLINT_RATE * w / 2560 * dt
+        while self.glint_due >= 1:
+            self.glint_due -= 1
+            col = random.randrange(w)
+            if ph[col] >= 1.5:  # [열, 표면에서 밑으로 깊이, 나이, 수명] — 흰 몸통 안이면 안 보여 테두리에 걸침
+                self.glints.append([col, random.uniform(-0.5, 1.0), 0.0, random.uniform(*GLINT_T)])
+        live = []
+        for g in self.glints:
+            g[2] += dt
+            if g[2] >= g[3]:
+                continue
+            live.append(g)
+            sp = glints[min(GLINT_LEVELS - 1, int(math.sin(math.pi * g[2] / g[3]) * GLINT_LEVELS))]
+            lay(px, stride, w, h, sp, g[0] - sp[0] // 2, int(h - base[g[0]] - ph[g[0]] + g[1]) - sp[0] // 2)
+        self.glints = live
 
     def render_pile(self):
         strip32 = self.strip.cast("I")
-        w, last, body, zero, sh = self.w, self.pile_last, self.pile_body, self.pile_zero, self.strip_h
-        for x, (v, b) in enumerate(zip(self.pile.h, self.base)):
-            key = int(v * 16) | b << 16
+        w, last, bodies, zero, sh = self.w, self.pile_last, self.pile_body, self.pile_zero, self.strip_h
+        ph, base, top = self.pile.h, self.base, 2 * PILE_SLOPES
+        s = [v + b for v, b in zip(ph, base)]
+        # 비탈 단계 0..top: 오른쪽으로 오르면(왼쪽을 봄) 빛을 받음. 2560 열에 0.6ms 더 듦(min·max·round 로 셈하면 1.1ms)
+        for x, (v, b, r, l) in enumerate(zip(ph, base, s[1:] + s[-1:], s[:1] + s[:-1])):
+            i = int((r - l) * PILE_LIGHT + PILE_SLOPES + 0.5)
+            i = 0 if i < 0 else top if i > top else i
+            key = int(v * 16) | b << 16 | i << 28
             if key != last[x]:  # 1/16 px 아래로 안 바뀐 열은 건너뜀
                 last[x] = key  # 띠는 위에서부터 빈 칸 · 더미 · 틀 높이만큼 빈 칸
-                strip32[x::w] = memoryview(pile_column(v, self.pile_edges, body, zero, sh - b)
+                strip32[x::w] = memoryview(pile_column(v, self.pile_edges, bodies[i], zero, sh - b)
                                            + zero[:b * 4]).cast("I")
 
     # ── 반딧불이 ──
@@ -2391,6 +2467,7 @@ class Weather:
         self.full_clear = True
         self.flakes, self.drops, self.splashes, self.flies, self.breaths = [], [], [], [], []  # 수는 끝에 retune 이 채움
         self.crowns, self.gust_phase = [], random.uniform(0, math.tau)
+        self.landed, self.glints, self.glint_due = [], [], 0.0  # 쌓인 눈 위의 내려앉은 송이 · 반짝이
         self.bolt, self.next_bolt = None, time.perf_counter() + random.uniform(2, 5)
         self.pile = Pile(self.w, self.base)
         self.strip = memoryview(bytearray(self.stride * self.strip_h))
@@ -2398,6 +2475,10 @@ class Weather:
         self.pile_edges, self.pile_body = self.snow_pile
         if kind in RAINY:
             self.rain_sprites = self.rain_set()
+        elif kind == "snow":
+            if "settled" not in self.sprite_cache:
+                self.sprite_cache["settled"] = settled_set()
+            self.settled_sprites = self.sprite_cache["settled"]
         elif kind == "fog":
             if "fog" not in self.sprite_cache:
                 self.sprite_cache["fog"] = fog_field(self.w, int(self.h * FOG_REACH), random)
@@ -2787,15 +2868,61 @@ def check():
     assert hf.stones[0][6] == 0 and sum(hf.pile.h[100:]) > 0, "틀 위의 알은 틀 윗변에 닿아 더미로(새 알로 바뀜)"
     assert hf.stones[1][1] > 200 - 48 - 30 and not any(hf.pile.h[:100]), "틈의 알은 그 높이를 지나 계속 떨어짐"
     sf = big(base=[0] * 100 + [48] * 100, pile=Pile(200), wind=Weather.wind,
-             snow_sprites=[[[place(disc(rad, layer[4], layer[3], SNOW_COLOR, SNOW_RIM, fx / 4, fy / 4), 800)
-                             for fy in range(4) for fx in range(4)] for rad in layer[1]] for layer in SNOW_LAYERS])
+             snow_sprites=snow_set(800), landed=[], glints=[], glint_due=0.0, settled_sprites=settled_set())
     li = next(i for i, layer in enumerate(SNOW_LAYERS) if layer[7])  # 쌓이는 층
     sf.new_flake = lambda li, top: [0.0, -1000.0, 0.0, li, 0, 0.0, 1.0]
+    sf.settled = Weather.settled.__get__(sf)
     n = sf.snow_sprites[li][0][0][0]
     sf.flakes = [[x, 200 - 48 - n - 2, 300.0, li, 0, 0.0, 1.0] for x in (150.0, 50.0)]
     Weather.snow(sf, 1 / 60, 0.0)
     assert sf.flakes[0][1] == -1000 and sf.flakes[1][1] > 0 and sum(sf.pile.h[100:]) > 0 and not any(sf.pile.h[:100]), \
         "눈송이도 틀 위에서는 틀 윗변에, 틈에서는 계속 떨어짐"
+    assert len(sf.landed) == 1 and sf.landed[0][1] >= 100, "쌓인 눈에 닿은 송이는 표면에 얹힘"
+    # 눈앞 층은 쌓인 눈 앞을 지나 화면 밑변까지 가고 쌓이지 않음
+    nn, before = sf.snow_sprites[SNOW_NEAR][0][0][0], sum(sf.pile.h)
+    sf.flakes = [[150.0, 200 - 48 - nn - 2, 300.0, SNOW_NEAR, 0, 0.0, 1.0]]
+    Weather.snow(sf, 1 / 60, 0.0)
+    assert sf.flakes[0][1] > 0 and sum(sf.pile.h) == before, "눈앞 송이는 틀 윗변을 지나감"
+    sf.flakes[0][1] = 200 - nn - 1
+    Weather.snow(sf, 1 / 60, 0.0)
+    assert sf.flakes[0][1] == -1000 and sum(sf.pile.h) == before, "밑변에서 다시 위로, 안 쌓임"
+    sf.flakes = [[50.0, 10.0, 100.0, 1, 0, 1.0, 1.0]]
+    Weather.snow(sf, 0.1, 0.3)
+    assert abs(sf.flakes[0][1] - 20.0) > 1, "송이마다 낙하 빠르기가 오르내림"
+    # 내려앉은 송이: 밝은 쪽을 남겨 찍어 흰 더미에 구멍을 안 내고, 작아지다 수명이 다하면 사라짐
+    sf.flakes, sf.landed = [], [[100.0, 100, 2, 2, 0.0, 1.0]]
+    sf.surface.pixels[:] = bytes((250, 250, 250, 255)) * (200 * 200)
+    Weather.settled(sf, 0.01)
+    assert min(bytes(sf.surface.pixels)[3::4]) == 255, "더미에 구멍을 안 냄"
+    lit = []
+    for age in (0.0, 0.8):
+        sf.surface.pixels[:] = bytes(200 * 200 * 4)
+        sf.landed[0][4] = age
+        Weather.settled(sf, 0.01)
+        lit.append(sum(map(bool, bytes(sf.surface.pixels)[3::4])))
+    assert lit[0] > lit[1] > 0, ("작아지며 스밈", lit)
+    Weather.settled(sf, 1.0)
+    assert not sf.landed, "수명이 다하면 사라짐"
+    # 반짝이는 1.5px 넘게 쌓인 열에만, 윗테두리에 걸쳐
+    sf.pile.h, sf.glints, sf.glint_due = [1.0] * 200, [], 30.0
+    Weather.settled(sf, 0.01)
+    assert not sf.glints, "얇은 눈엔 안 반짝임"
+    sf.pile.h, sf.glint_due = [3.0] * 200, 30.0
+    sf.surface.pixels[:] = bytes(200 * 200 * 4)
+    Weather.settled(sf, 0.01)
+    assert len(sf.glints) == 30 and all(-0.5 <= g[1] <= 1 for g in sf.glints) and any(bytes(sf.surface.pixels)[3::4]), \
+        "쌓인 눈엔 윗테두리에 반짝임"
+    Weather.settled(sf, 1.0)
+    assert not sf.glints, "깜빡이고 꺼짐"
+    # 쌓인 눈 윗면: 오른쪽으로 오르는 비탈은 빛을 받아 밝고 내려가는 비탈은 푸르스름함. 맨 위 1px 은 이어진 테두리
+    edges, bodies = pile_column_parts(PILE_STRIP)
+    lf = types.SimpleNamespace(w=6, strip_h=PILE_STRIP, base=[0] * 6, pile=types.SimpleNamespace(h=[2.0, 4.0, 6.0, 6.0, 4.0, 2.0]),
+                               pile_last=[-1] * 6, pile_edges=edges, pile_body=bodies, pile_zero=bytes(PILE_STRIP * 4),
+                               strip=memoryview(bytearray(6 * 4 * PILE_STRIP)))
+    Weather.render_pile(lf)
+    col = lambda x: [bytes(lf.strip[(r * 6 + x) * 4:(r * 6 + x) * 4 + 4]) for r in range(PILE_STRIP)]
+    assert sum(p[2] + p[0] for p in col(1)) > sum(p[2] + p[0] for p in col(4)) + 40, "빛 받는 비탈이 밝음"
+    assert col(1)[PILE_STRIP - 4] == pixel(PILE_RIM, 255), "높이 4 면 밑에서 넷째 칸이 테두리"
     n = RAIN_LAYERS[1][1][0]
     wf = big(base=[0] * 100 + [48] * 100, kind="rain", gust_phase=0.0, bolt=None, sprite_cache={}, splashes=[], crowns=[],
              droplet=place(disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR), 800), crown=[place(crown(k), 800) for k in range(3)],
@@ -3182,7 +3309,7 @@ def check():
     assert sum(map(bool, col)) == 4 and not any(strip[1::4]), "몸통 3px + 가장자리 1px, 빈 열은 비움"
     assert sum(map(bool, strip[3::4])) == PILE_STRIP + 11, "틀 옆 언덕은 옛 띠 높이(PILE_STRIP)보다 높게도 그림"
     for v in (0.0, 0.5, 7.3, PILE_CAP):
-        assert len(pile_column(v, edges, body, bytes(PILE_STRIP * 4))) == PILE_STRIP * 4, "열 길이가 띠 높이"
+        assert len(pile_column(v, edges, body[PILE_SLOPES], bytes(PILE_STRIP * 4))) == PILE_STRIP * 4, "열 길이가 띠 높이"
     stride = 40 * 4
     for sp in (disc(2.4, 1.8, 235, SNOW_COLOR, SNOW_RIM, 0.25, 0.5), streak(30, 190, 1.6)):
         want, got = bytearray(stride * 40), bytearray(stride * 40)
