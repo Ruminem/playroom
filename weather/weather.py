@@ -17,6 +17,7 @@
 고른 것은 SETTINGS 에 남는다.
 """
 import argparse
+import array
 import colorsys
 import ctypes
 import itertools
@@ -145,7 +146,7 @@ FOG_MIX = 16       # 섞는 비율 단계 수 — 단계마다 한 번만 셈
 # 행마다 밀리는 위상) — 폭과 빠르기가 다른 둘을 섞어 빛살이 모두 같은 S 자로 휘지 않음
 AURORA_REACH, AURORA_ALPHA, AURORA_DRIFT = 0.6, 0.5, 6
 AURORA_SWAY = ((50, 0.11, 0.004), (14, 0.23, 0.011))
-AURORA_STEP = 3, 2    # 무늬를 이 행 · 열마다 한 번 셈 — 픽셀마다면 2560×860 에 몇 초
+AURORA_RAYQ = 16    # 빛살 높이 단계 수 — 단계마다 본 하나(2560×1440 에 54KB)
 # 커튼마다 (아랫단 깊이 비율, 세기, 빛살 높이) — 앞(아래) 커튼이 밝고 빛살이 김
 AURORA_RIBBONS = ((0.82, 1.0, 0.28), (0.64, 0.7, 0.2), (0.46, 0.45, 0.14))
 # 아랫단에서 잰 높이(비율) → 색: 밑은 분홍 술, 아랫단은 흰빛 초록, 위로 초록 · 청록 · 보라
@@ -896,61 +897,77 @@ def soap_balls(r, hues):
 
 def aurora_field(w, rows, rng):
     """오로라 무늬: rows 행의 행마다 premultiplied BGRA 픽셀 바이트(폭 w, 끝이 처음과 이어짐). 커튼 AURORA_RIBBONS 겹이
-    겹쳐 있고, 커튼마다 아랫단이 큰 굽이와 잔 굽이를 섞어 구불거림. 아랫단 밑은 가는 분홍 술로 빠르게 사라지고, 위로는
-    무작위 자리 · 굵기 · 세기의 빛살 수백 줄이 제 높이만큼 뻗음. 아랫단이 가파르게 접힌 곳(주름)은 더 밝고, 커튼마다
-    옆으로 짙어졌다 끊겼다 함. 색은 아랫단에서 잰 높이로 — 흰빛 초록 → 초록 → 청록 → 보라. 사인은 폭에 정수 번 돌아
-    이어지고 빛살은 폭을 넘으면 처음으로 감김. AURORA_STEP 행 · 열마다 셈해 늘림."""
-    sy, sx = AURORA_STEP
-    cols = range(0, w, sx)
-
+    겹쳐 있고, 커튼마다 아랫단이 큰 굽이와 잔 굽이를 섞어 구불거림. 아랫단 둘레는 옅은 초록 빛무리, 밑은 가는 분홍
+    술로 빠르게 사라지고, 위로는 무작위 자리 · 굵기 · 세기의 빛살 수백 줄이 제 높이만큼 뻗음. 아랫단이 가파르게 접힌
+    곳(주름)은 더 밝고, 커튼마다 옆으로 짙어졌다 끊겼다 함. 색은 아랫단에서 잰 높이로 — 흰빛 초록 → 초록 → 청록 → 보라.
+    픽셀마다 셈함: 열의 세로 모양은 커튼마다 미리 셈한 본(아랫단에서 잰 높이 → 색 · 세기)을 그 열의 아랫단 깊이만큼
+    밀어 잘라 쓰고, 본은 픽셀 하나에 32비트 칸 넷(B·G·R·A)을 담은 큰 정수라 밀기 · 곱하기 · 더하기가 C 에서 한 번에
+    됨 — 파이썬으로 픽셀마다 셈하면 2560×860 에 몇 초. 알파 칸은 커튼마다 세기 × 가장 센 색 채널을 더한 것이라 늘
+    색 칸 이상. 넘친 칸은 255 에 멈춰 밝은 곳이 하얗게 바램."""
     def noise(ks, n, amp):  # 폭에 정수 번 도는 사인 n 개, 진폭이 1/k 로 줄어 굽이가 자연스러움
         ws = [(k, rng.uniform(0, math.tau), amp * rng.uniform(0.5, 1) / k) for k in rng.sample(ks, n)]
-        return [sum(a * math.sin(math.tau * k * x / w + p) for k, p, a in ws) for x in cols]
+        return [sum(a * math.sin(math.tau * k * x / w + p) for k, p, a in ws) for x in range(w)]
 
-    lut = []  # 아랫단에서 잰 높이 d(−0.04–0.6, 1/400 칸) → 색 0–1
-    for i in range(257):
-        d = i / 400 - 0.04
-        lo = max(s for s in AURORA_COLORS if s[0] <= d) if d >= AURORA_COLORS[0][0] else AURORA_COLORS[0]
+    def color(d):  # 아랫단에서 잰 높이 → 색 0–1
+        lo = max((s for s in AURORA_COLORS if s[0] <= d), default=AURORA_COLORS[0])
         hi = min((s for s in AURORA_COLORS if s[0] > d), default=AURORA_COLORS[-1])
-        t = (d - lo[0]) / (hi[0] - lo[0]) if hi[0] > lo[0] else 0
-        lut.append(tuple((a + (b - a) * min(1, max(0, t))) / 255 for a, b in zip(lo[1], hi[1])))
+        t = min(1.0, max(0.0, (d - lo[0]) / (hi[0] - lo[0]))) if hi[0] > lo[0] else 0.0
+        return [(a + (b - a) * t) / 255 for a, b in zip(lo[1], hi[1])]
+
+    span = 2 * rows  # 본의 길이(픽셀). 칸 t 는 아랫단 위 rows − t 픽셀
+    glow = color(0.05)
+
+    def pack(tones, f):  # 높이 d → (색 세기, 빛무리 세기) 를 본 하나로: 칸마다 1023 이 세기 1
+        lanes = array.array("I")
+        for t in range(span):
+            d = (rows - t) / rows
+            i, g = f(d)
+            (r, gr, b), (r2, g2, b2) = tones[t], glow
+            lanes.extend((round(1023 * (i * b + g * b2)), round(1023 * (i * gr + g * g2)), round(1023 * (i * r + g * r2)),
+                          round(1023 * (i * max(r, gr, b) + g * max(glow)))))
+        return int.from_bytes(lanes.tobytes(), "little")
+
+    assert array.array("I").itemsize == 4
     ribbons = []
     for base, power, reach in AURORA_RIBBONS:
+        # 아랫단 밑은 pw² 만큼 늘려 셈 — 뒤 커튼일수록 밑이 흐리고 분홍 술도 앞 커튼에만 짙음
+        tones = [color((rows - t) / rows * (power * power if t > rows else 1)) for t in range(span)]
+        fade = lambda d, pw=power: math.exp(d * pw * pw / 0.012) if d < 0 else 1.0
+        hem_t = pack(tones, lambda d, pw=power: (fade(d) * 0.5 * pw * math.exp(-max(d, 0) / 0.025), 0.12 * pw * math.exp(-abs(d) / 0.05)))
+        ray_t = [pack(tones, lambda d, h=reach * (0.35 + 0.65 * (q + 0.5) / AURORA_RAYQ): (fade(d) * math.exp(-max(d, 0) / h), 0))
+                 for q in range(AURORA_RAYQ)]  # 빛살 높이를 AURORA_RAYQ 단계로
         hem = [min(0.9, max(0.12, base + a + b)) for a, b in zip(noise(range(1, 4), 2, 0.12), noise(range(4, 16), 4, 0.15))]
         env = [min(1.0, max(0.0, 0.6 + e)) ** 1.5 for e in noise(range(1, 7), 3, 0.8)]
         streak = [0.0] * w
-        for _ in range(w // 8):  # 2560 폭에 320 줄
-            c, s, a = rng.uniform(0, w), rng.uniform(1, 5), rng.uniform(0.2, 1.2)
+        for _ in range(w // 6):  # 2560 폭에 430 줄
+            c, s, a = rng.uniform(0, w), rng.uniform(0.7, 4.5), rng.uniform(0.2, 1.2)
             for x in range(int(c - 3 * s), int(c + 3 * s) + 1):
                 streak[x % w] += a * math.exp(-((x - c) / s) ** 2 / 2)
-        cs = []
-        for i, x in enumerate(cols):
-            slope = abs(hem[(i + 1) % len(hem)] - hem[i - 1]) * rows / (2 * sx)
-            ray = 0.15 + 0.85 * (1 - math.exp(-sum(streak[x:x + sx]) / sx))
-            cs.append((hem[i], power * env[i] * (1 + min(1.0, 0.7 * slope)), ray, reach * (0.35 + 0.65 * ray), power))
-        ribbons.append(cs)
+        cols = []
+        for x in range(w):
+            k = power * env[x] * (1 + min(1.0, 0.35 * abs(hem[(x + 1) % w] - hem[x - 1]) * rows))
+            ray = 0.15 + 0.85 * (1 - math.exp(-streak[x]))
+            cols.append((128 * (rows - round(hem[x] * rows)), round(64 * k), round(64 * k * ray),
+                         ray_t[min(AURORA_RAYQ - 1, int(ray * AURORA_RAYQ))]))
+        ribbons.append((hem_t, cols))
+    mask, sat = (1 << 128 * rows) - 1, bytes([0] + [255] * 255)
     out = []
-    for j in range(0, rows, sy):
-        u = (j + sy / 2) / rows
-        line = bytearray()
-        for col in zip(*ribbons):
-            r = g = b = 0.0
-            for e, k, ray, h, pw in col:  # 뒤(흐린) 커튼일수록 아랫단 빛줄이 옅고 밑이 흐림 — 안 그러면 산등성이처럼 보임
-                d = e - u
-                if d < -0.25 or k < 0.01:
-                    continue
-                if d < 0:  # 밑으로 흐린 깊이는 pw² 로 늘림 — 분홍 술도 앞 커튼에만 짙게
-                    d *= pw * pw
-                    s, d0 = math.exp(d / 0.012), 0
-                else:
-                    s, d0 = 1.0, d
-                i = k * s * (0.5 * pw * math.exp(-d0 / 0.025) + ray * math.exp(-d0 / h))
-                cr, cg, cb = lut[min(256, max(0, int((d + 0.04) * 400)))]
-                r, g, b = r + i * cr, g + i * cg, b + i * cb
-            m = max(r, g, b, 1.0)  # 넘치면 색은 두고 세기만 1 로
-            line += bytes((int(255 * b / m), int(255 * g / m), int(255 * r / m), int(255 * max(r, g, b) / m))) * sx
-        out += [bytes(line[:w * 4])] * min(sy, rows - j)
-    return out
+    for x in range(w):
+        acc = 0
+        for hem_t, cols in ribbons:
+            sh, kh, kr, ray_t = cols[x]
+            if kh:
+                acc += kh * (hem_t >> sh & mask) + kr * (ray_t >> sh & mask)
+        b = acc.to_bytes(rows * 16, "little")  # 칸마다 1023 × 64 ≈ 255 · 256 이라 둘째 바이트가 0–255, 셋째는 넘친 몫
+        out.append((int.from_bytes(b[1::4], "little") | int.from_bytes(b[2::4].translate(sat), "little")).to_bytes(rows * 4, "little"))
+    cm, stride = b"".join(out), rows * 4  # 열마다 이어 붙인 것 → 행으로 돌려 세움
+    rows_out = []
+    for j in range(rows):
+        px = bytearray(w * 4)
+        for c in range(4):
+            px[c::4] = cm[j * 4 + c::stride]
+        rows_out.append(bytes(px))
+    return rows_out
 
 
 def pane_drop(r):
