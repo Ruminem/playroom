@@ -472,9 +472,46 @@ JELLY_ART = (("..qqqqq..",
 # 해파리 수 · 오므려 밀어 오르는 간격 초 · 그때 오르는 빠르기 px/초 · 가라앉는 빠르기 px/초 · 오므린 그림 보이는 초
 JELLY_N, JELLY_PULSE, JELLY_PUSH, JELLY_SINK, JELLY_SQUEEZE = 3, (2.0, 3.5), 42, 7, 0.35
 
+# ── 수도꼭지 ── 위에서 물줄기가 떨어져 화면이 바닥부터 차고, 꼭대기까지 차면 바닥에 구멍이 나 빠진 뒤 다시 처음부터
+TAP_FILL = 120     # 양 50% 에서 빈 화면이 꼭대기까지 차는 초. 양에 반비례(100% 60초, 10% 600초), 0% 면 꼭지가 잠김
+TAP_DRAIN = 40     # 가득 찬 물이 구멍으로 다 빠지는 초. 빠르기가 √수위에 비례(토리첼리)라 처음엔 콸콸, 끝에 졸졸
+TAP_HOLD, TAP_CRACK, TAP_POP, TAP_SEAL, TAP_REST = 2.5, 1.6, 0.25, 0.8, 1.5  # 가득 찬 채 · 금 · 구멍 열림 · 메움 · 다시 틀기까지 초
+TAP_NODE = 4       # 수면 마디 폭 px. 마디마다 높이가 따로 출렁임
+TAP_WAVE_C, TAP_DAMP, TAP_DT = 360, 0.3, 1 / 120  # 물결 빠르기 px/초 · 감쇠 /초 · 한 걸음 초 — C·DT/NODE ≤ 1 이어야 안 터짐
+TAP_BACK = 40      # 마디가 제 높이로 돌아오려는 세기 /초² (물의 무게). 없으면 계속 누른 자리가 화면 전체를 기울임
+TAP_KICKS = 8      # 물줄기·구멍이 수면을 치는 횟수 /초. 세기는 그대로 나눠 가짐
+TAP_STEPS = 6     # 한 프레임에 밟는 최대 걸음. 멈칫해 dt 가 길면 남는 시간은 버림
+TAP_AMP = 40       # 수면이 평균에서 벗어나는 최대 px. 띠 행 수가 255 를 넘으면 안 됨(translate 표)
+TAP_PUSH, TAP_SUCK, TAP_VORTEX = 2600, 900, 3000  # 물줄기가 닿는 마디를 누르는 · 구멍 위를 빨아내는 px/초² · 얕을수록 세지는 몫
+TAP_ALPHA = (0.14, 0.26)  # 물빛 (맨 위, 맨 아래) 불투명도 — 어항보다 짙게, 차오르는 게 보이게
+TAP_LIP = ((214, 238, 255), 170, 105)  # 수면 윗변 두 줄 색 · 알파
+TAP_G, TAP_V0, TAP_JET = 1800, 250, 8  # 물줄기 중력 px/초² · 꼭지에서 나오는 빠르기 px/초 · 꼭지 끝 굵기 px (떨어질수록 가늘어짐)
+TAP_STREAM = ((206, 234, 255), (150, 198, 240), 210, 160)  # 물줄기 가운데 · 가장자리 색, 밝은 · 어두운 마디 알파
+TAP_STRIPE, TAP_FLOW = 14, 900  # 물줄기 무늬 한 마디 px · 흘러내리는 px/초
+TAP_SPRAY, TAP_SPRAY_V = 70, ((-160, 160), (-420, -160))  # 물줄기가 닿는 자리에서 튀는 방울 수 /초 · (가로, 세로) 처음 빠르기
+TAP_HOLE_R, TAP_CRACKS, TAP_CRACK_LEN = 30, 7, (30, 80)  # 구멍 가로 반지름 px(세로는 1/3) · 금 가닥 수 · 가닥 길이 px
+TAP_CHIPS, TAP_SWIRL = 12, 24  # 구멍이 열릴 때 튀는 조각 수 · 빠질 때 구멍으로 빨려드는 거품 수
+TAP_COLORS = {"k": (38, 43, 68), "s": (150, 162, 182), "l": (214, 222, 236), "r": (222, 62, 62), "b": (40, 90, 170)}
+TAP_ART = (".....kslk.....",  # 천장에서 내려온 관 · 빨간 손잡이 · 오른쪽으로 꺾여 아래로 난 주둥이
+           ".....kslk.....",
+           "..kkkkslkkkk..",
+           "..krrrslrrrk..",
+           "..kkkkslkkkk..",
+           ".....kslk.....",
+           ".....kslkkkkk.",
+           ".....ksllllllk",
+           ".....ksssssssk",
+           ".....kkkkksslk",
+           ".........kbbbk")
+TAP_NOZZLE = 11    # 주둥이 가운데 칸 (TAP_ART 열)
+TAP_HOLE_COLOR, TAP_RIM, TAP_CRACK_COLOR = (16, 20, 34), (96, 84, 72), (52, 46, 44)
+TAP_LE = [bytes(int(v <= r) for v in range(256)) for r in range(256)]  # 띠 r 행에 잠긴 마디 = 수면 행 ≤ r 인 마디
+TAP_EQ = [bytes(int(v == r) for v in range(256)) for r in range(256)]  # 수면 행이 꼭 r 인 마디 — 윗변 줄
+
 KINDS = {1: ("snow", "눈"), 2: ("rain", "비"), 3: ("storm", "뇌우"), 4: ("hail", "우박"), 35: ("window", "창문 빗방울"),
          31: ("fog", "안개"), 33: ("aurora", "오로라"), 6: ("fireflies", "반딧불이"), 34: ("bugs", "나비·잠자리"),
-         32: ("soap", "비눗방울"), 5: ("fireworks", "불꽃놀이"), 8: ("aquarium", "어항"), 7: ("none", "날씨 없음")}  # 없음은 동물만. id 는 설정 파일과 무관해 순서만 바꿔도 됨
+         32: ("soap", "비눗방울"), 5: ("fireworks", "불꽃놀이"), 8: ("aquarium", "어항"),
+         36: ("faucet", "수도꼭지"), 7: ("none", "날씨 없음")}  # 없음은 동물만. id 는 설정 파일과 무관해 순서만 바꿔도 됨
 KIND_NAMES = tuple(k for k, _ in KINDS.values())
 SHOW, PANEL, AUTOSTART, EXIT = 20, 30, 50, 99
 DRAG = 27  # 동물을 왼쪽 단추로 집어 옮기기. 윈도우만 — 맥은 창을 누르면 앱이 앞으로 나와 포커스를 뺏을 수 있어 아직 안 함
@@ -900,6 +937,55 @@ def water_rows(h, amount):
         rows.append(pixel(tuple(int(t + (d - t) * u) for t, d in zip(AQ_TOP, AQ_DEEP)),
                           255 * k * (AQ_ALPHA[0] + (AQ_ALPHA[1] - AQ_ALPHA[0]) * u)))
     return rows
+
+
+def tap_rows(h):
+    """수도꼭지 물빛 행 픽셀 4바이트 — 어항 색, 알파는 TAP_ALPHA 를 따라 아래로 짙어짐. 양은 차는 빠르기라 안 탐."""
+    rows = []
+    for y in range(h):
+        u = y / max(1, h - 1)
+        rows.append(pixel(tuple(int(t + (d - t) * u) for t, d in zip(AQ_TOP, AQ_DEEP)),
+                          255 * (TAP_ALPHA[0] + (TAP_ALPHA[1] - TAP_ALPHA[0]) * u)))
+    return rows
+
+
+def jet_rows(h):
+    """꼭지 끝에서 j px 아래 물줄기 행 → (가운데에서 왼쪽 끝까지 px, 밝은 마디, 어두운 마디). 떨어지며 빨라지는 만큼
+    가늘어짐 — 흐르는 양이 같으니 단면적 ∝ 1/빠르기, 폭 ∝ 1/√빠르기."""
+    core, edge, lit, dim = TAP_STREAM
+    made, out = {}, []
+    for j in range(h):
+        width = max(3, round(TAP_JET * math.sqrt(TAP_V0 / math.sqrt(TAP_V0 ** 2 + 2 * TAP_G * j))))
+        if width not in made:
+            made[width] = (width // 2, *(b"".join(pixel(edge if x in (0, width - 1) else core, a) for x in range(width))
+                                        for a in (lit, dim)))
+        out.append(made[width])
+    return out
+
+
+def hole_shape(rx, ry):
+    """바닥에 난 구멍: 납작한 타원. 위쪽 안 테두리는 깨진 바닥 단면 색 → (크기, [(건너뜀, 데이터) 행…])."""
+    rows = []
+    for y in range(-ry, ry + 1):
+        row = b""
+        for x in range(-rx, rx + 1):
+            q = (x / (rx + 0.5)) ** 2 + (y / (ry + 0.5)) ** 2
+            row += bytes(4) if q > 1 else pixel(TAP_RIM if y < 0 and q > 0.5 else TAP_HOLE_COLOR, 255)
+        rows.append(trim(row))
+    return 2 * rx + 1, rows
+
+
+def crack_lines(rng):
+    """구멍 둘레 금 가닥들 → [[(dx, dy) 2px 간격 점…]…]. 바닥을 비스듬히 내려다본 꼴이라 세로는 1/4."""
+    lines = []
+    for k in range(TAP_CRACKS):
+        a, x, y, pts = (k + rng.uniform(0.15, 0.85)) * math.tau / TAP_CRACKS, 0.0, 0.0, []
+        for _ in range(int(rng.uniform(*TAP_CRACK_LEN) / 2)):
+            a += rng.uniform(-0.45, 0.45)
+            x, y = x + 2 * math.cos(a), y + 2 * math.sin(a) / 4
+            pts.append((round(x), round(y)))
+        lines.append(pts)
+    return lines
 
 
 def over(sprite, under):
@@ -2545,6 +2631,246 @@ class Weather:
             frame = int(now * (2 + f[3] / 15) + f[5]) % 2  # 빠른 물고기가 꼬리를 자주 침
             pet.stamp(px, stride, int(f[0]), y, self.aq["fish"][f[4]][frame][f[2] > 0], w, h)
 
+    # ── 수도꼭지 ──
+    def faucet(self):
+        """수도꼭지를 깜. 그림은 처음 고를 때 한 번(sprite_cache), 화면 크기 물빛·빈 버퍼(2560×1440 에서 15MB 씩)는
+        고를 때마다 — 딴 종류로 가면 reset 이 돌려줌."""
+        w, h, st = self.w, self.h, self.stride
+        if "faucet" not in self.sprite_cache:
+            r = TAP_HOLE_R
+            holes = []
+            for k in range(1, 9):  # 구멍이 열리는 여덟 단계
+                rx, ry = max(1, round(r * k / 8)), max(1, round(r / 3 * k / 8))
+                holes.append((rx, ry, place(hole_shape(rx, ry), st)[1]))
+            self.sprite_cache["faucet"] = {
+                "art": pet.segments(TAP_ART, False, TAP_COLORS),
+                "size": (len(TAP_ART[0]) * pet.SCALE, len(TAP_ART) * pet.SCALE),
+                "jet": jet_rows(h), "holes": holes,
+                "lip": [memoryview(pixel(TAP_LIP[0], a) * w) for a in TAP_LIP[1:]],
+                "drop": place(disc(1.2, 0.8, 200, TAP_STREAM[0], TAP_STREAM[1]), st),
+                "bubble": bubble(2.5, 150), "chip": pixel(TAP_RIM, 255) * 3, "crack": pixel(TAP_CRACK_COLOR, 210) * 2}
+        self.tap = self.sprite_cache["faucet"]
+        if getattr(self, "tap_px", None) is None:
+            self.tap_px = memoryview(bytearray(b"".join(p * w for p in tap_rows(h))))
+            self.tap_zero = memoryview(bytes(w * h * 4))
+        n = -(-w // TAP_NODE)
+        self.level, self.wave, self.wave_v, self.tap_acc = 0.0, [0.0] * n, [0.0] * n, 0.0
+        self.tap_cycle()
+
+    def tap_cycle(self):
+        """빈 화면에서 다시 시작 — 꼭지와 구멍 자리를 새로 고름. 구멍은 물줄기에서 화면 폭 1/4 넘게 떨어진 바닥."""
+        w = self.w
+        self.tap_x = random.randrange(max(1, w - self.tap["size"][0]))
+        nx, r = self.tap_x + TAP_NOZZLE * pet.SCALE + 1, TAP_HOLE_R + 4
+        spots = [x for x in range(r, w - r) if abs(x - nx) > w / 4]
+        self.hole_x = random.choice(spots) if spots else w // 2
+        self.cracks = crack_lines(random)
+        self.spray, self.swirl, self.chips, self.spray_due = [], [], [], 0.0
+        self.jet = [None, None]  # 물줄기를 튼 시각 · 잠근 시각 — 머리와 꼬리가 그 뒤로 떨어진 거리
+        self.tap_go("fill", None)
+
+    def tap_go(self, state, now):
+        """다음 단계로. now 가 None 이면 첫 프레임이 시각을 정함. 가득 차면 꼭지를 잠그고, 구멍이 열리면 조각이 튐."""
+        self.tap_state, self.tap_since = state, now
+        if state == "full":
+            self.jet[1] = now
+        elif state == "drain":
+            cx, cy = self.hole_at()
+            self.chips = [[cx + random.uniform(-8, 8), cy - 4, random.uniform(-220, 220), random.uniform(-520, -200)]
+                          for _ in range(TAP_CHIPS)]
+
+    def hole_at(self):
+        """구멍 가운데 화면 (x, y) — 구멍 폭 밑에서 제일 높은 바닥 선에 걸침. 바닥이 화면 밑변이면 다 보이게 올림."""
+        x, r = self.hole_x, TAP_HOLE_R
+        return x, min(self.h - max(self.base[max(0, x - r):x + r + 1]), self.h - 1 - r // 3)
+
+    def sea(self, x):
+        """x 열 수면 높이(밑변에서 px). 얕으면 물결도 낮춤 — 안 낮추면 골이 바닥 밑으로 파고듦."""
+        k = min(1.0, self.level / (2 * TAP_AMP))
+        return self.level + self.wave[min(max(int(x), 0), self.w - 1) // TAP_NODE] * k
+
+    def impact(self, x):
+        """x 열에서 떨어지는 물이 닿는 화면 y — 수면이나, 물이 바닥보다 낮으면 바닥."""
+        c = min(max(int(x), 0), self.w - 1)
+        return self.h - max(self.sea(c), self.base[c])
+
+    def afloat(self, x, tall):
+        """수면에 뜬 키 tall 동물의 발밑 높이(밑변에서 px) — 몸 1/3 이 잠기고 머리는 화면 안. 물이 없으면 0."""
+        return 0 if self.level <= 0 else int(min(self.sea(x) - tall // 3, self.h - tall))
+
+    def flood(self, dt, now):
+        """수도꼭지 한 프레임의 물: 단계를 넘기고 수위를 옮긴 뒤 출렁이고, 화면 전체를 물빛과 빈 칸으로 덮음(지우기 대신)."""
+        h, st, top = self.h, self.stride, self.h + TAP_AMP  # 골까지 꼭대기를 넘어야 다 찬 것
+        if self.tap_since is None:
+            self.tap_since = now
+        t, state = now - self.tap_since, self.tap_state
+        if state == "fill":
+            flow, (on, off) = self.amount / 50, self.jet
+            if flow <= 0 and on is not None and off is None:  # 양 0% 면 잠김
+                self.jet[1] = now
+            elif flow > 0 and (on is None or off is not None):
+                self.jet = [now, None]
+            on, off = self.jet
+            nx = self.tap_x + TAP_NOZZLE * pet.SCALE + 1
+            if on is not None and off is None and drop(now - on, TAP_G) + TAP_V0 * (now - on) >= \
+                    self.impact(nx) - self.tap["size"][1]:  # 물줄기 머리가 닿은 뒤부터 참
+                self.level = min(top, self.level + top / TAP_FILL * flow * dt)
+            if self.level >= top:
+                self.tap_go("full", now)
+        elif state == "full" and t >= TAP_HOLD:
+            self.tap_go("crack", now)
+        elif state == "crack" and t >= TAP_CRACK:
+            self.tap_go("drain", now)
+        elif state == "drain":  # 토리첼리: dL/dt = −k√L 을 그대로 풀면 √L 이 고르게 줄어듦 — 가득에서 TAP_DRAIN 초
+            s = math.sqrt(self.level) - math.sqrt(top) / TAP_DRAIN * dt
+            self.level = s * s if s > 0 else 0.0
+            if not self.level:
+                self.tap_go("seal", now)
+        elif state == "seal" and t >= TAP_SEAL + TAP_REST:
+            self.tap_cycle()
+        self.slosh(dt, now)
+        k, lv = min(1.0, self.level / (2 * TAP_AMP)), self.level
+        tops = [min(h, max(-2, int(h - lv - c * k))) for c in self.wave]  # 마디마다 수면 행. 위로 넘친 것은 윗변 두 줄까지 숨김
+        lo, hi = min(tops), max(tops)
+        px, zero, cut = self.surface.pixels, self.tap_zero, max(0, lo) * st
+        px[:cut] = zero[:cut]  # 제일 높은 수면 위는 빔, 아래는 미리 칠한 물빛 — 출렁이는 띠만 행마다 고침
+        px[cut:] = self.tap_px[cut:]
+        if lo >= h:
+            return
+        rel, span, n = bytes(t - lo for t in tops), TAP_NODE * 4, len(tops)
+        for y in range(max(lo, 0), min(hi, h)):  # 띠: 수면이 이 행보다 아래인 마디는 비움
+            o, mask = y * st, rel.translate(TAP_LE[y - lo])
+            i = mask.find(0)
+            while i >= 0:
+                j = mask.find(1, i)
+                j = n if j < 0 else j
+                px[o + i * span:o + min(j * span, st)] = zero[:min(j * span, st) - i * span]
+                i = mask.find(0, j) if j < n else -1
+        for q, lip in enumerate(self.tap["lip"]):  # 수면 윗변 두 줄
+            for y in range(max(lo + q, 0), min(hi + q + 1, h)):
+                o, mask = y * st, rel.translate(TAP_EQ[y - q - lo])
+                i = mask.find(1)
+                while i >= 0:
+                    j = mask.find(0, i)
+                    j = n if j < 0 else j
+                    px[o + i * span:o + min(j * span, st)] = lip[i * span:min(j * span, st)]
+                    i = mask.find(1, j) if j < n else -1
+
+    def slosh(self, dt, now):
+        """수면 마디들의 1차원 파동: 이웃과 용수철로 이어져 출렁이다 잦아듦. TAP_DT 걸음으로 끊어 밟아 fps 와 상관없이
+        같고, 평균을 늘 0 으로 돌려 물이 생기거나 사라지지 않음. 물줄기가 닿는 마디는 눌리고, 빠질 땐 구멍 위가 빨려 내려감.
+        ponytail: 마디 640개 리스트 셈이라 한 걸음 0.3ms 쯤. 무거워지면 마디를 넓히거나 array 로"""
+        self.tap_acc = min(self.tap_acc + dt, TAP_STEPS * TAP_DT)
+        if self.tap_acc < TAP_DT:
+            return
+        d, v, n = self.wave, self.wave_v, len(self.wave)
+        coef, keep, back, pokes = (TAP_WAVE_C / TAP_NODE) ** 2 * TAP_DT, 1 - TAP_DAMP * TAP_DT, TAP_BACK * TAP_DT, []
+        on, off = self.jet
+        if self.tap_state == "fill" and on is not None and off is None and self.level > TAP_AMP / 4:
+            nx = self.tap_x + TAP_NOZZLE * pet.SCALE + 1
+            pokes += [(i, -TAP_PUSH) for i in range(max(0, (nx - TAP_JET) // TAP_NODE), min(n, (nx + TAP_JET) // TAP_NODE + 1))]
+        if self.tap_state == "drain" and self.level > 0:
+            a = -(TAP_SUCK + TAP_VORTEX * max(0.0, 1 - self.level / self.h))
+            pokes += [(i, a) for i in range(max(0, (self.hole_x - TAP_HOLE_R) // TAP_NODE),
+                                            min(n, (self.hole_x + TAP_HOLE_R) // TAP_NODE + 1))]
+        while self.tap_acc >= TAP_DT:
+            self.tap_acc -= TAP_DT
+            v = [b * keep + coef * (l + r - 2 * c) - back * c for b, l, c, r in zip(v, [d[0], *d], d, [*d[1:], d[-1]])]
+            if pokes and random.random() < TAP_KICKS * TAP_DT:  # 뭉텅이로 — 걸음마다 고르게 누르면 패인 채 잔잔함
+                f = random.uniform(0.3, 1.7) / TAP_KICKS  # 마디마다 따로 치면 자글자글함
+                for i, a in pokes:
+                    v[i] += a * f
+            d = [min(TAP_AMP, max(-TAP_AMP, c + b * TAP_DT)) for c, b in zip(d, v)]
+            m = sum(d) / n
+            d = [c - m for c in d]
+        self.wave, self.wave_v = d, v
+
+    def drain_hole(self, dt, now):
+        """바닥의 금과 구멍, 구멍이 열릴 때 튄 조각, 빠지는 물에 빨려드는 거품 — 물빛 위, 동물 뒤."""
+        state = self.tap_state
+        if state in ("fill", "full"):
+            return
+        px, st, w, h, tap = self.surface.pixels, self.stride, self.w, self.h, self.tap
+        t, (cx, cy) = now - self.tap_since, self.hole_at()
+        grow = min(1.0, t / TAP_CRACK) if state == "crack" else 1.0 if state == "drain" else max(0.0, 1 - t / TAP_SEAL)
+        crack = tap["crack"]
+        for pts in self.cracks:  # 가운데에서 바깥으로 자라고, 메울 땐 거꾸로
+            for dx, dy in pts[:int(len(pts) * grow)]:
+                x, y = cx + dx, cy + dy
+                if 0 <= x < w - 1 and 0 <= y < h:
+                    o = y * st + x * 4
+                    px[o:o + 8] = crack
+        stage = min(8, int(t / TAP_POP * 8) + 1) if state == "drain" else \
+            max(0, 8 - int(t / TAP_SEAL * 8)) if state == "seal" else 0
+        if stage:
+            rx, ry, rows = tap["holes"][stage - 1]
+            stamp(px, st, cx - rx, cy - ry, rows)
+        live = []
+        for c in self.chips:  # 물속이라 천천히 가라앉음
+            c[3] += TAP_G * 0.4 * dt
+            c[0] += c[2] * dt
+            c[1] += c[3] * dt
+            x, y = int(c[0]), int(c[1])
+            if c[3] > 0 and y > cy or not 0 <= x < w - 3 or y >= h - 3:
+                continue
+            live.append(c)
+            if y >= 0:
+                for j in range(3):
+                    o = (y + j) * st + x * 4
+                    px[o:o + 12] = tap["chip"]
+        self.chips = live
+        depth = self.level - (h - cy)  # 구멍 위 물 깊이
+        if state != "drain" or depth < 20:
+            self.swirl = []
+            return
+        while len(self.swirl) < TAP_SWIRL:  # [구멍 위 높이, 각, 각속도] — 깔때기를 돌며 내려옴
+            self.swirl.append([random.uniform(10, min(260, depth)), random.uniform(0, math.tau), random.uniform(5, 9)])
+        for s in self.swirl:
+            s[0] -= (40 + 160 * (1 - s[0] / 260)) * dt
+            s[1] += s[2] * dt
+            if s[0] < 2:
+                s[:] = [random.uniform(10, min(260, depth)), random.uniform(0, math.tau), random.uniform(5, 9)]
+            x, y = cx + (6 + s[0] * 0.5) * math.cos(s[1]), cy - TAP_HOLE_R // 3 - s[0]
+            if y > h - self.sea(x) + 3:
+                lay(px, st, w, h, tap["bubble"], int(x), int(y))
+
+    def spout(self, dt, now):
+        """꼭지와 물줄기, 물줄기가 닿는 자리에서 튀는 방울 — 동물 앞. 잠그면 꼬리가 떨어져 내려가 사라짐."""
+        px, st, w, h, tap = self.surface.pixels, self.stride, self.w, self.h, self.tap
+        nx, ny = self.tap_x + TAP_NOZZLE * pet.SCALE + 1, tap["size"][1]
+        on, off = self.jet
+        hit = self.impact(nx)
+        if on is not None:
+            fall = lambda s: TAP_V0 * s + drop(s, TAP_G)
+            a, b = 0 if off is None else fall(now - off), min(fall(now - on), hit - ny)
+            jet, flow = tap["jet"], now * TAP_FLOW
+            for j in range(max(0, int(a)), int(b)):
+                y = ny + j
+                half, lit, dim = jet[j]
+                o = y * st + (nx - half) * 4
+                px[o:o + len(lit)] = lit if int((y - flow) // TAP_STRIPE) % 2 else dim
+            if off is not None and a >= hit - ny:
+                self.jet = [None, None]
+            elif off is None and fall(now - on) >= hit - ny:
+                self.spray_due += TAP_SPRAY * min(1.0, self.amount / 50) * dt
+                while self.spray_due >= 1:
+                    self.spray_due -= 1
+                    self.spray.append([nx + random.uniform(-3, 3), hit - 1, random.uniform(*TAP_SPRAY_V[0]),
+                                       random.uniform(*TAP_SPRAY_V[1])])
+        n, live = tap["drop"][0], []
+        for s in self.spray:
+            s[3] += TAP_G * dt
+            s[0] += s[2] * dt
+            s[1] += s[3] * dt
+            if s[3] > 0 and s[1] >= self.impact(s[0]) or not 0 <= s[0] < w:
+                continue
+            live.append(s)
+            x, y = int(s[0]) - n // 2, int(s[1]) - n // 2
+            if 0 <= x <= w - n and 0 <= y <= h - n:
+                stamp(px, st, x, y, tap["drop"][1])
+        self.spray = live
+        pet.stamp(px, st, self.tap_x, 0, tap["art"], w, h)
+
     # ── 돌리기 ──
     def reset(self):
         kind = self.kind
@@ -2598,6 +2924,10 @@ class Weather:
             self.fw = self.fw_sprites()
         elif kind == "aquarium":
             self.aquarium()
+        elif kind == "faucet":
+            self.faucet()
+        if kind != "faucet":  # 물빛·빈 버퍼(2560×1440 에서 15MB 씩)를 돌려줌
+            self.tap_px = self.tap_zero = None
         if kind != "aquarium":  # 화면 크기 물빛·빛줄기 조각(2560×1440 에서 20MB)을 돌려줌. 다시 고르면 water_tint 가 40ms 에 만듦
             self.aq_tint = self.water = self.ray_rows = self.bubble_sprites = self.jelly_sprites = None
         self.fog_px = self.aurora_px = None  # 안개·오로라 행들(6·18MB)도. 무늬(오로라는 9MB)는 sprite_cache 에 남아 다시 고르면 양만 입힘
@@ -2761,7 +3091,11 @@ class Weather:
                     p.update(dt, now, rainy)
             a, b = p.feet()
             want = max(v + f for v, f in zip(self.pile.h[a:b], self.base[a:b]))
-            if p.held or p.air:  # 들리거나 떨어지는 동안은 틀 단을 안 뜀 — 발밑을 바로 바닥으로
+            sea = self.afloat((a + b) // 2, tall) if self.kind == "faucet" and not p.held else 0
+            floating = sea > want
+            if floating:  # 물에 뜸 — 수면을 따라 바로 오르내리고, 떨어지던 중이면 물에 받힘
+                want, p.air = sea, 0.0
+            if p.held or p.air or floating:  # 들리거나 떨어지는 동안은 틀 단을 안 뜀 — 발밑을 바로 바닥으로
                 g = p.ground = want
                 p.leap = None
             else:
@@ -2798,6 +3132,8 @@ class Weather:
         if kind == "aquarium":  # 지우는 대신 미리 칠한 물빛으로 덮음 (2560×1440 memset 0.89 · memmove 1.15ms)
             self.rays(now)  # 빛줄기는 물빛 버퍼에 구움
             self.surface.fill(self.aq_tint[1]["water_c"])
+        elif kind == "faucet":  # 지우는 대신 빈 칸과 물빛으로 화면 전체를 덮음
+            self.flood(dt, now)
         elif top:
             self.surface.clear(top)
         else:
@@ -2832,6 +3168,8 @@ class Weather:
             self.meteors(dt, now)  # 하늘 멀리라 동물 뒤
         elif kind == "window":  # 소나기 빗줄기는 유리 바깥이라 동물 뒤
             self.shower(dt)
+        elif kind == "faucet":
+            self.drain_hole(dt, now)
         if self.pets:  # 더미 위, 내리는 것 아래
             self.walk_pet(dt, now)
         if kind == "snow":
@@ -2856,6 +3194,8 @@ class Weather:
             self.rain(dt, now)
             if kind == "storm":
                 self.lightning(now)
+        elif kind == "faucet":
+            self.spout(dt, now)
         self.surface.present(top) if top else self.surface.present()
         if self.on_top and now - self.last_topmost > 2:
             self.surface.topmost()
@@ -3904,7 +4244,111 @@ def check():
         assert calls == [("ex", surface.EX_STYLE & ~0x20), ("ex", surface.EX_STYLE), "default", "capture", True,
                          "release", False, False], ("받을 땐 클릭 통과 비트만 빼고, 누르면 붙잡고, 떼면 놓음", calls)
     check_sound()
+    check_faucet()
     print("자체 점검 통과")
+
+
+def check_faucet():
+    random.seed(5)
+    w, h, rise = 400, 300, 20
+    a = Weather.__new__(Weather)
+    a.w, a.h, a.stride, a.rise, a.amount, a.kind, a.strip_h = w, h, w * 4, rise, 100, "faucet", PILE_STRIP + rise
+    a.base, a.snow_pile, a.sprite_cache, a.aq_tint = [rise] * w, pile_column_parts(PILE_STRIP + rise), {}, None
+    a.next_base, a.full_clear, a.pets, a.on_top, a.last_settle = None, False, {}, False, 0
+    a.goal, a.fall, a.crumble, a.tank = a.base, None, crumble(w), {k: TANK[k][1] for k in TANK}
+    a.bolt_seen, a.pet_startled, a.bangs, a.pet_sprites = None, {}, [], pet.sprites()
+    a.surface = types.SimpleNamespace(pixels=bytearray(w * h * 4), clear=lambda top=0: None, present=lambda top=0: None)
+    a.reset()
+    top, n = h + TAP_AMP, len(a.wave)
+    # 물결: 어떤 fps 에서도 안 터지고, 물은 생기거나 사라지지 않음
+    for dt in (0.1, 1 / 30, 1 / 120):
+        a.wave, a.wave_v, a.level, a.tap_state, a.jet = [0.0] * n, [0.0] * n, h / 2, "fill", [0.0, None]
+        a.wave[n // 2] = TAP_AMP
+        for i in range(int(20 / dt)):
+            Weather.slosh(a, dt, i * dt)
+        assert all(abs(c) <= TAP_AMP + 1 for c in a.wave), ("물결이 터지면 안 됨", dt, max(map(abs, a.wave)))
+        assert abs(sum(a.wave)) / n < 1e-6, ("평균 수면은 그대로", dt)
+    # 누르지 않으면 퍼졌다 잦아듦
+    a.wave, a.wave_v, a.tap_state = [0.0] * n, [0.0] * n, "full"
+    a.wave[n // 2] = 30.0
+    for i in range(30):
+        Weather.slosh(a, 1 / 60, i / 60)
+    assert abs(a.wave[n // 2 + 20]) > 0.5, "80px 옆까지 0.5초 안에 퍼짐"
+    for i in range(60 * 30):
+        Weather.slosh(a, 1 / 60, i / 60)
+    assert max(map(abs, a.wave)) < 1, "30초면 잦아듦"
+    # 계속 누르는 물줄기는 그 둘레만 패고 화면 반대쪽을 들어 올리지 않음 — 복원 항이 없으면 판째 기욺
+    a.tap_x, a.wave, a.wave_v, a.tap_state, a.jet, a.level, far = 0, [0.0] * n, [0.0] * n, "fill", [0.0, None], h / 2, []
+    for i in range(60 * 10):
+        Weather.slosh(a, 1 / 60, i / 60)
+        far.append(sum(a.wave[3 * n // 4:]) / (n - 3 * n // 4))
+    assert abs(sum(far) / len(far)) < 3, ("먼 쪽 수면은 제자리", sum(far) / len(far))
+    # 한 바퀴: 차고 · 머물고 · 금 가고 · 빠지고 · 메우고 다시
+    a.amount = 100
+    a.reset()
+    seen, now, dt, level_half = [], 0.0, 1 / 60, None
+    while len(seen) < 6 and now < 200:
+        a.frame(dt, now)
+        if not seen or seen[-1][0] != a.tap_state:
+            seen.append((a.tap_state, now))
+        if a.tap_state == "drain" and level_half is None and now - a.tap_since >= TAP_DRAIN / 2:
+            level_half = a.level
+        if a.tap_state == "fill" and a.jet[1] is None and a.level > h / 2 and "stream" not in locals():
+            nx, ny = a.tap_x + TAP_NOZZLE * pet.SCALE + 1, a.tap["size"][1]
+            stream = a.surface.pixels[(ny + 20) * a.stride + nx * 4:][:4]
+        if a.tap_state == "crack" and "after" not in locals():
+            after = list(a.jet)
+        if a.tap_state == "drain" and now - a.tap_since > TAP_POP and "hole" not in locals():
+            cx, cy = a.hole_at()
+            hole = a.surface.pixels[cy * a.stride + cx * 4:][:4]
+        now += dt
+    states = [s for s, _ in seen]
+    assert states == ["fill", "full", "crack", "drain", "seal", "fill"], states
+    t = dict(seen[:5])
+    arrive = (math.sqrt(TAP_V0 ** 2 + 2 * TAP_G * h) - TAP_V0) / TAP_G  # 물줄기가 바닥까지 떨어지는 초
+    assert abs(t["full"] - (TAP_FILL / 2 + arrive)) < 1, ("양 100% 면 60초에 참", t["full"])
+    assert abs(t["crack"] - t["full"] - TAP_HOLD) < 0.1 and abs(t["drain"] - t["crack"] - TAP_CRACK) < 0.1
+    assert abs(t["seal"] - t["drain"] - TAP_DRAIN) < 0.2, ("TAP_DRAIN 초에 다 빠짐", t["seal"] - t["drain"])
+    assert abs(level_half - top / 4) < top * 0.02, ("토리첼리: 반 시간에 1/4 남음 — 처음이 빠르고 끝이 느림", level_half)
+    assert stream != bytes(4) and stream != a.tap_px[(ny + 20) * a.stride:][:4], "차는 동안 꼭지 밑에 물줄기"
+    assert hole == pixel(TAP_HOLE_COLOR, 255), "빠지는 동안 바닥에 구멍"
+    assert after == [None, None], ("가득 차면 꼭지를 잠가 금이 갈 땐 물줄기 꼬리까지 다 떨어짐", after)
+    # 차는 빠르기는 양에 비례, 0% 면 잠김
+    for amount in (10, 0):
+        a.amount, a.level, a.tap_state, a.tap_since, a.jet = amount, 50.0, "fill", 0.0, [None if amount else 0.0, None]
+        a.flood(dt, 10.0)
+        a.flood(1.0, 12.0)  # 머리가 바닥에 닿은 뒤
+        before = a.level
+        a.flood(1.0, 13.0)
+        assert abs(a.level - before - top / TAP_FILL * amount / 50) < 1e-9, ("양에 비례해 참", amount)
+    assert a.jet[1] is not None, "양 0% 면 꼭지가 잠김"
+    a.amount = 100
+    # 그림: 행마다 마디별로 칠한 것과 같음 — 위는 빔, 수면 행과 그 아래 한 줄은 윗변, 그 밑은 물빛
+    a.tap_state, a.tap_since, a.level, a.jet = "full", 0.0, h * 0.6, [None, None]
+    for i in range(120):
+        a.wave = [random.uniform(-TAP_AMP, TAP_AMP) for _ in range(n)] if i == 0 else a.wave
+        a.flood(1 / 60, 1.0)
+    px, st, k = a.surface.pixels, a.stride, min(1.0, a.level / (2 * TAP_AMP))
+    lips = [pixel(TAP_LIP[0], al) for al in TAP_LIP[1:]]
+    for x in range(w):
+        tp = min(h, max(-2, int(h - a.level - a.wave[x // TAP_NODE] * k)))
+        for y in range(h):
+            want = bytes(4) if y < tp else lips[y - tp] if y - tp < 2 else a.tap_px[y * st + x * 4:][:4]
+            assert px[y * st + x * 4:][:4] == want, ("물 그림", x, y, tp)
+    # 동물은 수면에 뜨고 물이 없으면 바닥에
+    a.pets = {"cat": pet.Cat(w, random.Random(2))}
+    c = a.pets["cat"]
+    a.walk_pet(1 / 60, 1.0)
+    fa, fb = c.feet()
+    assert c.ground == a.afloat((fa + fb) // 2, c.H) > rise, ("물에 뜸", c.ground)
+    assert c.ground == int(a.sea((fa + fb) // 2)) - c.H // 3 or c.ground == h - c.H, "몸 1/3 이 잠김"
+    a.level = 0.0
+    for i in range(60):
+        a.walk_pet(1 / 60, 2.0 + i / 60)
+    assert c.ground == rise, ("물이 빠지면 바닥", c.ground)
+    a.kind = "snow"
+    a.reset()
+    assert a.tap_px is None and a.tap_zero is None, "딴 종류로 가면 화면 크기 버퍼를 돌려줌"
 
 
 def check_settings():
