@@ -36,6 +36,11 @@ def stop(pid_file, tray_class=None):
     return True
 
 
+def claim(pid_file, script):
+    """윈도우판은 코드 해시도 적어 .bat 이 옛 코드를 갈아 끼움. 맥 .command 는 그 판정을 안 거쳐 PID 만."""
+    pid_file.write_text(str(os.getpid()))
+
+
 def work_area():
     """메뉴 막대만 뺀 주 화면 영역 (left, top, right, bottom). 윈도우판처럼 왼쪽 위가 원점, 단위는 pt.
     독은 빼지 않는다 — 전체 화면에선 독이 숨어서, 빼면 눈더미가 독 높이만큼 허공에 뜬다. 독이 보이면

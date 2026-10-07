@@ -134,6 +134,7 @@ class Hud:
         self.place()
         self.root.update_idletasks()
         overlay.click_through(self.root)
+        self.faded = False  # 커서가 올라와 흐려져 있나
         self.snap = None
         self.server = None
         self.last_topmost = time.monotonic()
@@ -190,6 +191,12 @@ class Hud:
                 self.handle(cid)
         except queue.Empty:
             pass
+        # 커서가 올라오면 흐려져 밑의 작업 표시줄 단추가 보임. 클릭은 원래 통과됨
+        r, (x, y) = self.root, self.root.winfo_pointerxy()
+        over = r.winfo_rootx() <= x < r.winfo_rootx() + r.winfo_width() and r.winfo_rooty() <= y < r.winfo_rooty() + r.winfo_height()
+        if over != self.faded:
+            self.faded = over
+            overlay.fade(r, over)
         self.root.after(100, self.poll)
 
     def handle(self, cid):
@@ -236,6 +243,7 @@ class Hud:
         self.root.deiconify() if on else self.root.withdraw()
         if on:
             overlay.click_through(self.root)  # 다시 보일 때 확장 스타일이 풀리지 않게
+            self.faded = False  # click_through 가 불투명으로 돌려 놓음
 
     def save(self):
         try:
@@ -452,7 +460,7 @@ def main():
     except (AttributeError, OSError):
         pass
     startup.follow(RUN_NAME, __file__)
-    PID_FILE.write_text(str(os.getpid()))
+    overlay.claim(PID_FILE, __file__)
     try:
         Hud(args.scale, args.corner, saved.get("theme", "classic")).run()
     finally:

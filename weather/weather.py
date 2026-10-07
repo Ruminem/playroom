@@ -4886,7 +4886,7 @@ def main():
             pass
         ctypes.windll.winmm.timeBeginPeriod(1)  # 기본 타이머 간격(15.6ms)이면 30fps 를 청해도 21fps 에서 멈춤
         startup.follow(RUN_NAME, __file__)
-    PID_FILE.write_text(str(os.getpid()))
+    overlay.claim(PID_FILE, __file__)
     try:
         Weather(args.kind, args.amount, saved.get("pet", []), saved.get("fps", FPS), saved,
                 saved.get("drag", False), saved.get("sound", False), saved.get("volume", VOLUME)).run()

@@ -291,6 +291,7 @@ def check():
         assert (f'overlay.on_top("{t.name}")' in src) == t.pick_top, (t.name, "항상 위를 읽는 이름")
         assert "overlay.already_running(PID_FILE" in src and "startup.follow(RUN_NAME, __file__)" in src, \
             (t.name, "새로 받은 exe 가 옛 exe 를 갈아 끼우고 시작 시 실행도 따라감")
+        assert "overlay.claim(PID_FILE, __file__)" in src, (t.name, "뜰 때 코드 해시를 적어 .bat 이 옛 코드를 갈아 끼움")
 
     tmp = Path(tempfile.mkdtemp())
     real = overlay.LAUNCHER_FILE
@@ -372,6 +373,42 @@ def check_takeover(tmp):
         assert overlay.already_running(pid, "PlayroomNoSuchTray", w, False), "떠 있는 게 소스면 그냥 끝남"
     finally:
         del sys.frozen
+
+    # 소스로 띄울 때(.bat): 떠 있는 쪽 코드 해시가 지금 파일과 같으면 토글은 끄기만, 다르면 끄고 이어서 뜸
+    fp = tmp / "fp"
+    fp.mkdir()
+    (fp / "tool.py").write_text("a", encoding="utf-8")
+    first = overlay.fingerprint(fp / "tool.py")
+    (fp / "notes.txt").write_text("b", encoding="utf-8")
+    assert overlay.fingerprint(fp / "tool.py") == first, ".py 가 아닌 파일은 안 셈"
+    (fp / "tool.py").write_text("c", encoding="utf-8")
+    assert overlay.fingerprint(fp / "tool.py") != first, "도구 파일이 바뀌면 해시도 바뀜"
+    me, src = Path(__file__), pid.with_suffix(".src")
+
+    def child():
+        p = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], creationflags=NO_WINDOW)
+        pid.write_text(str(p.pid))
+        return p
+
+    p = child()
+    try:
+        src.unlink(missing_ok=True)
+        assert overlay.stale(pid, p.pid, me), "해시가 안 적혀 있으면(이 기능 전에 뜬 것) 옛 코드로 봄"
+        src.write_text("%d %s" % (p.pid + 1, overlay.fingerprint(me)))
+        assert overlay.stale(pid, p.pid, me), "남의 pid 로 적힌 해시는 안 믿음"
+        src.write_text("%d %s" % (p.pid, overlay.fingerprint(me)))
+        assert overlay.already_running(pid, "PlayroomNoSuchTray", me, False) and p.poll() is None, "같은 코드면 그냥 실행은 그대로 둠"
+        assert overlay.already_running(pid, "PlayroomNoSuchTray", me, True), "같은 코드면 토글은 끄기만"
+        assert p.wait(5) is not None, "토글이 떠 있던 것을 끔"
+        p = child()
+        src.write_text("%d %s" % (p.pid, "0" * 40))
+        assert not overlay.already_running(pid, "PlayroomNoSuchTray", me, True), "코드가 바뀌었으면 토글이어도 이어서 뜸"
+        assert p.wait(5) is not None, "옛 코드로 떠 있던 것은 끔"
+    finally:
+        p.kill()
+    overlay.claim(pid, me)
+    assert src.read_text() == "%d %s" % (os.getpid(), overlay.fingerprint(me)), "claim 이 pid 와 해시를 적음"
+    assert not overlay.stale(pid, os.getpid(), me), "방금 적은 것은 지금 코드"
 
     # 시작 시 실행 따라가기: Run 키 자리를 시험용 키로 돌려서 씀
     fake, real_key, real_exe = r"Software\PlayroomSelfCheck\Run", startup.RUN_KEY, sys.executable

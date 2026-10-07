@@ -505,7 +505,7 @@ def main():
     except (AttributeError, OSError):
         pass
     startup.follow(RUN_NAME, __file__)
-    PID_FILE.write_text(str(os.getpid()))
+    overlay.claim(PID_FILE, __file__)
     try:
         Layers().run()
     finally:

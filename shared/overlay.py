@@ -4,6 +4,7 @@
 각 폴더의 스크립트는 sys.path 에 이 폴더를 넣고 import 한다.
 """
 import ctypes
+import hashlib
 import json
 import os
 import sys
@@ -14,6 +15,9 @@ from pathlib import Path
 import startup
 
 LAYERS_TRAY = "PlayroomLayersTray"
+# 작업 표시줄 패널(HUD · sysmon)에 커서가 올라오면 이만큼(255 중)으로 흐려져 밑의 단추가 보임. 클릭은 원래 통과됨.
+# ponytail: 눈으로 고른 값이 아니라 어림. 너무 안 보이거나 너무 진하면 이 숫자만 바꾸면 됨
+HOVER_ALPHA = 48
 LAUNCHER_FILE = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "playroom" / "launcher.json"
 
 
@@ -85,11 +89,51 @@ def replaces(running, me, script):
     return os.path.normcase(os.path.abspath(running)) != os.path.normcase(os.path.abspath(me))
 
 
+def fingerprint(script):
+    """그 도구 폴더와 shared/ 의 .py 내용을 묶은 해시. 수정 시각은 안 씀 — zip 을 풀거나 복사하면 옛 시각이 남고,
+    브랜치를 오가면 내용은 같은데 시각만 바뀜. 릴리스 exe 는 소스가 없으니 'exe'."""
+    if getattr(sys, "frozen", False):
+        return "exe"
+    h = hashlib.sha1()
+    for folder in (Path(script).resolve().parent, Path(__file__).resolve().parent):
+        for f in sorted(folder.glob("*.py")):
+            try:
+                h.update(f.name.encode() + b"\0" + f.read_bytes() + b"\0")
+            except OSError:
+                pass  # 못 읽은 파일은 빠진 채로 셈 — 다음에 읽히면 달라져 한 번 더 갈아 끼울 뿐
+    return h.hexdigest()
+
+
+def claim(pid_file, script):
+    """뜰 때 부름: PID 파일과 옆의 .src 에 '지금 pid 와 코드 해시' 를 적음. PID 파일에 덧붙이지 않는 건 옛 런처가
+    그 파일을 숫자로만 읽기 때문."""
+    pid_file.write_text(str(os.getpid()))
+    try:
+        pid_file.with_suffix(".src").write_text("%d %s" % (os.getpid(), fingerprint(script)))
+    except OSError:
+        pass  # 못 적으면 다음 .bat 때 옛 코드로 보고 갈아 끼울 뿐
+
+
+def stale(pid_file, pid, script):
+    """소스로 띄울 때, 떠 있는 pid 가 지금 파일과 다른 코드로 돌고 있으면 True. 적힌 게 없거나(이 기능 전에 뜬 것)
+    다른 pid 것이어도 True. 릴리스 exe 로 띄울 때는 아래 replaces 가 따로 봄."""
+    if getattr(sys, "frozen", False):
+        return False
+    try:
+        old_pid, old = pid_file.with_suffix(".src").read_text().split()
+    except (OSError, ValueError):
+        return True
+    return old_pid != str(pid) or old != fingerprint(script)
+
+
 def already_running(pid_file, tray_class, script, toggle):
     """True 면 부른 쪽은 그냥 끝남. --toggle 은 떠 있는 것을 끄기만 하고, 그냥 실행은 떠 있으면 아무것도 안 함 —
-    다만 새로 받은 릴리스 exe 를 실행하면 떠 있는 옛 exe 를 끄고 이어서 뜸(False)."""
+    다만 떠 있는 것이 옛 코드면(소스가 바뀌었거나 새로 받은 릴리스 exe 를 실행) 옛것을 끄고 이어서 뜸(False)."""
     pid = running_pid(pid_file)
     if pid is None:
+        return False
+    if stale(pid_file, pid, script):
+        stop(pid_file, tray_class)
         return False
     if toggle:
         stop(pid_file, tray_class)
@@ -115,6 +159,12 @@ def click_through(root):
     user32.SetWindowLongW(hwnd, -20, user32.GetWindowLongW(hwnd, -20) | flags)
     # 겹친 창은 알파를 한 번 정해 줘야 그려진다. 색 키(-transparentcolor) 창에 부르면 색 키가 지워진다
     user32.SetLayeredWindowAttributes(hwnd, 0, 255, 2)  # LWA_ALPHA, 불투명
+
+
+def fade(root, on):
+    """tk 창판 Surface.fade: on 이면 HOVER_ALPHA 로 흐리게. click_through 가 다시 불리면 불투명으로 돌아감."""
+    hwnd = int(root.wm_frame(), 16)
+    ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, HOVER_ALPHA if on else 255, 2)  # LWA_ALPHA
 
 
 def layers_running():

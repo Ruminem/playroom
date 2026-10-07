@@ -513,6 +513,9 @@ class Monitor:
             if now >= next_update:
                 next_update = now + 1
                 self.update()
+            # 커서가 올라오면 흐려져 밑의 작업 표시줄 단추가 보임
+            if self.shown and self.surface.fade(self.surface.hovered()):
+                self.surface.present()
             time.sleep(0.1)
         self.surface.close()
 
@@ -672,6 +675,12 @@ def check():
                 g_r = px[o + 1] / max(1, px[o + 2])
                 side = "io" if o // 4 % surf.w < surf.w - 2 - main_w - 6 else "main"
                 tint.setdefault(side, set()).add("red" if g_r < 0.45 else "orange" if g_r < 0.85 else "white")
+        x, y = surf.cursor()  # 창 왼쪽 위를 커서 자리로 옮기면 올라온 것, 1px 더 가면 아님
+        surf.move(-1000 + x, -1000 + y)
+        assert surf.hovered(), "커서가 창 왼쪽 위 칸에 있음"
+        surf.move(-1000 + x + 1, -1000 + y)
+        assert not surf.hovered(), "커서가 창 왼쪽 밖"
+        assert surf.fade(True) and not surf.fade(True) and surf.fade(False), "흐려짐은 바뀔 때만 True"
         surf.close()
         assert tint["io"] == {"red", "white"} and tint["main"] == {"orange"}, ("칸마다 제 줄 색", tint)
         assert ctypes.sizeof(PdhItem) == 24, "PDH_FMT_COUNTERVALUE_ITEM_W 는 이름 포인터 + 8 맞춤 값 16"
@@ -787,7 +796,7 @@ def main():
         except (AttributeError, OSError):
             pass
         startup.follow(RUN_NAME, __file__)
-    PID_FILE.write_text(str(os.getpid()))
+    overlay.claim(PID_FILE, __file__)
     try:
         (MacMonitor if MAC else Monitor)().run()
     finally:
