@@ -8,7 +8,8 @@
   python hud.py --scale 4     픽셀 하나의 크기 (기본 3)
 
 HP 는 7일 창, ST 는 5시간 창의 **남은** 양이다. 칸 옆은 재설정까지 남은 시간.
-동전 줄은 오늘 쓴 정가. 창은 맨 위에 있지만 클릭을 아래로 통과시키고 포커스도 안 뺏는다.
+동전 줄은 오늘 쓴 정가. 옆의 고양이는 이 PC 의 Claude Code 세션이 일하는 동안 달리고 쉬면 잠들며,
+한 차례가 끝나면 테두리가 잠깐 깜빡인다. 창은 맨 위에 있지만 클릭을 아래로 통과시키고 포커스도 안 뺏는다.
 대신 트레이(알림 영역)에 하트 아이콘이 뜨고, 그 메뉴에서 숨기기·위치·크기·테마·페이지·끝내기를 한다.
 메뉴에서 고른 위치·크기·테마는 SETTINGS 에 남아 다음에 켤 때도 쓰인다. '작업 표시줄' 자리에서는 두 줄짜리
 납작한 모양으로 sysmon(없으면 알림 영역) 왼쪽에 붙고, 크기는 작업 표시줄 높이에 맞춰 정해진다.
@@ -46,10 +47,19 @@ REFRESH_SEC = 60   # 정가를 다시 셈. 한도는 usage.LIMIT_EVERY 가 따�
 MARGIN = 12        # 작업 영역 가장자리에서 띄울 px
 SEGMENTS = 10      # 칸 수. 한 칸 = 10%
 W, H = 90, 29      # 패널 크기 (픽셀 단위)
-BAR_W, BAR_H = 132, 19  # 작업 표시줄 자리의 납작한 패널: 두 줄 + 오른쪽에 동전 칸
+BAR_W, BAR_H = 145, 19  # 작업 표시줄 자리의 납작한 패널: 두 줄 + 오른쪽에 동전 칸과 고양이 칸
 BAR_RIGHT = 92     # 그 패널에서 남은 시간 글자의 오른쪽 끝
 BAR_GAP = 8        # sysmon 과 띄울 px
 SYSMON_CLASS = "PlayroomSysmonSurface"
+ACTIVITY_SEC = 2   # 세션 기록을 다시 봄
+FLASH_SEC = 3      # 한 차례가 끝나면 테두리가 깜빡이는 동안
+PET_MS = 250       # 고양이 한 장면
+
+# 고양이 10×7, 오른쪽을 봄. y 몸 · o 감은 눈 · p 잠꼬대 Z. 눈은 비운 칸(배경색)
+PET = {"run1": ("......y..y", "y.....yyyy", "y.....yy.y", ".yyyyyyyyy", ".yyyyyyyy.", ".y......y.", "y........y"),
+       "run2": ("......y..y", "y.....yyyy", "y.....yy.y", ".yyyyyyyyy", ".yyyyyyyy.", "..y....y..", "...y..y..."),
+       "sleep": ("..........", "......y..y", "......yyyy", "..yyyyoyoy", ".yyyyyyyyy", "yyyyyyyyyy", ".yyyyyyyy.")}
+ZZZ = ("pppp", "..p.", ".p..", "pppp")
 PAGE_PORT = 8765
 
 # 메뉴 id
@@ -68,6 +78,9 @@ ST (번개) — 5시간 한도의 남은 양
 
 막대 옆은 재설정까지 남은 시간이고, 10% 아래로 내려가면 깜빡입니다.
 한도는 5분, 정가는 1분마다 다시 받습니다.
+
+고양이 — 이 PC 의 Claude Code 세션이 일하는 동안 달리고, 쉬면 잠듭니다. 한 차례가 끝나면 테두리가 3초 깜빡입니다.
+권한 허락을 기다리는 동안도 달리고, 10분 넘게 도는 도구는 잠든 것으로 보입니다.
 
 LOGIN 이 뜨면 CLI 로그인 토큰이 만료됐고 자동으로 고치지도 못한 것입니다. 터미널에서 claude 를 한 번 열면 풀립니다.
 
@@ -126,7 +139,9 @@ class Hud:
         self.commands = queue.Queue()  # 트레이 스레드 → tk 스레드
         write_ico(ICON_FILE, ICONS["heart"], COLORS)
         self.tray = Tray(TRAY_CLASS, ICON_FILE, "사용량 HUD", self.menu, self.commands.put)
+        self.working, self.flash_until = False, 0.0  # watch_loop 가 고치고 tk 쪽이 읽음
         threading.Thread(target=self.fetch_loop, daemon=True).start()
+        threading.Thread(target=self.watch_loop, daemon=True).start()
 
     def place(self):
         """자리를 다시 셈. 작업 표시줄 자리면 sysmon 이 옮기거나 폭이 바뀔 때 따라가려고 1초마다 부름."""
@@ -251,6 +266,20 @@ class Hud:
                 pass
             time.sleep(REFRESH_SEC)
 
+    def watch_loop(self):
+        """세션마다 일하는 중인지 봄. 어느 세션이든 일하다(work) 끝나면(done) 깜빡임 —
+        Esc 로 끊었거나 오래 조용해 목록에서 빠진 것은 끝난 것이 아니라 안 깜빡임."""
+        turns = {}
+        while True:
+            try:
+                now = usage.activity()
+                if any(turns.get(p) == "work" and s == "done" for p, s in now.items()):
+                    self.flash_until = time.monotonic() + FLASH_SEC
+                self.working, turns = "work" in now.values(), now
+            except Exception:  # noqa: BLE001 — 못 읽으면 잠든 고양이로 남는 쪽이 낫다
+                pass
+            time.sleep(ACTIVITY_SEC)
+
     @staticmethod
     def tip(snap):
         """트레이 아이콘에 마우스를 올리면 뜨는 글. 127자까지."""
@@ -263,9 +292,38 @@ class Hud:
         return "사용량 HUD\n%s\n오늘 $%.2f" % (limits, snap["today"])
 
     # ── 그리기 ──
-    def px(self, x, y, color, w=1, h=1):
+    def px(self, x, y, color, w=1, h=1, tag=()):
         s = self.ps
-        self.canvas.create_rectangle(x * s, y * s, (x + w) * s, (y + h) * s, fill=color, width=0)
+        self.canvas.create_rectangle(x * s, y * s, (x + w) * s, (y + h) * s, fill=color, width=0, tags=tag)
+
+    def art(self, x, y, rows, tag=()):
+        for dy, row in enumerate(rows):
+            for dx, c in enumerate(row):
+                if c != ".":
+                    self.px(x + dx, y + dy, COLORS[c], tag=tag)
+
+    def draw_pet(self):
+        """고양이와 끝난 뒤 깜빡이는 테두리. 1초마다 그리는 draw 와 따로 PET_MS 마다 이 몫만 다시 그림."""
+        self.canvas.delete("pet")
+        now = time.monotonic()
+        frame = int(now * 1000 / PET_MS) % 2
+        if self.flat:
+            x, y, zx, zy = BAR_W - 12, BAR_H - 9, BAR_W - 6, 3
+        else:
+            x, y, zx, zy = 50, H - 9, 61, H - 9
+        if self.working:
+            self.art(x, y, PET["run1" if frame else "run2"], "pet")
+        else:
+            self.art(x, y, PET["sleep"], "pet")
+            self.art(zx, zy + int(now) % 2, ZZZ, "pet")  # 1초마다 한 칸 들썩
+        if now < self.flash_until and frame:
+            w, h = (BAR_W, BAR_H) if self.flat else (W, H)
+            for args in ((0, 0, w, 1), (0, h - 1, w, 1), (0, 0, 1, h), (w - 1, 0, 1, h)):
+                self.px(*args[:2], COLORS["good"], *args[2:], tag="pet")
+
+    def animate(self):
+        self.draw_pet()
+        self.root.after(PET_MS, self.animate)
 
     def text(self, x, y, s, color):
         for dx, dy in text_pixels(s):
@@ -318,15 +376,18 @@ class Hud:
         self.bar_row(2, "heart", "HP", bars["7d"], expired, blink, right)
         self.bar_row(2 + pitch, "bolt", "ST", bars["5h"], expired, blink, right)
         gold = "%.2f" % snap["today"] if snap else "?"  # 동전이 달러 표시를 대신함
-        if flat:  # 두 줄 오른쪽에 칸막이를 두고 동전과 오늘 정가
+        if flat:  # 두 줄 오른쪽에 칸막이를 두고 동전과 오늘 정가, 또 칸막이를 두고 고양이
+            pet = w - 14
             self.px(right + 3, 2, COLORS["edge"], 1, h - 4)
             self.icon(right + 6, 2, "coin")
             self.text(right + 15, 3, gold, COLORS["y"])
-            self.text(w - 3 - text_width("TODAY"), 11, "TODAY", COLORS["dim"])
-        else:
+            self.text(pet - 2 - text_width("TODAY"), 11, "TODAY", COLORS["dim"])
+            self.px(pet, 2, COLORS["edge"], 1, h - 4)
+        else:  # 고양이는 금액과 TODAY 사이
             self.icon(2, 20, "coin")
             self.text(11, 21, gold, COLORS["y"])
             self.text(W - 2 - text_width("TODAY"), 21, "TODAY", COLORS["dim"])
+        self.draw_pet()
 
     def tick(self):
         bar = self.corner == "bar"
@@ -348,6 +409,7 @@ class Hud:
     def run(self):
         self.tick()
         self.poll()
+        self.animate()
         self.root.mainloop()
 
 
