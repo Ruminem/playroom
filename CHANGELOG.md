@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.12 — 2026-10-08
+
+- All tools: running a tool's `.bat` again used to just stop it. Now, if the tool's files changed since it started (after a `git pull`, say), the `.bat` stops the old one and starts the new code instead; if nothing changed it still stops it. A tool already running from before this update counts as changed, so the first `.bat` after updating swaps it in. The release `.exe` files work as before
+- usage-hud, sysmon: moving the mouse over them fades them so whatever is underneath, such as taskbar buttons, shows through. Clicks already went through to it
+- weather: hail is drawn as shiny ice balls instead of 1–2 pixel dots. Fast stones leave a short streak, ice chips bounce off where they land, and a few big stones are mixed in. The kinds are now listed snow, hail, rain, storm, so the icy ones and the rainy ones sit together
+
+**한국어**
+
+- 모든 도구: 도구의 `.bat` 을 다시 누르면 지금까지는 끄기만 했음. 이제 켠 뒤로 도구 파일이 바뀌었으면(`git pull` 등) 옛것을 끄고 새 코드로 다시 띄움. 안 바뀌었으면 지금처럼 끔. 이 업데이트 전부터 떠 있던 도구는 바뀐 것으로 보므로 업데이트 뒤 첫 `.bat` 에 갈아 끼워짐. 릴리스 `.exe` 는 예전과 같음
+- usage-hud·sysmon: 마우스를 올리면 흐려져 밑에 있는 것(작업 표시줄 단추 등)이 비쳐 보임. 클릭은 원래 밑으로 통과됐음
+- weather: 우박이 1–2px 점이 아니라 빛 받는 얼음 공으로 그려짐. 빠른 알은 짧은 자국을 남기고, 닿은 자리에서 얼음 부스러기가 튀며, 가끔 큰 알이 섞임. 종류 순서가 눈·우박·비·뇌우로 바뀌어 얼음끼리, 비끼리 붙어 있음
+
 ## 0.2.11 — 2026-10-08
 
 - usage-hud: when you are on pace to use up a limit before it resets, the reset time on that bar turns into a red `!` with how long until it runs out, and the tooltip says the same. The pace is what you have used since the window opened divided by the time since then; the window is assumed to open one span (5 hours or 7 days) before its reset, and the HUD waits until it has been open 15 minutes (5h) or 6 hours (7d) so the first few minutes do not make wild guesses. Being an average, it follows a sudden burst late
