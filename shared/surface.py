@@ -156,6 +156,19 @@ class Surface:
         user32.GetCursorPos(ctypes.byref(pt))
         return pt.x - self._pos.x, pt.y - self._pos.y
 
+    def hovered(self):
+        """커서가 지금 보이는 창 안에 있으면 True."""
+        x, y = self.cursor()
+        return 0 <= x < self._size.cx and 0 <= y < self._size.cy
+
+    def fade(self, on):
+        """on 이면 창 전체를 HOVER_ALPHA 로 흐리게, 아니면 원래대로. 다음 present() 부터. 바뀌었으면 True."""
+        alpha = overlay.HOVER_ALPHA if on else 255
+        if self._blend.alpha == alpha:
+            return False
+        self._blend.alpha = alpha
+        return True
+
     def _wndproc(self, hwnd, msg, wparam, lparam):
         if msg == WM_LBUTTONDOWN:
             user32.SetCapture(hwnd)  # 끄는 동안 커서가 동물 밖으로 나가도 뗀 것을 받음

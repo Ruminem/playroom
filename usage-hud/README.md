@@ -13,7 +13,7 @@ Each bar shows the time left until it resets, and blinks below 10%. When the ave
 
 ## HUD
 
-Double-click [hud.bat](hud.bat) to show or hide it. It sits in the bottom-left corner above the taskbar, on top of every window, even a picture-in-picture video that is topmost too, but clicks pass straight through it and it never takes focus.
+Double-click [hud.bat](hud.bat) to show or hide it. If its files changed since it started (after a `git pull`, say), the `.bat` swaps in the new code instead of stopping it. It sits in the bottom-left corner above the taskbar, on top of every window, even a picture-in-picture video that is topmost too, but clicks pass straight through it and it never takes focus. Hovering the mouse over it fades it so the taskbar buttons underneath show through.
 
 Because the HUD itself cannot be clicked, a heart icon sits in the notification area. Its menu shows or hides the HUD, moves it to another corner or onto the **taskbar**, changes its size (2–5×) or **theme**, starts it with Windows, opens the page, shows a short help, saves a taskbar diagnostic and exits. The corner, size and theme you pick are remembered in `%LOCALAPPDATA%\playroom\usage-hud.json`. Hovering the icon shows the numbers as text.
 
@@ -79,7 +79,7 @@ Claude Code 구독 한도를 레트로 게임 HUD 로 그림. 파이썬 표준 �
 
 ### HUD
 
-[hud.bat](hud.bat) 을 더블클릭하면 켜지고 다시 누르면 꺼짐. 작업 표시줄 위 왼쪽 아래 구석에 모든 창보다 위에 뜨지만(같이 맨 위에 뜨는 PIP 영상보다도 위), 클릭은 그대로 아래로 통과하고 포커스도 안 뺏음.
+[hud.bat](hud.bat) 을 더블클릭하면 켜지고 다시 누르면 꺼짐. 켠 뒤로 파일이 바뀌었으면(`git pull` 등) 끄는 대신 새 코드로 갈아 끼움. 작업 표시줄 위 왼쪽 아래 구석에 모든 창보다 위에 뜨지만(같이 맨 위에 뜨는 PIP 영상보다도 위), 클릭은 그대로 아래로 통과하고 포커스도 안 뺏음. 마우스를 올리면 흐려져 밑의 작업 표시줄 단추가 비쳐 보임.
 
 HUD 자체는 클릭이 안 되므로 알림 영역에 하트 아이콘이 뜸. 그 메뉴에서 HUD 보이기·숨기기, 다른 구석이나 **작업 표시줄** 로 옮기기, 크기(2–5배)나 **테마** 바꾸기, 윈도우 시작 시 실행, 페이지 열기, 짧은 도움말, 작업 표시줄 진단, 끝내기를 함. 고른 위치·크기·테마는 `%LOCALAPPDATA%\playroom\usage-hud.json` 에 남음. 아이콘에 마우스를 올리면 숫자가 글로 보임.
 

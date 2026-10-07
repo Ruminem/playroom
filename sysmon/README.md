@@ -6,7 +6,7 @@ CPU and memory use in two small lines on the taskbar, right next to the notifica
 
 ## Use
 
-Double-click [sysmon.bat](sysmon.bat) to start or stop it. A small bar-chart icon sits in the notification area; hover it for memory in GB. Its menu picks how memory is shown — percent (`MEM 22%`), amount (`MEM 14.2/63.9G`) or both (`MEM 14.2/63.9G 22%`) — and the **theme**, both kept in `%LOCALAPPDATA%\playroom\sysmon.json`. **Show disk and network** (off by default) adds a second column to the left: `DSK 34%`, the busiest disk's active time, coloured like CPU, and `↓1.2M ↑85K`, bytes per second received and sent by the busiest network adapter. It also starts it with Windows (same as [usage-hud](../usage-hud/#hud)) and exits.
+Double-click [sysmon.bat](sysmon.bat) to start or stop it. If its files changed since it started (after a `git pull`, say), the `.bat` swaps in the new code instead of stopping it. Hovering the mouse over it fades it so the taskbar buttons underneath show through. A small bar-chart icon sits in the notification area; hover it for memory in GB. Its menu picks how memory is shown — percent (`MEM 22%`), amount (`MEM 14.2/63.9G`) or both (`MEM 14.2/63.9G 22%`) — and the **theme**, both kept in `%LOCALAPPDATA%\playroom\sysmon.json`. **Show disk and network** (off by default) adds a second column to the left: `DSK 34%`, the busiest disk's active time, coloured like CPU, and `↓1.2M ↑85K`, bytes per second received and sent by the busiest network adapter. It also starts it with Windows (same as [usage-hud](../usage-hud/#hud)) and exits.
 
 - **Default** — the two lines of text above
 - **Pixel** — the [usage-hud](../usage-hud/) look: a dark box with a chip and a memory-stick icon, an 8-cell bar per line and pixel-font numbers. Bars are green, orange above 70%, red above 90%. It comes in the same six palettes as usage-hud (classic, Game Boy, neon, amber terminal, deep sea, paper), picked separately. With disk and network on, the box gets a disk and an arrows icon in a second column; the network line has no bar, since there is no full mark to measure it against. Put usage-hud on the taskbar too and the two sit side by side
@@ -54,7 +54,7 @@ It wakes ten times a second to handle messages and measures once a second. Measu
 
 ### 쓰는 법
 
-[sysmon.bat](sysmon.bat) 을 더블클릭하면 켜지고, 다시 누르면 꺼짐. 알림 영역에 작은 막대그래프 아이콘이 뜸. 마우스를 올리면 메모리를 GB 로 보여 줌. 메뉴에서 메모리를 퍼센트(`MEM 22%`)·용량(`MEM 14.2/63.9G`)·둘 다(`MEM 14.2/63.9G 22%`) 중 어떻게 보일지와 **테마** 를 고르고(둘 다 `%LOCALAPPDATA%\playroom\sysmon.json` 에 남음), 윈도우 시작 시 실행([usage-hud](../usage-hud/#hud-1) 와 같음)을 켜고 끝냄. **디스크·네트워크 보기**(기본은 꺼짐)를 켜면 왼쪽에 칸이 하나 더 섬: `DSK 34%` 는 가장 바쁜 디스크의 활성 시간이고 CPU 와 같은 색 문턱을 씀. `↓1.2M ↑85K` 는 가장 바쁜 네트워크 어댑터가 1초에 받고 보내는 바이트임.
+[sysmon.bat](sysmon.bat) 을 더블클릭하면 켜지고, 다시 누르면 꺼짐. 켠 뒤로 파일이 바뀌었으면(`git pull` 등) 끄는 대신 새 코드로 갈아 끼움. 마우스를 올리면 흐려져 밑의 작업 표시줄 단추가 비쳐 보임. 알림 영역에 작은 막대그래프 아이콘이 뜸. 마우스를 올리면 메모리를 GB 로 보여 줌. 메뉴에서 메모리를 퍼센트(`MEM 22%`)·용량(`MEM 14.2/63.9G`)·둘 다(`MEM 14.2/63.9G 22%`) 중 어떻게 보일지와 **테마** 를 고르고(둘 다 `%LOCALAPPDATA%\playroom\sysmon.json` 에 남음), 윈도우 시작 시 실행([usage-hud](../usage-hud/#hud-1) 와 같음)을 켜고 끝냄. **디스크·네트워크 보기**(기본은 꺼짐)를 켜면 왼쪽에 칸이 하나 더 섬: `DSK 34%` 는 가장 바쁜 디스크의 활성 시간이고 CPU 와 같은 색 문턱을 씀. `↓1.2M ↑85K` 는 가장 바쁜 네트워크 어댑터가 1초에 받고 보내는 바이트임.
 
 - **기본** — 위의 글자 두 줄
 - **픽셀** — [usage-hud](../usage-hud/) 모양. 어두운 상자 안에 칩·메모리 막대 아이콘, 줄마다 8칸 막대, 픽셀 글꼴 숫자가 들어감. 막대는 초록이고 70% 를 넘으면 주황, 90% 를 넘으면 빨강. usage-hud 와 같은 팔레트 여섯(클래식·게임보이·네온·앰버 단말기·심해·종이) 중 하나를 따로 고름. 디스크·네트워크를 켜면 둘째 칸에 디스크·화살표 아이콘이 들어감. 네트워크 줄은 기준 삼을 최대치가 없어 막대 없이 숫자만 씀. usage-hud 도 작업 표시줄에 두면 둘이 나란히 붙음
