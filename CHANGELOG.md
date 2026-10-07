@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.11 — 2026-10-08
+
+- usage-hud: when you are on pace to use up a limit before it resets, the reset time on that bar turns into a red `!` with how long until it runs out, and the tooltip says the same. The pace is what you have used since the window opened divided by the time since then; the window is assumed to open one span (5 hours or 7 days) before its reset, and the HUD waits until it has been open 15 minutes (5h) or 6 hours (7d) so the first few minutes do not make wild guesses. Being an average, it follows a sudden burst late
+- sysmon: on Windows a new **Show disk and network** menu item (off by default) adds a second column left of CPU and memory — `DSK 34%`, how busy the busiest disk is, and `↓1.2M ↑85K`, what the busiest network adapter is receiving and sending per second. The numbers come from Windows performance counters, so they work in any display language. With it on, sysmon takes about twice the width on the taskbar, and usage-hud moves over to stay next to it. The macOS menu bar does not have it
+- weather: a new **Faucet** kind — a faucet comes down at a random spot and fills the screen with sloshing water from the bottom up (the amount sets how fast: 120 seconds to the top at 50%). When it is full the tap shuts, cracks spread across the floor and a hole breaks open, and the water drains through it in 40 seconds, fast at first and trickling at the end. Then the hole seals and it starts again somewhere else. The animals float while there is water
+- weather: in the aquarium the fish now slow down and turn round over 0.4 seconds, showing a narrow side view, instead of flipping in one frame, and pulse a little faster with each tail beat. Whenever there are fish, a school of 12–16 small silver fish follows an invisible leader, and the seaweed grows in clumps of two or three
+
+**한국어**
+
+- usage-hud: 재설정 전에 한도를 다 쓸 빠르기면 그 막대의 재설정 시간 자리가 빨간 `!` 와 바닥까지 남은 시간으로 바뀌고, 툴팁에도 같이 나옴. 빠르기는 창이 열린 뒤 쓴 양 ÷ 그때부터 지난 시간이고, 창은 재설정보다 한 창 길이(5시간·7일) 앞서 열렸다고 봄. 처음 몇 분으로는 추정이 크게 튀므로 창이 열리고 15분(5시간 창)·6시간(7일 창)은 기다림. 평균이라 갑자기 몰아 쓰면 늦게 따라감
+- sysmon: 윈도우에서 메뉴에 **디스크·네트워크 보기**(기본 꺼짐)가 생김. 켜면 CPU·메모리 왼쪽에 둘째 칸이 붙음 — `DSK 34%` 는 가장 바쁜 디스크가 얼마나 바쁜지, `↓1.2M ↑85K` 는 가장 바쁜 네트워크 어댑터가 1초에 받고 보내는 양임. 윈도우 성능 카운터에서 읽어 표시 언어와 상관없이 돎. 켜면 작업 표시줄에서 두 배쯤 넓어지고, usage-hud 는 옆에 붙은 채로 따라 비킴. 맥 메뉴 막대에는 없음
+- weather: 종류에 **수도꼭지** 가 생김 — 아무 자리에서 꼭지가 내려와 화면을 바닥부터 출렁이는 물로 채움(양이 빠르기를 정함, 50% 면 꼭대기까지 120초). 다 차면 꼭지가 잠기고 바닥에 금이 번지다 구멍이 뚫려 물이 40초에 걸쳐 빠짐 — 처음엔 콸콸, 끝엔 졸졸. 그다음 구멍이 메워지고 다른 자리에서 다시 틂. 물이 있는 동안 동물은 수면에 뜸
+- weather: 어항 물고기가 한 프레임에 뒤집히지 않고 0.4초에 걸쳐 느려지며 좁은 옆모습을 보이고 돌아섬. 꼬리 칠 때마다 살짝 빨라짐. 물고기가 있으면 은빛 작은 물고기 떼 12–16마리가 안 보이는 우두머리를 따라다니고, 해초가 두세 포기씩 모여 자람
+
 ## 0.2.10 — 2026-10-08
 
 - usage-hud: a little cat now sits in the HUD. It runs while a Claude Code session on this PC is working and curls up asleep when none is, and when a turn finishes the HUD's border flashes for three seconds — so you can look away while Claude works. It reads the end of the session records changed in the last ten minutes every two seconds. A turn you stop with Esc does not flash. While Claude waits for you to allow a tool the cat keeps running, and a tool that runs for over ten minutes without a new line looks asleep. On the taskbar the flat panel is a little wider to make room for it; in the corners the size is unchanged
