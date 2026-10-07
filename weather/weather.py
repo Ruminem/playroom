@@ -118,8 +118,11 @@ FLY_LEVELS = 8
 FLY_SIZES = ((1.3, 6.0), (2.0, 9.0))  # (빛 알갱이 반지름, 번짐 반지름) — 멀리, 가까이
 
 HAIL_SHARE = 0.4   # 양 → 우박 알 수 ('보통' 60개)
-HAIL_SIZES = ((1.2, 0.8, 225), (2.1, 0.9, 245))  # (반지름, 가장자리 흐림, 알파) — 작은 알, 큰 알
-HAIL_COLOR, HAIL_RIM = (250, 252, 255), (186, 212, 238)
+# (반지름, 알파, 꼬리 px, 뽑힐 몫, 빠르기 배수) — 작은 알, 중간 알, 드문 큰 알
+HAIL_SIZES = ((1.2, 225, 7, 0.6, 1.0), (2.1, 245, 10, 0.32, 1.1), (3.2, 250, 13, 0.08, 1.2))
+HAIL_COLOR, HAIL_RIM = (250, 252, 255), (160, 192, 228)  # 빛 받는 왼쪽 위, 그늘진 오른쪽 아래
+HAIL_TAIL = (0.6, 120)  # 끝 빠르기의 이 몫보다 빨리 떨어지는 알만 꼬리, 꼬리 밑동 알파
+HAIL_CHIPS = (0.3, 0.5, 1500)  # 닿을 때 튀는 얼음 부스러기: 사는 초 범위, 중력
 HAIL_SPEED = (820, 1050)  # 떨어지는 빠르기 px/초. 튀어 오른 뒤엔 중력으로 다시 이 빠르기까지
 HAIL_BOUNCES = 2   # 바닥·더미에서 튀는 최대 횟수. 그다음 더미에 보탬
 HAIL_MELT = 4      # 더미가 눈보다 몇 배 빨리 녹나
@@ -654,6 +657,32 @@ def disc(r, soft, alpha, core, rim, fx=0.0, fy=0.0):
             row += pixel(color, alpha * cov)
         rows.append(trim(row))
     return shade((n, rows))
+
+
+def hailstone(r, alpha, tail):
+    """우박 알: 왼쪽 위에서 빛 받는 얼음 공에, tail 이 있으면 위로 옅어지는 떨어진 자국. 공 중심은 (c, tail + c)."""
+    n = int(math.ceil(2 * r)) + 3
+    c = n / 2 - 0.5
+    cy, lx, ly = tail + c, c - 0.45 * r, tail + c - 0.45 * r
+    rows = []
+    for y in range(tail + n):
+        row = b""
+        for x in range(n):
+            d = math.hypot(x - c, y - cy)
+            cov = min(1.0, max(0.0, r + 0.4 - d) / 0.8)
+            t = min(1.0, math.hypot(x - lx, y - ly) / (1.45 * r))
+            a = alpha * cov * cov * (3 - 2 * cov)
+            if y < cy and tail:  # 자국: 공 폭의 반쯤, 공에서 멀수록 옅게
+                a = max(a, HAIL_TAIL[1] * (y / cy) ** 1.6 * min(1.0, max(0.0, 0.7 * r + 0.5 - abs(x - c))))
+            row += pixel(tuple(int(HAIL_COLOR[i] + (HAIL_RIM[i] - HAIL_COLOR[i]) * t) for i in range(3)), a)
+        rows.append(trim(row))
+    return shade((n, rows))
+
+
+def hail_set(stride):
+    """크기마다 (폭, 그냥 그림, 꼬리 길이, 꼬리 달린 그림) 과 부스러기 그림."""
+    return ([(*place(hailstone(r, a, 0), stride), tl, place(hailstone(r, a, tl), stride)[1])
+             for r, a, tl, _, _ in HAIL_SIZES], place(disc(0.5, 0.6, 235, HAIL_COLOR, HAIL_COLOR), stride))
 
 
 def streak(length, alpha, width, slant=SLANT, color=RAIN_COLOR):
@@ -1871,11 +1900,11 @@ class Weather:
 
     # ── 우박 ──
     def new_stone(self, top):
-        big = random.random() < 0.35
-        v = random.uniform(*HAIL_SPEED) * (1.1 if big else 1)
+        k = random.choices(range(len(HAIL_SIZES)), [z[3] for z in HAIL_SIZES])[0]
+        v = random.uniform(*HAIL_SPEED) * HAIL_SIZES[k][4]
         # [x, y, vx, vy, 끝 빠르기, 크기, 튄 횟수]
         return [random.uniform(0, self.w), -random.uniform(5, self.h * 0.5) if top else random.uniform(0, self.h),
-                random.uniform(-15, 15), v, v, int(big), 0]
+                random.uniform(-15, 15), v, v, k, 0]
 
     def hail(self, dt, now):
         px, stride, w, h, ph, base = self.surface.pixels, self.stride, self.w, self.h, self.pile.h, self.base
@@ -1883,12 +1912,16 @@ class Weather:
             s[3] = min(s[3] + 2200 * dt, s[4])
             s[0] += s[2] * dt
             s[1] += s[3] * dt
-            n, rows = self.hail_sprites[s[5]]
+            n, rows, tl, tail = self.hail_sprites[s[5]]
             col = min(max(int(s[0]) + n // 2, 0), w - 1)
             floor = h - base[col] - ph[col] - n
             if s[1] >= floor and s[3] > 0:  # 바닥이나 더미에 닿음
                 if s[6] == 0:
                     self.scare_pet(col, now)
+                # 첫 닿음엔 크기만큼 부스러기, 튄 뒤엔 가끔 하나
+                for _ in range(random.randint(s[5], s[5] + 2) if s[6] == 0 else random.randint(0, 1)):
+                    self.chips.append([s[0] + n / 2, floor + n - self.chip[0], random.uniform(-110, 110), random.uniform(-240, -70),
+                                       random.uniform(*HAIL_CHIPS[:2])])
                 if s[6] < HAIL_BOUNCES and s[3] > 150:
                     s[1], s[3] = floor, -s[3] * random.uniform(0.18, 0.3)
                     s[2] += random.uniform(-70, 70)
@@ -1898,8 +1931,23 @@ class Weather:
                     s[:] = self.new_stone(True)
                     continue
             xi, yi = int(s[0]), int(s[1])
-            if 0 <= yi and 0 <= xi <= w - n:
+            if 0 <= xi <= w - n:
+                if s[3] > HAIL_TAIL[0] * s[4] and yi >= tl:
+                    stamp(px, stride, xi, yi - tl, tail)
+                elif 0 <= yi:
+                    stamp(px, stride, xi, yi, rows)
+        n, rows = self.chip
+        live = []
+        for c in self.chips:  # [x, y, vx, vy, 남은 초]
+            c[4] -= dt
+            c[3] += HAIL_CHIPS[2] * dt
+            c[0] += c[2] * dt
+            c[1] += c[3] * dt
+            xi, yi = int(c[0]), int(c[1])
+            if c[4] > 0 and 0 <= yi <= h - n and 0 <= xi <= w - n:
                 stamp(px, stride, xi, yi, rows)
+                live.append(c)
+        self.chips = live
 
     def scare_pet(self, col, now):
         reach, chance, cool = HAIL_SCARE
@@ -2986,9 +3034,8 @@ class Weather:
             self.flies_sprites = self.fly_sprites()
         elif kind == "hail":
             if "hail" not in self.sprite_cache:
-                self.sprite_cache["hail"] = [place(disc(r, soft, a, HAIL_COLOR, HAIL_RIM), self.stride)
-                                             for r, soft, a in HAIL_SIZES]
-            self.hail_sprites, self.stones = self.sprite_cache["hail"], []
+                self.sprite_cache["hail"] = hail_set(self.stride)
+            (self.hail_sprites, self.chip), self.stones, self.chips = self.sprite_cache["hail"], [], []
         elif kind == "fireworks":
             self.fw = self.fw_sprites()
         elif kind == "aquarium":
@@ -3340,8 +3387,8 @@ def check():
     big = lambda **kw: types.SimpleNamespace(**{"surface": types.SimpleNamespace(pixels=bytearray(200 * 200 * 4)),
                                                 "stride": 800, "w": 200, "h": 200, "amount": 100, "base": [0] * 200, **kw})
     hf = big(pile=Pile(200), pets={"cat": pet.Cat(200, random.Random(2)), "rabbit": pet.Rabbit(200, random.Random(2))},
-             pet_startled={},
-             hail_sprites=[place(disc(r, s, a, HAIL_COLOR, HAIL_RIM), 800) for r, s, a in HAIL_SIZES])
+             pet_startled={}, chips=[])
+    hf.hail_sprites, hf.chip = hail_set(800)
     hf.new_stone = lambda top: Weather.new_stone(hf, top)
     hf.scare_pet = lambda col, now: Weather.scare_pet(hf, col, now)
     hf.stones = [hf.new_stone(True) for _ in range(30)]
@@ -3353,6 +3400,29 @@ def check():
             scares[name] += hf.pet_startled.get(name) != before.get(name)
         most = max(most, *(s[6] for s in hf.stones))
     assert most == HAIL_BOUNCES and sum(hf.pile.h) > 0, "우박은 두 번까지 튀고 더미에 보탬"
+    hf.pile, hf.chips, hf.stones = Pile(200), [], [[100, 199, 0, 900, 900, 2, 0]]  # 화면 밑변에 처음 닿는 큰 알
+    Weather.hail(hf, 1 / 180, 99)
+    assert len(hf.chips) >= 2 and all(c[3] < 0 for c in hf.chips), "처음 닿으면 얼음 부스러기가 튀어 오름"
+    hf.stones, start = [], min(c[1] for c in hf.chips)
+    top, fell = start, False
+    while hf.chips:  # 화면 밑변에서 튀었으니 오르다 떨어져 밑변 밖으로 나감(가장 약하게 튀어도 1.6px 오름)
+        Weather.hail(hf, 1 / 180, 99)
+        top, fell = min([top] + [c[1] for c in hf.chips]), fell or any(c[3] > 0 for c in hf.chips)
+    assert top < start and fell, ("부스러기는 포물선으로 튐", start, top)
+    hf.chips = [[100, 100, 0, -300, 0.01]]
+    for _ in range(3):
+        Weather.hail(hf, 1 / 180, 99)
+    assert not hf.chips, "부스러기는 사는 초가 지나면 화면 가운데서도 사라짐"
+    ink = lambda: [y for y in range(200) if any(hf.surface.pixels[y * 800 + 3:(y + 1) * 800:4])]
+    for vy, tail in ((900, True), (-200, False)):  # 빠르게 떨어지는 알만 위로 자국을 남김
+        hf.surface.pixels[:] = bytes(len(hf.surface.pixels))
+        hf.stones = [[100, 100, 0, vy, 900, 2, 1]]
+        Weather.hail(hf, 0, 99)
+        assert (min(ink()) < 100 - 8) == tail, ("꼬리", vy, min(ink()))
+    n, rows = hailstone(3.2, 250, 0)
+    lit = lambda x, y: sum(rows[y][1][4 * (x - rows[y][0] // 4):][:3])
+    assert lit(n // 2 - 2, n // 2 - 2) > lit(n // 2, n // 2) + 60, "얼음 공은 왼쪽 위가 밝음"
+    assert {hf.new_stone(True)[5] for _ in range(300)} == {0, 1, 2}, "드물게 큰 알도 섞임"
     hf.stones = [[100, 199, 0, 900, 900, 1, HAIL_BOUNCES]]  # 이미 두 번 튄 알이 아직 빠르게 닿아도
     Weather.hail(hf, 1 / 180, 99)
     assert hf.stones[0][6] == 0 and hf.stones[0][1] < 0, "세 번째는 안 튀고 더미로"
