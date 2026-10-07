@@ -513,8 +513,8 @@ class Monitor:
             if now >= next_update:
                 next_update = now + 1
                 self.update()
-            # 커서가 올라오면 흐려져 밑의 작업 표시줄 단추가 보임
-            if self.shown and self.surface.fade(self.surface.hovered()):
+            # 커서가 올라오면 흐려져 밑의 작업 표시줄 단추가 보임. 맥 메뉴 막대 단추는 안 가리므로 없음
+            if not MAC and self.shown and self.surface.fade(self.surface.hovered()):
                 self.surface.present()
             time.sleep(0.1)
         self.surface.close()
