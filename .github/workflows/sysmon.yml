@@ -22,6 +22,10 @@ jobs:
         with:
           python-version: '3.14'
       - run: python sysmon/sysmon.py --check
+      # 디스크·네트워크 칸까지 켜고 띄워 성능 카운터를 1초마다 읽는 길도 지나가게 함 (pwsh 의 utf8 은 BOM 없음)
+      - run: |
+          New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\playroom" | Out-Null
+          '{"mem": "both", "theme": "text", "io": true}' | Set-Content "$env:LOCALAPPDATA\playroom\sysmon.json" -Encoding utf8
       # 8초 띄워 둔 뒤 살아 있으면 --stop 으로 치움. 그 전에 죽었으면 오류를 보이고 실패
       - name: sysmon 띄워 보기
         run: |

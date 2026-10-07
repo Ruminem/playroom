@@ -2,14 +2,14 @@
 
 **English** · [한국어](#korean)
 
-CPU and memory use in two small lines on the taskbar, right next to the notification icons. White normally, orange above 70%, red above 90%. Windows and macOS (in the menu bar there), Python standard library only.
+CPU and memory use in two small lines on the taskbar, right next to the notification icons. White normally, orange above 70%, red above 90%. On Windows it can add two more lines to their left: disk activity and network speed. Windows and macOS (in the menu bar there), Python standard library only.
 
 ## Use
 
-Double-click [sysmon.bat](sysmon.bat) to start or stop it. A small bar-chart icon sits in the notification area; hover it for memory in GB. Its menu picks how memory is shown — percent (`MEM 22%`), amount (`MEM 14.2/63.9G`) or both (`MEM 14.2/63.9G 22%`) — and the **theme**, both kept in `%LOCALAPPDATA%\playroom\sysmon.json`. It also starts it with Windows (same as [usage-hud](../usage-hud/#hud)) and exits.
+Double-click [sysmon.bat](sysmon.bat) to start or stop it. A small bar-chart icon sits in the notification area; hover it for memory in GB. Its menu picks how memory is shown — percent (`MEM 22%`), amount (`MEM 14.2/63.9G`) or both (`MEM 14.2/63.9G 22%`) — and the **theme**, both kept in `%LOCALAPPDATA%\playroom\sysmon.json`. **Show disk and network** (off by default) adds a second column to the left: `DSK 34%`, the busiest disk's active time, coloured like CPU, and `↓1.2M ↑85K`, bytes per second received and sent by the busiest network adapter. It also starts it with Windows (same as [usage-hud](../usage-hud/#hud)) and exits.
 
 - **Default** — the two lines of text above
-- **Pixel** — the [usage-hud](../usage-hud/) look: a dark box with a chip and a memory-stick icon, an 8-cell bar per line and pixel-font numbers. Bars are green, orange above 70%, red above 90%. It comes in the same six palettes as usage-hud (classic, Game Boy, neon, amber terminal, deep sea, paper), picked separately. Put usage-hud on the taskbar too and the two sit side by side
+- **Pixel** — the [usage-hud](../usage-hud/) look: a dark box with a chip and a memory-stick icon, an 8-cell bar per line and pixel-font numbers. Bars are green, orange above 70%, red above 90%. It comes in the same six palettes as usage-hud (classic, Game Boy, neon, amber terminal, deep sea, paper), picked separately. With disk and network on, the box gets a disk and an arrows icon in a second column; the network line has no bar, since there is no full mark to measure it against. Put usage-hud on the taskbar too and the two sit side by side
 
 `python sysmon.py --stop` closes it, `python sysmon.py --check` runs the self-check.
 
@@ -37,6 +37,7 @@ It wakes ten times a second to handle messages and measures once a second. Measu
 ## How it works
 
 - CPU is the share of non-idle time between two `GetSystemTimes` calls a second apart; memory is `dwMemoryLoad` from `GlobalMemoryStatusEx`. Both matched the performance counters and WMI when checked
+- Disk and network come from the performance counters through `pdh.dll`, added by their English names so they work on any Windows language. Disk is 100 − `\PhysicalDisk(*)\% Idle Time` for the busiest disk (Task Manager's *Active time*). Network is `\Network Interface(*)\Bytes Received/sec` and `Bytes Sent/sec` of the one busiest adapter, not the sum: with a Hyper-V virtual switch the same traffic also shows up on `vEthernet`. Speeds are in 1024-byte units, at most four characters (`8.5K`, `512K`, `1.2M`). The counters are opened only while the column is on. Not on macOS
 - It draws onto a click-through, topmost window with per-pixel alpha ([surface.py](../shared/surface.py)) placed over the taskbar. Text is drawn by GDI in white with greyscale anti-aliasing, then the brightness becomes alpha and the line colour is applied, so the edges stay soft on any taskbar colour. The taskbar drawing lives in [taskbar.py](../shared/taskbar.py)
 - Every second it re-reads where the notification area (`TrayNotifyWnd`) starts, so it follows when tray icons come and go, and re-asserts topmost because clicking the taskbar brings it to the front — unless [layers](../layers/) is running, which then keeps the order
 - When a full-screen app is running (`SHQueryUserNotificationState`: busy, Direct3D full screen or presentation mode) it hides, since the taskbar is gone too
@@ -49,14 +50,14 @@ It wakes ten times a second to handle messages and measures once a second. Measu
 
 [English](#sysmon) · **한국어**
 
-작업 표시줄의 알림 아이콘 바로 옆에 CPU·메모리 사용률을 작은 두 줄로 띄움. 평소엔 흰색, 70% 를 넘으면 주황, 90% 를 넘으면 빨강. 윈도우와 맥(맥은 메뉴 막대)에서 돌고 파이썬 표준 라이브러리만 씀.
+작업 표시줄의 알림 아이콘 바로 옆에 CPU·메모리 사용률을 작은 두 줄로 띄움. 평소엔 흰색, 70% 를 넘으면 주황, 90% 를 넘으면 빨강. 윈도우에서는 그 왼쪽에 디스크 활성도와 네트워크 속도 두 줄을 더 띄울 수 있음. 윈도우와 맥(맥은 메뉴 막대)에서 돌고 파이썬 표준 라이브러리만 씀.
 
 ### 쓰는 법
 
-[sysmon.bat](sysmon.bat) 을 더블클릭하면 켜지고, 다시 누르면 꺼짐. 알림 영역에 작은 막대그래프 아이콘이 뜸. 마우스를 올리면 메모리를 GB 로 보여 줌. 메뉴에서 메모리를 퍼센트(`MEM 22%`)·용량(`MEM 14.2/63.9G`)·둘 다(`MEM 14.2/63.9G 22%`) 중 어떻게 보일지와 **테마** 를 고르고(둘 다 `%LOCALAPPDATA%\playroom\sysmon.json` 에 남음), 윈도우 시작 시 실행([usage-hud](../usage-hud/#hud-1) 와 같음)을 켜고 끝냄.
+[sysmon.bat](sysmon.bat) 을 더블클릭하면 켜지고, 다시 누르면 꺼짐. 알림 영역에 작은 막대그래프 아이콘이 뜸. 마우스를 올리면 메모리를 GB 로 보여 줌. 메뉴에서 메모리를 퍼센트(`MEM 22%`)·용량(`MEM 14.2/63.9G`)·둘 다(`MEM 14.2/63.9G 22%`) 중 어떻게 보일지와 **테마** 를 고르고(둘 다 `%LOCALAPPDATA%\playroom\sysmon.json` 에 남음), 윈도우 시작 시 실행([usage-hud](../usage-hud/#hud-1) 와 같음)을 켜고 끝냄. **디스크·네트워크 보기**(기본은 꺼짐)를 켜면 왼쪽에 칸이 하나 더 섬: `DSK 34%` 는 가장 바쁜 디스크의 활성 시간이고 CPU 와 같은 색 문턱을 씀. `↓1.2M ↑85K` 는 가장 바쁜 네트워크 어댑터가 1초에 받고 보내는 바이트임.
 
 - **기본** — 위의 글자 두 줄
-- **픽셀** — [usage-hud](../usage-hud/) 모양. 어두운 상자 안에 칩·메모리 막대 아이콘, 줄마다 8칸 막대, 픽셀 글꼴 숫자가 들어감. 막대는 초록이고 70% 를 넘으면 주황, 90% 를 넘으면 빨강. usage-hud 와 같은 팔레트 여섯(클래식·게임보이·네온·앰버 단말기·심해·종이) 중 하나를 따로 고름. usage-hud 도 작업 표시줄에 두면 둘이 나란히 붙음
+- **픽셀** — [usage-hud](../usage-hud/) 모양. 어두운 상자 안에 칩·메모리 막대 아이콘, 줄마다 8칸 막대, 픽셀 글꼴 숫자가 들어감. 막대는 초록이고 70% 를 넘으면 주황, 90% 를 넘으면 빨강. usage-hud 와 같은 팔레트 여섯(클래식·게임보이·네온·앰버 단말기·심해·종이) 중 하나를 따로 고름. 디스크·네트워크를 켜면 둘째 칸에 디스크·화살표 아이콘이 들어감. 네트워크 줄은 기준 삼을 최대치가 없어 막대 없이 숫자만 씀. usage-hud 도 작업 표시줄에 두면 둘이 나란히 붙음
 
 `python sysmon.py --stop` 으로 끄고, `python sysmon.py --check` 로 자체 점검을 돌림.
 
@@ -84,6 +85,7 @@ python3 sysmon.py --toggle
 ### 어떻게 도는지
 
 - CPU 는 1초 간격으로 부른 `GetSystemTimes` 두 번 사이에서 쉬지 않은 시간의 비율이고, 메모리는 `GlobalMemoryStatusEx` 의 `dwMemoryLoad` 임. 성능 카운터·WMI 값과 맞는 것을 봤음
+- 디스크·네트워크는 `pdh.dll` 로 성능 카운터를 읽음. 영어 이름으로 더해서 윈도우 언어와 상관없이 됨. 디스크는 가장 바쁜 디스크의 100 − `\PhysicalDisk(*)\% Idle Time`(작업 관리자의 *활성 시간*)임. 네트워크는 `\Network Interface(*)\Bytes Received/sec`·`Bytes Sent/sec` 중 가장 바쁜 어댑터 하나의 값이고 다 더하지 않음 — Hyper-V 가상 스위치가 있으면 같은 트래픽이 `vEthernet` 에도 한 번 더 잡힘. 속도는 1024 단위로 네 글자 안(`8.5K`·`512K`·`1.2M`). 카운터는 칸을 켠 동안만 엶. 맥에는 없음
 - 작업 표시줄 위에 얹은 클릭 통과·맨 위·픽셀 알파 창([surface.py](../shared/surface.py))에 그림. 글자는 GDI 로 흰색 회색조 안티에일리어싱으로 그린 뒤 밝기를 알파로 바꿔 줄 색을 입힘. 그래서 작업 표시줄 색이 무엇이든 가장자리가 부드러움. 작업 표시줄 그리기는 [taskbar.py](../shared/taskbar.py) 에 있음
 - 1초마다 알림 영역(`TrayNotifyWnd`)이 어디서 시작하는지 다시 읽어 트레이 아이콘이 늘거나 줄면 따라감. 작업 표시줄을 누르면 그쪽이 앞으로 오므로 맨 위도 1초마다 다시 잡음. [layers](../layers/) 가 떠 있으면 순서는 그쪽에 맡김
 - 전체 화면 앱이 돌면(`SHQueryUserNotificationState` 가 바쁨·Direct3D 전체 화면·발표 모드) 작업 표시줄도 사라지므로 같이 숨음

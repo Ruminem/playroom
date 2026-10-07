@@ -248,19 +248,31 @@ def prepare(surface, fnt):
     gdi32.SetBkMode(surface.hdc, 1)  # TRANSPARENT
 
 
-def paint_lines(surface, lines, line_h):
-    """[(글, (r, g, b)), …] 를 세로 가운데에 오른쪽 맞춰 그림.
+def paint_columns(surface, fnt, columns, line_h, gap):
+    """[([(글, (r, g, b)), …], 최소 너비 px), …] 칸들을 왼쪽에서 오른쪽 순서로, 오른쪽 끝에 붙여 그림. 칸마다 줄들을
+    세로 가운데에 오른쪽 맞추고, 칸 사이는 gap px. 오른쪽 끝에서 가장 왼쪽 칸의 왼쪽 끝까지의 너비 px 를 돌려줌.
     글자를 흰색으로 그린 뒤 밝기(초록 칸)를 알파로 삼아 줄마다 색을 입힌다."""
     s, w = surface, surface.w
     s.clear()
-    top = (s.h - len(lines) * line_h) // 2
-    for i, (text, _) in enumerate(lines):
-        r = wintypes.RECT(0, top + i * line_h, w - 2, top + (i + 1) * line_h)
-        user32.DrawTextW(s.hdc, text, -1, ctypes.byref(r), 0x2 | 0x20)  # DT_RIGHT | DT_SINGLELINE
+    right, spans = w - 2, []
+    for lines, min_w in reversed(columns):
+        left = right - max(min_w, text_width(fnt, [t for t, _ in lines]))
+        top = (s.h - len(lines) * line_h) // 2
+        for i, (text, _) in enumerate(lines):
+            r = wintypes.RECT(left, top + i * line_h, right, top + (i + 1) * line_h)
+            user32.DrawTextW(s.hdc, text, -1, ctypes.byref(r), 0x2 | 0x20)  # DT_RIGHT | DT_SINGLELINE
+        spans.append((left, right, top, lines))
+        right = left - gap
     gdi32.GdiFlush()
     px = s.pixels
-    for i, (_, (cr, cg, cb)) in enumerate(lines):
-        for o in range((top + i * line_h) * w * 4, (top + (i + 1) * line_h) * w * 4, 4):
-            a = px[o + 1]
-            if a:
-                px[o:o + 4] = bytes((cb * a // 255, cg * a // 255, cr * a // 255, a))
+    for k, (left, right, top, lines) in enumerate(spans):
+        # 색 입히는 폭은 칸 사이 가운데까지 — 글자 끝이 칸 밖으로 한두 px 삐져도 제 색을 받게
+        x0 = 0 if k == len(spans) - 1 else left - gap // 2
+        x1 = w if k == 0 else right + gap // 2
+        for i, (_, (cr, cg, cb)) in enumerate(lines):
+            for y in range(top + i * line_h, top + (i + 1) * line_h):
+                for o in range((y * w + x0) * 4, (y * w + x1) * 4, 4):
+                    a = px[o + 1]
+                    if a:
+                        px[o:o + 4] = bytes((cb * a // 255, cg * a // 255, cr * a // 255, a))
+    return w - spans[-1][0]

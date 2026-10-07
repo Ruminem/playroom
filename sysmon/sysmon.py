@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-"""작업 표시줄 오른쪽, 알림 영역 바로 왼쪽에 CPU·메모리 사용률을 두 줄로 띄운다.
+"""작업 표시줄 오른쪽, 알림 영역 바로 왼쪽에 CPU·메모리 사용률을 두 줄로 띄운다. 메뉴에서 켜면 그 왼쪽에
+디스크 활성 %·네트워크 받기/보내기 속도 두 줄을 더 띄운다(윈도우만).
 
   pythonw sysmon.py            띄우기 (창 없이 뒤에서 돎)
   python sysmon.py --toggle    떠 있으면 치우고, 없으면 띄움 (sysmon.bat 이 이걸 부름)
@@ -50,7 +51,7 @@ SETTINGS = (Path.home() / "Library" / "Application Support" if MAC else
 GAP = 8            # 알림 영역과 띄울 px
 WARN, HOT = 70, 90  # 이 % 를 넘으면 주황, 빨강
 WHITE, ORANGE, RED = (255, 255, 255), (254, 174, 52), (228, 59, 68)
-AUTOSTART, EXIT = 50, 99
+AUTOSTART, IO, EXIT = 50, 51, 99
 RUN_NAME = "PlayroomSysmon"
 # 메모리 줄 모양: id → (키, 메뉴 글). 글자 색은 어느 모양이든 사용률로 정함
 MEM_MODES = {60: ("pct", "퍼센트 (MEM 22%)"), 61: ("gb", "용량 (MEM 14.2/63.9G)"), 62: ("both", "둘 다 (MEM 14.2/63.9G 22%)")}
@@ -60,9 +61,10 @@ THEMES = {70: ("text", "기본 (글자)")}
 THEMES.update({71 + i: (key, "픽셀 · " + name) for i, (key, (name, _)) in enumerate(PALETTES.items())})
 THEME_KEYS = {key for key, _ in THEMES.values()}
 SEGMENTS = 8       # 픽셀 테마 막대 칸 수
-ROW_GAP = 5        # 맥에서 두 줄을 나란히 둘 때 사이 칸
+ROW_GAP = 5        # 칸(세로로 쌓은 줄 묶음) 사이 칸. 맥은 줄마다 한 칸이라 두 줄이 이만큼 띄워 나란히 섬
 PIX = {}           # 픽셀 테마가 버퍼에 찍을 RGB. use_theme 이 채움
 PCT_W = text_width("100%")
+RATE_W = 4         # 속도 글자 수 ('999M'). 픽셀 글꼴은 글자 폭이 같아 이만큼 채우면 폭이 안 변함
 
 ICON_COLORS = {"g": "#63c74d", "y": "#feae34"}
 ICON = (".......",
@@ -141,12 +143,106 @@ else:
         gb = 1024 ** 3
         return m.dwMemoryLoad, (m.ullTotalPhys - m.ullAvailPhys) / gb, m.ullTotalPhys / gb
 
+    pdh = ctypes.windll.pdh
+    for _f in (pdh.PdhOpenQueryW, pdh.PdhAddEnglishCounterW, pdh.PdhCollectQueryData,
+               pdh.PdhGetFormattedCounterArrayW, pdh.PdhCloseQuery):
+        _f.restype = wintypes.DWORD
+    pdh.PdhOpenQueryW.argtypes = (wintypes.LPCWSTR, ctypes.c_size_t, ctypes.POINTER(ctypes.c_void_p))
+    pdh.PdhAddEnglishCounterW.argtypes = (ctypes.c_void_p, wintypes.LPCWSTR, ctypes.c_size_t,
+                                          ctypes.POINTER(ctypes.c_void_p))
+    pdh.PdhCollectQueryData.argtypes = pdh.PdhCloseQuery.argtypes = (ctypes.c_void_p,)
+    pdh.PdhGetFormattedCounterArrayW.argtypes = (ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD),
+                                                 ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p)
+    PDH_MORE_DATA = 0x800007D2
+    PDH_FMT = 0x200 | 0x8000  # DOUBLE | NOCAP100 — 100 에서 자르지 않음. 디스크는 아래에서 직접 자름
+
+    class PdhValue(ctypes.Structure):  # PDH_FMT_COUNTERVALUE. 공용체에서 double 만 씀
+        _fields_ = [("status", wintypes.DWORD), ("value", ctypes.c_double)]
+
+    class PdhItem(ctypes.Structure):  # PDH_FMT_COUNTERVALUE_ITEM_W
+        _fields_ = [("name", ctypes.c_wchar_p), ("fmt", PdhValue)]
+
+    def counter_items(counter):
+        """와일드카드 카운터의 {인스턴스 이름: 값}. 값이 맞지 않은 인스턴스(상태가 VALID·NEW 가 아님)는 뺌"""
+        size, count = wintypes.DWORD(0), wintypes.DWORD(0)
+        if pdh.PdhGetFormattedCounterArrayW(counter, PDH_FMT, size, count, None) != PDH_MORE_DATA:
+            return {}
+        buf = (ctypes.c_byte * size.value)()
+        if pdh.PdhGetFormattedCounterArrayW(counter, PDH_FMT, size, count, buf):
+            return {}
+        items = ctypes.cast(buf, ctypes.POINTER(PdhItem))
+        return {items[i].name: items[i].fmt.value for i in range(count.value) if items[i].fmt.status in (0, 1)}
+
+    class IoMeter:
+        """디스크 활성 %와 네트워크 받기·보내기 B/s 를 성능 카운터(PDH)로 읽음. 켰을 때만 만들고 끄면 닫음.
+        영어 이름으로 더하므로(PdhAddEnglishCounterW) 한국어 윈도우에서도 됨. 비율 값이라 두 번째 수집부터 나옴"""
+        PATHS = ("\\PhysicalDisk(*)\\% Idle Time", "\\Network Interface(*)\\Bytes Received/sec",
+                 "\\Network Interface(*)\\Bytes Sent/sec")
+
+        def __init__(self):
+            self.query, self.counters = ctypes.c_void_p(), []
+            if pdh.PdhOpenQueryW(None, 0, self.query):
+                self.query = None
+                return
+            for path in self.PATHS:
+                c = ctypes.c_void_p()
+                if pdh.PdhAddEnglishCounterW(self.query, path, 0, c):
+                    self.close()
+                    return
+                self.counters.append(c)
+            pdh.PdhCollectQueryData(self.query)
+
+        def read(self):
+            """(디스크 %, 받기 B/s, 보내기 B/s). 못 읽은 것은 None"""
+            if not self.query or pdh.PdhCollectQueryData(self.query):
+                return None, None, None
+            idle, recv, sent = (counter_items(c) for c in self.counters)
+            return (busiest_disk(idle),) + busiest_net(recv, sent)
+
+        def close(self):
+            if self.query:
+                pdh.PdhCloseQuery(self.query)
+                self.query = None
+
 
 def cpu_percent(prev, cur):
     total = cur[1] - prev[1]
     if total <= 0:
         return 0
     return max(0, min(100, round(100 * (1 - (cur[0] - prev[0]) / total))))
+
+
+def busiest_disk(idle):
+    """{디스크: 쉰 %} 에서 가장 바쁜 디스크의 활성 % (작업 관리자의 '활성 시간'). _Total 은 평균이라 뺌"""
+    vals = [v for k, v in idle.items() if k != "_Total"]
+    return round(max(0, min(100, 100 - min(vals)))) if vals else None
+
+
+def busiest_net(recv, sent):
+    """가장 바쁜 어댑터 하나의 (받기, 보내기) B/s. 다 더하지 않는 것은 Hyper-V 가상 스위치(vEthernet)가
+    실제 어댑터와 같은 트래픽을 한 번 더 세기 때문"""
+    names = recv.keys() & sent.keys()
+    if not names:
+        return None, None
+    n = max(names, key=lambda k: recv[k] + sent[k])
+    return recv[n], sent[n]
+
+
+def rate_text(bps):
+    """B/s → 4글자 안: '0K' · '8.5K' · '512K' · '1.2M' · '999M' · '2.4G'. 1024 단위"""
+    if bps is None:
+        return "--"
+    v = bps / 1024
+    for unit in "KMG":
+        if v < 999.5 or unit == "G":
+            if v < 0.05:
+                return "0" + unit
+            return ("%.1f" % v if v < 9.95 else "%d" % round(v)) + unit
+        v /= 1024
+
+
+def net_text(down, up):
+    return "↓%s ↑%s" % (rate_text(down), rate_text(up))
 
 
 def mem_text(mode, mem, used, total, pct=lambda p: "%d%%" % p):
@@ -169,14 +265,14 @@ def menubar_lines(cpu, mode, mem, used, total):
 
 
 def load_settings():
-    """(메모리 모양, 테마). 파일이 없거나 이상하면 기본값."""
+    """(메모리 모양, 테마, 디스크·네트워크를 보이는가). 파일이 없거나 이상하면 기본값. 맥은 디스크·네트워크가 없음"""
     try:
         data = json.loads(SETTINGS.read_text(encoding="utf-8"))
-        mode, theme = data.get("mem"), data.get("theme")
+        mode, theme, io = data.get("mem"), data.get("theme"), data.get("io")
     except (OSError, ValueError, AttributeError):
-        mode = theme = None
+        mode = theme = io = None
     theme = "classic" if theme == "pixel" else theme
-    return mode if mode in MEM_KEYS else "pct", theme if theme in THEME_KEYS else "text"
+    return mode if mode in MEM_KEYS else "pct", theme if theme in THEME_KEYS else "text", io is True and not MAC
 
 
 def use_theme(theme):
@@ -197,35 +293,49 @@ def pixel_level(p):
     return "low" if p > HOT else "mid" if p > WARN else "good"
 
 
+def pct_item(p):
+    return ("%d%%" % p, pixel_level(p), PCT_W) if p is not None else ("--", "dim", PCT_W)
+
+
 def pixel_rows(cpu, mode, mem, used, total):
-    """[(아이콘, 이름, %, [(글, 색 키, 퍼센트 칸인가), …]), …]. 퍼센트는 '100%' 너비에 오른쪽 맞춤."""
-    pct = lambda p: ("%d%%" % p, pixel_level(p), True)
+    """[(아이콘, 이름, % 또는 None, [(글, 색 키, 오른쪽 맞출 너비 또는 None), …]), …].
+    % 가 None 이면 막대가 없는 줄. 퍼센트는 '100%' 너비에 오른쪽 맞춤."""
     gb = "%.1f/%.1fG" % (used, total)
-    tail = {"pct": [pct(mem)], "gb": [(gb, pixel_level(mem), False)], "both": [pct(mem), (gb, "dim", False)]}
-    return [("cpu", "CPU", cpu, [pct(cpu)]), ("mem", "MEM", mem, tail[mode])]
+    tail = {"pct": [pct_item(mem)], "gb": [(gb, pixel_level(mem), None)], "both": [pct_item(mem), (gb, "dim", None)]}
+    return [("cpu", "CPU", cpu, [pct_item(cpu)]), ("mem", "MEM", mem, tail[mode])]
+
+
+def io_rows(disk, down, up):
+    """디스크·네트워크 두 줄. 네트워크는 막대 없이 화살표와 속도 둘, 속도는 RATE_W 글자로 채워 폭이 안 변함"""
+    rate = lambda c, b: (c + rate_text(b).rjust(RATE_W), "text" if b is not None else "dim", None)
+    return [("disk", "DSK", disk or 0, [pct_item(disk)]), ("net", "NET", None, [rate("↓", down), rate("↑", up)])]
 
 
 def row_width(row):
-    """한 줄의 너비: 아이콘 7 + 2, 이름 + 2, 막대 + 1, 뒤 글들은 3 씩 띄움."""
-    tail = sum(PCT_W if is_pct else text_width(t) for t, _, is_pct in row[3]) + 3 * (len(row[3]) - 1)
-    return 7 + 2 + text_width(row[1]) + 2 + SEGMENTS * 3 + 1 + tail
+    """한 줄의 너비: 아이콘 7 + 2, 이름 + 2, 막대 + 1 (있으면), 뒤 글들은 3 씩 띄움."""
+    tail = sum(fixed or text_width(t) for t, _, fixed in row[3]) + 3 * (len(row[3]) - 1)
+    return 7 + 2 + text_width(row[1]) + 2 + (SEGMENTS * 3 + 1 if row[2] is not None else 0) + tail
 
 
-def row_origins(rows, across):
-    """줄마다 상자 안 왼쪽 위 칸. 기본은 위아래로 8 간격, across 면 한 줄로 ROW_GAP 띄워 나란히."""
-    if not across:
-        return [(2, 2 + i * 8) for i in range(len(rows))]
-    xs = [2]
-    for r in rows[:-1]:
-        xs.append(xs[-1] + row_width(r) + ROW_GAP)
-    return [(x, 2) for x in xs]
+def columns(rows, stack):
+    """줄들을 앞에서부터 stack 개씩 묶은 칸들. 칸은 왼쪽에서 오른쪽 순서"""
+    return [rows[i:i + stack] for i in range(0, len(rows), stack)]
 
 
-def pixel_size(rows, across=False):
-    """상자 (너비, 높이). 테두리 1 + 여백 1. 위아래로 쌓으면 줄 간격 8 (아이콘 7 + 1), 나란히 두면 높이 11."""
-    if across:
-        return 2 + sum(row_width(r) for r in rows) + ROW_GAP * (len(rows) - 1) + 2, 11
-    return 2 + max(row_width(r) for r in rows) + 2, 19
+def row_origins(rows, stack=2):
+    """줄마다 상자 안 왼쪽 위 칸. 칸 안에서는 위아래로 8 간격, 칸끼리는 넓은 줄 폭 + ROW_GAP 띄워 나란히.
+    윈도우는 두 줄씩 쌓고(stack 2), 맥 메뉴 막대는 한 줄에 다 늘어놓음(stack 1)."""
+    out, x = [], 2
+    for col in columns(rows, stack):
+        out += [(x, 2 + i * 8) for i in range(len(col))]
+        x += max(row_width(r) for r in col) + ROW_GAP
+    return out
+
+
+def pixel_size(rows, stack=2):
+    """상자 (너비, 높이). 테두리 1 + 여백 1. 줄 간격 8 (아이콘 7 + 1)이라 두 줄이면 높이 19, 한 줄이면 11."""
+    cols = columns(rows, stack)
+    return 2 + sum(max(row_width(r) for r in c) for c in cols) + ROW_GAP * (len(cols) - 1) + 2, 3 + 8 * stack
 
 
 def pixel_scale(bar_h):
@@ -238,9 +348,9 @@ def mac_pixel_scale(backing):
     return backing * 2
 
 
-def paint_pixel(surface, rows, s, across=False):
+def paint_pixel(surface, rows, s, stack=2):
     """오른쪽 끝에 붙여 세로 가운데에 그리고, 보이는 너비 px 를 돌려줌."""
-    w, h = pixel_size(rows, across)
+    w, h = pixel_size(rows, stack)
     x0, y0 = surface.w - w * s, (surface.h - h * s) // 2
     px, stride = surface.pixels, surface.w * 4
     surface.clear()
@@ -255,7 +365,7 @@ def paint_pixel(surface, rows, s, across=False):
     rect(0, 0, w, h, "bg", 235)
     for x, y, cw, ch in ((0, 0, w, 1), (0, h - 1, w, 1), (0, 0, 1, h), (w - 1, 0, 1, h)):
         rect(x, y, cw, ch, "edge")
-    for (icon, label, p, texts), (ox, y) in zip(rows, row_origins(rows, across)):
+    for (icon, label, p, texts), (ox, y) in zip(rows, row_origins(rows, stack)):
         for dy, line in enumerate(ICONS[icon]):
             for dx, c in enumerate(line):
                 if c != ".":
@@ -263,15 +373,16 @@ def paint_pixel(surface, rows, s, across=False):
         for dx, dy in text_pixels(label):
             rect(ox + 9 + dx, y + 1 + dy, 1, 1, "text")
         x = ox + 9 + text_width(label) + 2
-        filled = round(p / 100 * SEGMENTS)
-        for k in range(SEGMENTS):
-            rect(x + k * 3, y + 1, 2, 5, pixel_level(p) if k < filled else "slot")
-        x += SEGMENTS * 3 + 1
-        for t, key, is_pct in texts:
-            tx = x + (PCT_W - text_width(t) if is_pct else 0)
+        if p is not None:
+            filled = round(p / 100 * SEGMENTS)
+            for k in range(SEGMENTS):
+                rect(x + k * 3, y + 1, 2, 5, pixel_level(p) if k < filled else "slot")
+            x += SEGMENTS * 3 + 1
+        for t, key, fixed in texts:
+            tx = x + (fixed - text_width(t) if fixed else 0)
             for dx, dy in text_pixels(t):
                 rect(tx + dx, y + 1 + dy, 1, 1, key)
-            x += (PCT_W if is_pct else text_width(t)) + 3
+            x += (fixed or text_width(t)) + 3
     return w * s
 
 
@@ -292,14 +403,18 @@ class Monitor:
         self.font = taskbar.font(h)
         # 버퍼는 가장 넓은 테마·모양에 맞춰 한 번 잡고 그림은 오른쪽에 붙임. 창은 그린 폭만큼만 보여서
         # (Surface.view) 왼쪽에 붙는 usage-hud 가 빈 칸 없이 바로 옆에 옴
-        total = memory()[2]
-        self.pad = round(h * 0.1)
+        # 디스크·네트워크 칸까지 켠 폭으로 잡음. 그 칸은 가장 긴 글의 폭으로 고정해 속도가 바뀌어도 안 흔들림
+        total, big = memory()[2], 999 * 1024 ** 2
+        self.pad, self.col_gap = round(h * 0.1), round(h * 0.25)
+        self.io_w = taskbar.text_width(self.font, ["DSK 100%", net_text(big, big)])
         widest = taskbar.text_width(self.font, ["CPU 100%"] + [mem_text(k, 100, total, total) for k in MEM_KEYS])
         self.s = pixel_scale(h)
-        widest_pixel = max(pixel_size(pixel_rows(100, k, 100, total, total))[0] for k in MEM_KEYS) * self.s
-        self.w, self.h = max(widest + self.pad + 2, widest_pixel), h
+        widest_pixel = max(pixel_size(io_rows(100, big, big) + pixel_rows(100, k, 100, total, total))[0]
+                           for k in MEM_KEYS) * self.s
+        self.w, self.h = max(self.io_w + self.col_gap + widest + self.pad + 2, widest_pixel), h
         self.line = round(h * 0.44)
-        self.mode, self.theme = load_settings()
+        self.mode, self.theme, self.io_on = load_settings()
+        self.io = IoMeter() if self.io_on else None
         use_theme(self.theme)
         self.surface = Surface(x - GAP - self.w, top, self.w, self.h, SURFACE_CLASS)
         self.on_top = MAC or overlay.on_top("sysmon")  # 런처의 '항상 위'. 맥은 런처가 없음
@@ -314,17 +429,24 @@ class Monitor:
         self.prev = cpu_times()
 
     def menu(self):
-        return [("메모리 표시", [(label, cid, key == self.mode) for cid, (key, label) in MEM_MODES.items()]),
-                ("테마", [(label, cid, key == self.theme) for cid, (key, label) in THEMES.items()]),
-                ("로그인 시 실행" if MAC else "Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)),
-                None,
-                ("끝내기", EXIT, False)]
+        items = [("메모리 표시", [(label, cid, key == self.mode) for cid, (key, label) in MEM_MODES.items()]),
+                 ("테마", [(label, cid, key == self.theme) for cid, (key, label) in THEMES.items()])]
+        if not MAC:
+            items.append(("디스크·네트워크 보기", IO, self.io_on))
+        return items + [("로그인 시 실행" if MAC else "Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)),
+                        None,
+                        ("끝내기", EXIT, False)]
 
     def update(self):
         cur = cpu_times()
         cpu, self.prev = cpu_percent(self.prev, cur), cur
         mem, used, total = memory()
-        self.tray.set_tip("CPU %d%%\n메모리 %.1f / %.1f GB (%d%%)" % (cpu, used, total, mem))
+        io = self.io.read() if self.io else None
+        tip = "CPU %d%%\n메모리 %.1f / %.1f GB (%d%%)" % (cpu, used, total, mem)
+        if io:
+            tip += "\n디스크 %s · 받기 %s/s · 보내기 %s/s" % ("--" if io[0] is None else "%d%%" % io[0],
+                                                        rate_text(io[1]), rate_text(io[2]))
+        self.tray.set_tip(tip)
         show = not taskbar.fullscreen_app()
         if show != self.shown:
             self.shown = show
@@ -332,17 +454,19 @@ class Monitor:
         if not show:
             return
         if self.theme != "text":
-            lines = pixel_rows(cpu, self.mode, mem, used, total)
+            lines = (io_rows(*io) if io else []) + pixel_rows(cpu, self.mode, mem, used, total)
         else:
-            lines = [("CPU %d%%" % cpu, level_color(cpu)), (mem_text(self.mode, mem, used, total), level_color(mem))]
+            lines = [([("CPU %d%%" % cpu, level_color(cpu)), (mem_text(self.mode, mem, used, total), level_color(mem))], 0)]
+            if io:
+                disk = ("DSK --", WHITE) if io[0] is None else ("DSK %d%%" % io[0], level_color(io[0]))
+                lines.insert(0, ([disk, (net_text(io[1], io[2]), WHITE)], self.io_w))
         if lines != self.last_lines:
             self.last_lines = lines
             if self.theme != "text":
                 self.vis_w = paint_pixel(self.surface, lines, self.s)
                 self.vis_h = pixel_size(lines)[1] * self.s
             else:
-                taskbar.paint_lines(self.surface, lines, self.line)
-                self.vis_w = taskbar.text_width(self.font, [t for t, _ in lines]) + self.pad + 2
+                self.vis_w = taskbar.paint_columns(self.surface, self.font, lines, self.line, self.col_gap) + self.pad
                 self.vis_h = self.h
         spot = taskbar.spot()
         if spot and (spot[:2], self.vis_w, self.vis_h) != self.where:  # 트레이 아이콘이 늘거나 줄거나 폭이 바뀌면 따라감
@@ -362,16 +486,22 @@ class Monitor:
                 cid = self.commands.get_nowait()
                 if cid == AUTOSTART:
                     startup.toggle(RUN_NAME, __file__)
-                elif cid in MEM_MODES or cid in THEMES:
+                elif cid in MEM_MODES or cid in THEMES or cid == IO:
                     self.mode = MEM_MODES[cid][0] if cid in MEM_MODES else self.mode
                     self.theme = THEMES[cid][0] if cid in THEMES else self.theme
                     use_theme(self.theme)
+                    if cid == IO:
+                        self.io_on = not self.io_on
+                        if self.io:
+                            self.io.close()
+                        self.io = IoMeter() if self.io_on else None
                     next_update, self.last_lines = 0.0, None  # 바로 다시 그림
                     try:
                         SETTINGS.parent.mkdir(parents=True, exist_ok=True)
-                        SETTINGS.write_text(json.dumps({"mem": self.mode, "theme": self.theme}), encoding="utf-8")
+                        SETTINGS.write_text(json.dumps({"mem": self.mode, "theme": self.theme, "io": self.io_on}),
+                                            encoding="utf-8")
                     except OSError:
-                        pass  # 못 남기면 다음에 퍼센트로 뜰 뿐
+                        pass  # 못 남기면 다음에 기본값으로 뜰 뿐
                 elif cid in (None, EXIT):
                     if self.tray.item if MAC else self.tray.hwnd:
                         self.tray.close()  # 아이콘을 지우고 나면 None 이 다시 옴
@@ -392,7 +522,8 @@ class MacMonitor(Monitor):
     메뉴·설정·명령 처리는 Monitor 것을 그대로 쓰고, 재는 것과 그리는 것만 다르다."""
 
     def __init__(self):
-        self.mode, self.theme = load_settings()
+        self.mode, self.theme, self.io_on = load_settings()  # 맥은 io_on 이 늘 False
+        self.io = None
         use_theme(self.theme)
         self.commands = queue.Queue()
         write_ico(ICON_FILE, ICON, ICON_COLORS)
@@ -455,9 +586,9 @@ class MacMonitor(Monitor):
 
     def show_pixel(self, rows):
         send, s = cocoa.send, self.scale
-        w, h = pixel_size(rows, across=True)
+        w, h = pixel_size(rows, 1)
         buf = Buffer(w * s, h * s)
-        paint_pixel(buf, rows, s, across=True)
+        paint_pixel(buf, rows, s, 1)
         px = buf.pixels
         px[0::4], px[2::4] = px[2::4], px[0::4]  # BGRA → RGBA (알파를 곱한 그대로)
         rep = send(send(cocoa.cls("NSBitmapImageRep"), "alloc"),
@@ -514,7 +645,7 @@ def check():
         assert a[0][0] == "CPU   5%" and b[1] == ("MEM 1.0/16.0G 100%", RED)
         bar = cocoa.send(cocoa.send(cocoa.cls("NSStatusBar"), "systemStatusBar"), "thickness", restype=ctypes.c_double)
         for backing in (1, 2, 3):  # 칸 하나가 메뉴 막대에서 차지하는 pt 로 상자 높이를 셈
-            pt = pixel_size(pixel_rows(1, "pct", 1, 1.0, 16.0), across=True)[1] * mac_pixel_scale(backing) / backing
+            pt = pixel_size(pixel_rows(1, "pct", 1, 1.0, 16.0), 1)[1] * mac_pixel_scale(backing) / backing
             assert 20 <= pt <= bar, ("픽셀 상자가 메뉴 막대 높이 안에, 너무 작지 않게", backing, pt, bar)
         for theme in PALETTES:  # 흐린 두 색이 팔레트 값보다 바탕에서 멀어짐 (글자색만큼은 아님)
             use_theme(theme)
@@ -523,10 +654,54 @@ def check():
                 raw = tuple(int(COLORS[key][i:i + 2], 16) for i in (1, 3, 5))
                 assert far(raw) < far(PIX[key]) < far(PIX["text"]), (theme, key)
         rows = pixel_rows(100, "pct", 100, 16.0, 16.0)
-        assert pixel_size(rows, True)[0] == pixel_size(rows)[0] + row_width(rows[1]) + ROW_GAP, "나란히 둔 폭"
+        assert pixel_size(rows, 1)[0] == pixel_size(rows)[0] + row_width(rows[1]) + ROW_GAP, "나란히 둔 폭"
     else:
         font = taskbar.font(48)
         assert taskbar.text_width(font, ["MEM 14.2/63.9G"]) > taskbar.text_width(font, ["MEM 22%"]) > 0, "긴 글이 더 넓음"
+        # 글자 테마 두 칸: 진짜 창 버퍼에 그려 칸마다 제 색을 받고 왼쪽 칸이 고정 폭만큼 자리를 잡는지 봄
+        surf = Surface(-1000, -1000, 400, 48, "PlayroomSysmonCheck")
+        taskbar.prepare(surf, font)
+        io_w = taskbar.text_width(font, ["DSK 100%", net_text(999 * 1024 ** 2, 999 * 1024 ** 2)])
+        cols = [([("DSK 95%", RED), (net_text(1024, 1024), WHITE)], io_w), ([("CPU 5%", ORANGE), ("MEM 1%", ORANGE)], 0)]
+        drawn = taskbar.paint_columns(surf, font, cols, 21, 12)
+        main_w = taskbar.text_width(font, ["CPU 5%", "MEM 1%"])
+        assert drawn == 2 + main_w + 12 + io_w, ("그린 폭", drawn, main_w, io_w)
+        tint, px = {}, surf.pixels
+        for o in range(0, len(px), 4):
+            if px[o + 3] > 128:  # 알파를 곱한 값이라 G/R 비는 덮인 정도와 상관없음: 빨강 0.26 · 주황 0.69 · 흰 1
+                g_r = px[o + 1] / max(1, px[o + 2])
+                side = "io" if o // 4 % surf.w < surf.w - 2 - main_w - 6 else "main"
+                tint.setdefault(side, set()).add("red" if g_r < 0.45 else "orange" if g_r < 0.85 else "white")
+        surf.close()
+        assert tint["io"] == {"red", "white"} and tint["main"] == {"orange"}, ("칸마다 제 줄 색", tint)
+        assert ctypes.sizeof(PdhItem) == 24, "PDH_FMT_COUNTERVALUE_ITEM_W 는 이름 포인터 + 8 맞춤 값 16"
+        meter = IoMeter()
+        assert meter.query, "성능 카운터를 못 엶"
+        time.sleep(1.1)  # 비율 값이라 두 번째 수집이 1초쯤 뒤여야 맞음
+        disk, down, up = meter.read()
+        meter.close()
+        assert disk is not None and 0 <= disk <= 100, ("디스크 활성 %", disk)
+        assert down is not None and down >= 0 and up >= 0, ("네트워크 B/s", down, up)
+    assert [rate_text(b) for b in (None, 0, 40, 8.5 * 1024, 512 * 1024, 999.4 * 1024, 999.6 * 1024, 1.2 * 1024 ** 2,
+                                    999 * 1024 ** 2, 2.4 * 1024 ** 3)] == \
+        ["--", "0K", "0K", "8.5K", "512K", "999K", "1.0M", "1.2M", "999M", "2.4G"]
+    assert busiest_disk({"_Total": 10.0, "0 C:": 70.0, "1 D:": 20.0}) == 80, "가장 덜 쉰 디스크, _Total 은 뺌"
+    assert busiest_disk({"0 C:": 101.5}) == 0 and busiest_disk({"_Total": 3.0}) is None
+    assert busiest_net({"wifi": 100.0, "vEthernet": 90.0, "eth": 5.0}, {"wifi": 10.0, "vEthernet": 9.0, "eth": 1.0}) == \
+        (100.0, 10.0), "가장 바쁜 어댑터 하나만 — 가상 스위치 몫을 더하지 않음"
+    assert busiest_net({"a": 1.0}, {}) == (None, None)
+    big = 999 * 1024 ** 2
+    assert row_width(io_rows(5, 0, 300)[1]) == row_width(io_rows(100, big, big)[1]) == row_width(io_rows(None, None, None)[1]), \
+        "네트워크 줄은 속도가 바뀌어도 폭이 같음"
+    assert net_text(1.5 * 1024 ** 2, 300) == "↓1.5M ↑0.3K" and io_rows(None, 1, 1)[0][3][0][:2] == ("--", "dim")
+    real = globals()["SETTINGS"]
+    try:  # 디스크·네트워크는 true 일 때만 켜지고 맥에서는 늘 꺼짐
+        globals()["SETTINGS"] = Path(tempfile.mkdtemp()) / "s.json"
+        for raw, io in (('{"io": true}', not MAC), ('{"io": 1}', False), ('{}', False), ("깨짐", False)):
+            SETTINGS.write_text(raw, encoding="utf-8")
+            assert load_settings()[2] == io, (raw, load_settings())
+    finally:
+        globals()["SETTINGS"] = real
     total = 63.9
     for k in MEM_KEYS:  # 픽셀 상자는 작업 표시줄 높이 안에, 가장 넓은 모양이 버퍼 안에
         rows = pixel_rows(100, k, 100, total, total)
@@ -549,21 +724,31 @@ def check():
                   if tuple(f.pixels[o:o + 3]) == good)
         assert lit == 4, ("CPU 50% 면 8칸 중 4칸", theme, lit)
 
-    def at(f, rows, s, across, x, y):  # 상자 안 칸 (x, y) 의 BGR
-        w, h = pixel_size(rows, across)
+    def at(f, rows, s, stack, x, y):  # 상자 안 칸 (x, y) 의 BGR
+        w, h = pixel_size(rows, stack)
         o = ((f.h - h * s) // 2 + y * s) * f.w * 4 + (f.w - w * s + x * s) * 4
         return tuple(f.pixels[o:o + 3])
-    rows = pixel_rows(50, "pct", 25, 4.0, total)
-    # 줄마다 시작 칸을 손으로 적어 둠: 위아래면 8 간격, 나란히면 첫 줄 폭 + ROW_GAP 옆
-    for across, origins in ((False, [(2, 2), (2, 10)]), (True, [(2, 2), (2 + row_width(rows[0]) + ROW_GAP, 2)])):
+    base = pixel_rows(50, "pct", 25, 4.0, total)
+    with_io = io_rows(25, 1.5 * 1024 ** 2, 0) + base
+    # 줄마다 시작 칸을 손으로 적어 둠: 위아래면 8 간격, 나란히면 첫 줄 폭 + ROW_GAP 옆. 디스크·네트워크 칸은
+    # 왼쪽이고 그 폭은 네트워크 줄(아이콘 9 + NET 13 + 화살표·속도 19 둘 + 3 = 63)이라 CPU·MEM 칸은 2 + 63 + 5
+    for rows, stack, origins in ((base, 2, [(2, 2), (2, 10)]), (base, 1, [(2, 2), (2 + row_width(base[0]) + ROW_GAP, 2)]),
+                                 (with_io, 2, [(2, 2), (2, 10), (70, 2), (70, 10)])):
         f = Buffer(400, 48)
-        paint_pixel(f, rows, 2, across)
-        for (ox, oy), (_, label, p, _) in zip(origins, rows):
+        paint_pixel(f, rows, 2, stack)
+        for (ox, oy), (_, label, p, texts) in zip(origins, rows):
             bar = ox + 9 + text_width(label) + 2
-            lit = sum(at(f, rows, 2, across, bar + 3 * k, oy + 1) == PIX["good"][::-1] for k in range(SEGMENTS))
-            assert lit == round(p / 100 * SEGMENTS), ("줄마다 막대 자리", across, label, lit)
+            if p is None:  # 막대 없는 줄은 그 자리에 첫 글이 옴
+                dx, dy = list(text_pixels(texts[0][0]))[0]
+                assert at(f, rows, 2, stack, bar + dx, oy + 1 + dy) == PIX[texts[0][1]][::-1], ("막대 없는 줄의 글 자리", label)
+            else:
+                lit = sum(at(f, rows, 2, stack, bar + 3 * k, oy + 1) == PIX["good"][::-1] for k in range(SEGMENTS))
+                assert lit == round(p / 100 * SEGMENTS), ("줄마다 막대 자리", stack, label, lit)
             dx, dy = list(text_pixels(label))[0]
-            assert at(f, rows, 2, across, ox + 9 + dx, oy + 1 + dy) == PIX["text"][::-1], ("이름 자리", across, label)
+            assert at(f, rows, 2, stack, ox + 9 + dx, oy + 1 + dy) == PIX["text"][::-1], ("이름 자리", stack, label)
+    w, h = pixel_size(with_io)
+    assert h == 19 and w == 2 + 63 + ROW_GAP + max(map(row_width, base)) + 2, "두 칸 상자 폭"
+    assert pixel_size(base, 1)[1] == 11, "한 줄로 늘어놓으면 높이 11"
     print("자체 점검 통과")
 
 
