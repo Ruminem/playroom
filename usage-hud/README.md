@@ -9,7 +9,7 @@ Claude Code subscription limits drawn as a retro game HUD. Python standard libra
 - **Coin** — what today's sessions on this PC would have cost at API list prices. On a subscription nothing is billed; it is a ruler for which day was expensive
 - **Cat** — runs while a Claude Code session on this PC is working and curls up asleep when none is. When a turn finishes, the HUD's border flashes for three seconds, so you can look away while Claude works
 
-Each bar shows the time left until it resets, and blinks below 10%.
+Each bar shows the time left until it resets, and blinks below 10%. When the average pace since the window opened would run it dry before the reset, that spot shows a red `!` and the time left until empty instead.
 
 ## HUD
 
@@ -48,6 +48,7 @@ The HUD is Windows only, so on a Mac the same numbers sit in the menu bar instea
 ## Where the numbers come from
 
 - **Limits**: a one-token Haiku request with the OAuth token the Claude Code CLI saved in `~/.claude/.credentials.json` (on macOS, in the Keychain under `Claude Code-credentials`), reading the `anthropic-ratelimit-unified-*` response headers. Sent at most once every five minutes. These headers are undocumented, so a window whose value looks wrong is left blank rather than drawn wrong
+- **Running out (`!`)**: the window is assumed to have opened one span (5 hours or 7 days) before its reset — the headers only give the reset time. Used so far ÷ time since then is the pace, and if that pace reaches 100% before the reset, the HUD shows when. It waits until the window has been open 15 minutes (5h) or 6 hours (7d), because the first few minutes of a window make wild guesses. An average follows bursts late: a heavy hour after a quiet morning shows up only gradually
 - **LOGIN**: the token has expired and could not be refreshed. The token lasts eight hours and the desktop app keeps its own login without refreshing it, so on a 401 [usage.py](usage.py) — behind both the HUD and the Mac menu bar — runs the CLI once in the background (a one-word Haiku `claude -p` with hooks off and no session saved, about 10 seconds) and asks again. It tries this at most once every 30 minutes, kept in a stamp file in the temp folder because the menu bar starts a fresh `usage.py` each time. Besides the PATH it looks in `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin`, since start-at-login on a Mac runs with a bare PATH. If that fails (logged out, `claude` not found), opening `claude` in a terminal once fixes it
 - **Coin**: `usage` of every assistant line in `~/.claude/projects/**/*.jsonl`, counted once per request and priced per model. Sessions run in the cloud are not on this PC and are not counted
 - **Cat**: every two seconds the HUD reads the end of each session record in `~/.claude/projects/*/*.jsonl` changed in the last ten minutes. A prompt, a tool result or a tool call last means working; Claude's final reply last means the turn is done and the border flashes. A turn you stopped with Esc, or a local command like `/model`, does not flash. Subagent records are skipped. Two gaps: while Claude waits for you to allow a tool the record looks the same as a tool running, so the cat keeps running; and a tool that runs for more than ten minutes without a new line looks asleep — that one does not flash either
@@ -74,7 +75,7 @@ Claude Code 구독 한도를 레트로 게임 HUD 로 그림. 파이썬 표준 �
 - **동전** — 이 PC 에서 오늘 돈 세션을 API 정가로 친 값. 구독이면 실제로 나가는 돈은 없고, 어느 날이 비쌌는지 재는 자임
 - **고양이** — 이 PC 의 Claude Code 세션이 일하는 동안 달리고, 일하는 세션이 없으면 웅크려 잠. 한 차례가 끝나면 HUD 테두리가 3초 깜빡여서, Claude 가 일하는 동안 딴 데를 보고 있어도 됨
 
-막대마다 재설정까지 남은 시간이 붙고, 10% 아래로 내려가면 깜빡임.
+막대마다 재설정까지 남은 시간이 붙고, 10% 아래로 내려가면 깜빡임. 창이 열린 뒤의 평균 속도로 가면 재설정 전에 바닥나는 때는 그 자리에 빨간 `!` 와 바닥까지 남은 시간이 대신 뜸.
 
 ### HUD
 
@@ -113,6 +114,7 @@ HUD 는 윈도우 전용이라 맥에서는 같은 값을 메뉴 막대에 띄�
 ### 값이 오는 곳
 
 - **한도**: Claude Code CLI 가 `~/.claude/.credentials.json`(맥은 Keychain 의 `Claude Code-credentials`)에 둔 OAuth 토큰으로 Haiku 1토큰 요청을 보내 응답 헤더 `anthropic-ratelimit-unified-*` 에서 읽음. 5분에 한 번만 보냄. 문서에 없는 헤더라 값이 이상한 창은 틀리게 그리지 않고 비워 둠
+- **바닥 예측(`!`)**: 헤더는 재설정 시각만 주므로 창이 재설정보다 한 창 길이(5시간·7일) 앞서 열렸다고 봄. 지금까지 쓴 양 ÷ 그때부터 지난 시간이 속도이고, 그 속도로 재설정 전에 100% 에 닿으면 그때를 띄움. 창이 열리고 15분(5시간 창)·6시간(7일 창)은 기다림 — 처음 몇 분으로는 추정이 크게 튐. 평균이라 몰아 쓰는 것은 늦게 따라감: 한가한 오전 뒤 한 시간 몰아 쓰면 천천히 드러남
 - **LOGIN**: 토큰이 만료됐고 새로 고치지도 못한 것. 토큰은 8시간짜리이고 데스크톱 앱은 로그인을 따로 들고 그 자리를 안 고침. 그래서 401 이 오면 HUD 와 맥 메뉴 막대가 같이 쓰는 [usage.py](usage.py) 가 CLI 를 백그라운드로 한 번 불러(훅을 끄고 세션 기록 없이 Haiku 로 한 낱말 `claude -p`, 10초쯤) 고치게 한 뒤 다시 받음. 30분에 한 번만 해 보고, 그 시각은 임시 폴더의 표식 파일에 남김 — 메뉴 막대는 `usage.py` 를 매번 새로 띄우기 때문임. 맥의 로그인 시 실행은 PATH 가 비어 있다시피 해서 PATH 말고도 `~/.local/bin`·`/opt/homebrew/bin`·`/usr/local/bin` 에서 찾음. 그래도 안 되면(로그아웃됐거나 `claude` 를 못 찾음) 터미널에서 `claude` 를 한 번 열면 풀림
 - **동전**: `~/.claude/projects/**/*.jsonl` 의 assistant 줄 `usage` 를 요청마다 한 번씩 세어 모델별 단가를 곱함. 클라우드에서 돈 세션은 이 PC 에 없어 안 셈
 - **고양이**: HUD 가 2초마다 `~/.claude/projects/*/*.jsonl` 중 최근 10분 안에 바뀐 세션 기록의 끝부분을 읽음. 마지막 줄이 프롬프트·도구 결과·도구 호출이면 일하는 중이고, Claude 의 마지막 답이면 그 차례가 끝난 것이라 테두리가 깜빡임. Esc 로 끊은 차례나 `/model` 같은 로컬 명령은 안 깜빡임. 서브에이전트 기록은 안 봄. 빈틈 둘 — Claude 가 도구 허락을 기다리는 동안은 기록이 도구가 도는 것과 같아 고양이가 계속 달림. 새 줄 없이 10분 넘게 도는 도구는 잠든 것으로 보이고, 이때도 안 깜빡임

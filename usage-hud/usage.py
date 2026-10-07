@@ -64,6 +64,8 @@ PRICES = {
 
 # (이름, 헤더 앞머리, 창 길이 초)
 WINDOWS = (("5h", "5h", 5 * 3600), ("7d", "7d", 7 * 86400))
+# 창이 열리고 이만큼 지나기 전에는 바닥을 예측하지 않음 — 처음 몇 분의 속도로 그으면 튐
+PREDICT_AFTER = {"5h": 15 * 60, "7d": 6 * 3600}
 
 
 # ── 한도 ────────────────────────────────────────────────────────────────
@@ -162,6 +164,20 @@ def limits():
     if _limits is None or time.time() - _limits["at"] >= LIMIT_EVERY:
         _limits = fetch_limits()
     return _limits
+
+
+def empty_at(name, used, reset, at):
+    """창이 열린 뒤 평균 속도가 그대로 가면 바닥나는 시각. 재설정 전에 안 바닥나면 None.
+
+    창 시작은 재설정 − 창 길이로 본다(헤더 뜻이 문서에 없어 추정). 평균이라 몰아 쓰기 시작하면
+    늦게 따라온다 — 최근 기울기로 올리려면 5분마다 받는 값을 쌓아야 한다.
+    """
+    span = dict((n, sp) for n, _, sp in WINDOWS)[name]
+    elapsed = span - (reset - at)
+    if not 0 < used < 1 or elapsed < PREDICT_AFTER[name]:
+        return None
+    t = at + (1 - used) * elapsed / used
+    return t if t < reset else None
 
 
 # ── 정가 ────────────────────────────────────────────────────────────────
@@ -381,7 +397,12 @@ def snapshot(days=7):
     bars = {}
     for name, _, _ in WINDOWS:
         w = lim[name]
-        bars[name] = None if w is None else {"left": 1 - w[0], "reset": w[1], "in": left(w[1] - now)}
+        if w is None:
+            bars[name] = None
+            continue
+        empty = empty_at(name, w[0], w[1], lim["at"])  # 쓴 비율은 받은 때의 값
+        bars[name] = {"left": 1 - w[0], "reset": w[1], "in": left(w[1] - now), "empty_at": empty,
+                      "empty": None if empty is None else left(empty - now)}
     return {"bars": bars, "expired": lim["expired"],
             "today": by_day[date.today()],
             "days": [[d.isoformat(), round(v, 2)] for d, v in sorted(by_day.items())],
@@ -452,8 +473,8 @@ def check():
     for lines, want in cases:
         assert turn_state(lines) == want, (lines, turn_state(lines))
 
-    global PROJECTS, TAIL_START
-    real_dirs = PROJECTS, TAIL_START
+    global PROJECTS, TAIL_START, _limits
+    real_dirs, real_limits = (PROJECTS, TAIL_START), _limits
     tmp = Path(tempfile.mkdtemp())
     try:
         PROJECTS, TAIL_START = tmp, 256
@@ -471,9 +492,24 @@ def check():
         with (tmp / "p/a.jsonl").open("a", encoding="utf-8") as f:
             f.write(ai("end_turn") + "\n")
         assert activity(now)[tmp / "p/a.jsonl"] == "done", "바뀐 파일은 다시 읽음"
+        # snapshot 이 쓴 비율(남은 비율이 아니라)로 예측을 붙임. 7일 창은 1일에 10% 라 재설정이 먼저
+        _limits = {"5h": (0.5, now + 3 * 3600), "7d": (0.1, now + 6 * 86400), "expired": False, "at": now}
+        bars = snapshot(days=1)["bars"]
+        assert bars["5h"]["empty"] in ("2H0M", "1H59M") and bars["7d"]["empty"] is None, bars
     finally:
-        PROJECTS, TAIL_START = real_dirs
+        PROJECTS, TAIL_START, _limits = (*real_dirs, real_limits)
         shutil.rmtree(tmp, ignore_errors=True)
+
+    # 바닥 예측: 5시간 창이 2시간 지나 50% 씀 → 2시간 뒤 바닥(재설정은 3시간 뒤)
+    h5 = 5 * 3600
+    assert abs(empty_at("5h", 0.5, now + 3 * 3600, now) - (now + 2 * 3600)) < 1e-6
+    assert empty_at("5h", 0.2, now + 3 * 3600, now) is None, "6시간 뒤라 재설정이 먼저"
+    assert empty_at("5h", 0.2, now + h5 - 10 * 60, now) is None, "열린 지 10분이면 아직"
+    assert empty_at("5h", 0.2, now + h5 - 20 * 60, now) is not None
+    assert empty_at("5h", 0, now + 3600, now) is None and empty_at("5h", 1, now + 3600, now) is None
+    # 7일 창: 3일 지나 60% → 2일 뒤 바닥(재설정은 4일 뒤)
+    assert abs(empty_at("7d", 0.6, now + 4 * 86400, now) - (now + 2 * 86400)) < 1e-6
+    assert empty_at("7d", 0.6, now + 7 * 86400 - 5 * 3600, now) is None, "열린 지 5시간이면 아직"
 
     assert left(2 * 86400 + 6 * 3600 + 59) == "2D6H"
     assert left(3 * 3600 + 20 * 60) == "3H20M"
