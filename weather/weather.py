@@ -362,7 +362,7 @@ SCHOOL_ART = (("....kkkk..",
                "kc.ktttttk",
                "....kkkk.."),
               ("", "..k", ".c", "..k", ""))
-SCHOOL_N, SCHOOL_BACK, SCHOOL_SIDE, SCHOOL_PULL = (6, 9), (10, 90), 26, (1.0, 2.6)  # 마릿수 · 뒤로 px · 위아래 px · 따라가는 빠르기 /초
+SCHOOL_N, SCHOOL_BACK, SCHOOL_SIDE, SCHOOL_PULL = (12, 16), (10, 120), 32, (1.0, 2.6)  # 마릿수 · 뒤로 px · 위아래 px · 따라가는 빠르기 /초
 # 바닥 장식: 해초 사이 틈마다 DECOR_SHARE 확률로 하나. 산호 둘 · 조개 · 불가사리 · 돌
 DECOR_COLORS = {"k": (38, 43, 68), "p": (255, 122, 160), "q": (196, 64, 112), "v": (170, 122, 222), "u": (112, 72, 172),
                 "l": (252, 222, 198), "d": (226, 160, 128), "o": (255, 150, 64), "g": (140, 150, 170), "s": (186, 196, 212),
@@ -3556,7 +3556,7 @@ def check():
     a.surface.fill = lambda src: a.surface.pixels.__setitem__(slice(None), src)
     a.reset()
     assert (len(a.fish), len(a.flakes), len(a.rays_at)) == (FISH_N, 30, RAY_COUNT), "어항 막대 50% 면 예전 수 그대로"
-    a.flakes, a.crab = [], []  # 해초 뿌리 밑을 거품·게가 가리지 않게
+    a.flakes, a.crab, a.school = [], [], None  # 해초 뿌리 밑·물빛 재는 점을 거품·게·떼가 가리지 않게
     a.frame(1 / 60, 0.0)
     px, st = a.surface.pixels, a.stride
     at = lambda x, y: bytes(px[y * st + x * 4:y * st + x * 4 + 4])
@@ -3712,7 +3712,8 @@ def check():
                 facing[j] += m[6] == (lead[2] > 0)
                 behind[j] += (m[0] - lead[0]) * lead[2] < 0
                 far = max(far, abs(m[1] - lead[1] - m[3]))
-    assert min(facing) > 50 * 60 * 0.7 and min(behind) > 50 * 60 * 0.6 and far < 20, \
+    # 폭 400 이라 10초쯤마다 돌고 그때마다 맨 뒤가 반대편까지 오는 동안 옛 쪽을 봄 — 보는 쪽을 뒤집으면 30% 아래
+    assert min(facing) > 50 * 60 * 0.6 and min(behind) > 50 * 60 * 0.6 and far < 20, \
         ("떼는 우두머리 뒤를 따름", facing, behind, far)
     assert max(m[3] for m in members) - min(m[3] for m in members) > 10, "떼는 위아래로 퍼짐"
     # 바닥 장식 · 보물상자 · 게 · 해파리 · 새 물고기
