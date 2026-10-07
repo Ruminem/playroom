@@ -139,15 +139,16 @@ FW_COLORS = (((255, 222, 212), (255, 62, 52)),    # (알갱이, 번짐) 빨강
              ((246, 222, 255), (192, 82, 255)),   # 보라
              ((255, 255, 255), (204, 212, 232)))  # 흰
 FW_WHITE = 5
-# 터지는 모양: 이름 → (뽑힐 무게, 끌림 1/초, 중력 px/초², 꼬리 점 수). 꼬리는 FW_TRAIL_DT 초마다 지나온 자리를 남김
-FW_KINDS = {"peony": (3, 1.7, 95, 0),         # 모란 — 색 점이 공 모양으로
-            "chrysanthemum": (3, 1.7, 95, 5),  # 국화 — 모란에 꼬리
-            "willow": (2, 1.6, 150, 14),       # 버들 — 금빛 꼬리가 길게 처지며 오래 머묾
-            "palm": (2, 1.2, 95, 12),          # 야자 — 굵은 팔 몇 개
-            "ring": (2, 1.7, 95, 0),           # 고리 — 기울어진 원
-            "crossette": (2, 1.5, 95, 4),      # 갈라지기 — 별이 날다 넷으로 쪼개짐
-            "strobe": (2, 1.5, 50, 0),         # 반짝이 — 흰 점이 깜빡이며 오래
-            "heart": (1, 1.7, 70, 0)}          # 하트
+# 터지는 모양: 이름 → (뽑힐 무게, 끌림 1/초, 중력 px/초², 꼬리 점 수 범위 — 불꽃마다 뽑음).
+# 꼬리는 FW_TRAIL_DT 초마다 지나온 자리를 남김
+FW_KINDS = {"peony": (3, 1.7, 95, (0, 0)),         # 모란 — 색 점이 공 모양으로
+            "chrysanthemum": (3, 1.7, 95, (5, 5)),  # 국화 — 모란에 꼬리
+            "willow": (2, 1.6, 150, (8, 20)),       # 버들 — 금빛 꼬리가 제각각 길게 처지며 오래 머묾
+            "palm": (2, 1.2, 95, (12, 12)),         # 야자 — 굵은 팔 몇 개
+            "ring": (2, 1.7, 95, (0, 0)),           # 고리 — 기울어진 원
+            "crossette": (2, 1.5, 95, (4, 4)),      # 갈라지기 — 별이 날다 넷으로 쪼개짐
+            "strobe": (2, 1.5, 50, (0, 0)),         # 반짝이 — 흰 점이 깜빡이며 오래
+            "heart": (1, 1.7, 70, (0, 0))}          # 하트
 FW_TRAIL_DT = 0.035
 FW_SPLIT = (0.35, 0.5)  # 갈라지기 별이 쪼개지는 나이(초)
 FW_SHIFT = 0.25         # 모란·국화가 중간에 색이 바뀔 확률
@@ -1865,9 +1866,11 @@ class Weather:
             vel = ball(random.randint(*FW_SPARKS), 0.78, 1.0)
         for i, (vx, vy) in enumerate(vel):
             c = b if mixed and i % 2 else a
-            # [x, y, vx, vy, 나이, 수명, 색, 모양, 반 넘어 바뀌는 색, 꼬리, 꼬리 남긴 나이, 덤(갈라지기: 쪼개질 나이 · 반짝이: 위상)]
+            # [x, y, vx, vy, 나이, 수명, 색, 모양, 반 넘어 바뀌는 색, 꼬리, 꼬리 남긴 나이, 덤(갈라지기: 쪼개질 나이 · 반짝이: 위상),
+            #  꼬리 점 수]
             extra = random.uniform(*FW_SPLIT) if kind == "crossette" else random.random() if kind == "strobe" else 0
-            self.sparks.append([x, y, vx, vy, 0.0, random.uniform(*life), c, kind, b if shift else c, [], 0.0, extra])
+            self.sparks.append([x, y, vx, vy, 0.0, random.uniform(*life), c, kind, b if shift else c, [], 0.0, extra,
+                                random.randint(*FW_KINDS[kind][3])])
 
     def fireworks(self, dt, now):
         px, stride, w, h, (sprites, tails) = self.surface.pixels, self.stride, self.w, self.h, self.fw
@@ -1888,7 +1891,7 @@ class Weather:
                 if 0 <= xi <= w - n and 0 <= yi <= h - n:
                     stamp(px, stride, xi, yi, gold[max(0, FW_LEVELS - 1 - k)][1])
         self.rockets = live
-        moves = {k: (math.exp(-v[1] * dt), v[2] * dt, v[3]) for k, v in FW_KINDS.items()}
+        moves = {k: (math.exp(-v[1] * dt), v[2] * dt) for k, v in FW_KINDS.items()}
         live, born, heads = [], [], []
         for s in self.sparks:
             s[4] += dt
@@ -1897,10 +1900,10 @@ class Weather:
             if s[7] == "crossette" and s[11] and s[4] >= s[11]:  # 넷으로 쪼개짐 — 새끼는 더 안 쪼개짐
                 sp, g = 0.6 * math.hypot(s[2], s[3]) + 60, math.atan2(s[3], s[2]) + math.pi / 4
                 born += [[s[0], s[1], math.cos(g + q * math.pi / 2) * sp, math.sin(g + q * math.pi / 2) * sp, 0.0,
-                          random.uniform(0.6, 0.9), s[6], "crossette", s[8], [], 0.0, 0] for q in range(4)]
+                          random.uniform(0.6, 0.9), s[6], "crossette", s[8], [], 0.0, 0, s[12]] for q in range(4)]
                 continue
             live.append(s)
-            drag, fall, keep = moves[s[7]]
+            (drag, fall), keep = moves[s[7]], s[12]
             s[2] *= drag
             s[3] = s[3] * drag + fall
             s[0] += s[2] * dt
@@ -3060,14 +3063,20 @@ def check():
     assert len(ff.sparks) == 4 * stars and all(not s[11] for s in ff.sparks), "갈라지기 별은 넷으로 쪼개지고 한 번만"
 
     def lit(kind, secs, c=0, c2=0, extra=0):  # 불꽃 하나를 secs 동안 띄움 — 프레임마다 (켜진 바이트 수, 버퍼)
-        ff.sparks = [[60.0, 60.0, 150.0, 0.0, 0.0, 3.0, c, kind, c2, [], 0.0, extra]]
+        ff.sparks = [[60.0, 60.0, 150.0, 0.0, 0.0, 3.0, c, kind, c2, [], 0.0, extra, FW_KINDS[kind][3][1]]]
         for i in range(int(secs * 120)):
             ff.surface.pixels[:] = bytes(len(ff.surface.pixels))
             Weather.fireworks(ff, 1 / 120, 40 + i / 120)
             yield sum(1 for v in ff.surface.pixels[3::4] if v), ff.surface.pixels
     *_, (plain, _) = lit("peony", 0.3)
     *_, (tailed, _) = lit("chrysanthemum", 0.3)
-    assert tailed > plain + 30 and len(ff.sparks[0][9]) == FW_KINDS["chrysanthemum"][3], ("꼬리를 끎", plain, tailed)
+    assert tailed > plain + 30 and len(ff.sparks[0][9]) == FW_KINDS["chrysanthemum"][3][1], ("꼬리를 끎", plain, tailed)
+    ff.sparks = []
+    ff.burst(100, 100, "willow")
+    for i in range(120):  # 1초 — 가장 긴 꼬리(20점 × 0.035초)도 다 참
+        Weather.fireworks(ff, 1 / 120, 50 + i / 120)
+    lens = {len(s[9]) for s in ff.sparks}
+    assert len(lens) > 5 and max(lens) <= FW_KINDS["willow"][3][1], ("버들 꼬리는 가닥마다 길이가 다름", lens)
     on = sum(1 for n, _ in lit("strobe", 0.6, FW_WHITE, FW_WHITE, 0.3) if n)
     assert 0.3 * 72 < on < 0.7 * 72, ("반짝이는 깜빡임", on)
     *_, (_, buf) = lit("peony", 1.8, 0, 3)  # 빨강 → 파랑, 수명 3초의 60%
