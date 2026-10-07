@@ -277,19 +277,39 @@ BIRD_DIVE_BODY = ("......kkkk...",
                   "kbbbbbkkkkkk.",
                   ".kbbbbbbccck.",
                   "..kkkkkkkkk..")
-DIVE_ART = {"cat": dive(33, 10, [(("kk.", "kok", ".kok"), 4, 0), (CAT_DIVE_BODY, 6, 3), (TANK, 9, 1), (CAT_DIVE_HEAD, 21, 0)],
-                        [kick("o", 0, 4)[0], (("kok", "kk."), 18, 8)], [kick("o", 0, 4)[1], ((".kok", ".kkk"), 17, 8)]),
-            "dog": dive(32, 10, [((".k..", "kdk.", "kdk.", ".kdk"), 3, 0), (DOG_DIVE_BODY, 6, 3), (TANK, 8, 1),
-                                 (DOG_DIVE_HEAD, 20, 1)],
-                        [kick("d", 0, 4)[0], (("kdk", "kk."), 17, 8)], [kick("d", 0, 4)[1], ((".kdk", ".kkk"), 16, 8)]),
-            "rabbit": dive(28, 11, [(("kk.", "kwk", ".kk"), 4, 4), (RAB_DIVE_BODY, 6, 4), (TANK, 7, 2), (RAB_DIVE_HEAD, 17, 1)],
-                           [kick("h", 0, 5)[0], (("khk", "kk."), 15, 9)], [kick("h", 0, 5)[1], ((".khk", ".kkk"), 14, 9)]),
-            "penguin": dive(21, 9, [(TANK, 7, 1), (PENG_DIVE_BODY, 6, 3)],
-                            [(("fff...", "ffff..", ".fffko"), 0, 3)], [((".fffko", "ffff..", "fff..."), 0, 5)]),
-            "bird": dive(14, 8, [(BIRD_DIVE_BODY, 1, 1), (("kkkk", "kyyk", "kkkk"), 2, 0)],
-                         [(("kbbk", ".kk."), 4, 3)], [((".kbk", "..kbk", "...k"), 3, 5)], top=True)}
+BIRD_TANK = ("kkkk", "kyyk", "kkkk")
+# 동물마다 (폭, 키, 몸 조각들, 발차기 두 장, 다리를 위에 그리나). 공기통은 조각 안에 — 스노클은 그걸 빼고 관을 닮
+GEAR = {"cat": (33, 10, [(("kk.", "kok", ".kok"), 4, 0), (CAT_DIVE_BODY, 6, 3), (TANK, 9, 1), (CAT_DIVE_HEAD, 21, 0)],
+                [kick("o", 0, 4)[0], (("kok", "kk."), 18, 8)], [kick("o", 0, 4)[1], ((".kok", ".kkk"), 17, 8)], False),
+        "dog": (32, 10, [((".k..", "kdk.", "kdk.", ".kdk"), 3, 0), (DOG_DIVE_BODY, 6, 3), (TANK, 8, 1), (DOG_DIVE_HEAD, 20, 1)],
+                [kick("d", 0, 4)[0], (("kdk", "kk."), 17, 8)], [kick("d", 0, 4)[1], ((".kdk", ".kkk"), 16, 8)], False),
+        "rabbit": (28, 11, [(("kk.", "kwk", ".kk"), 4, 4), (RAB_DIVE_BODY, 6, 4), (TANK, 7, 2), (RAB_DIVE_HEAD, 17, 1)],
+                   [kick("h", 0, 5)[0], (("khk", "kk."), 15, 9)], [kick("h", 0, 5)[1], ((".khk", ".kkk"), 14, 9)], False),
+        "penguin": (21, 9, [(TANK, 7, 1), (PENG_DIVE_BODY, 6, 3)],
+                    [(("fff...", "ffff..", ".fffko"), 0, 3)], [((".fffko", "ffff..", "fff..."), 0, 5)], False),
+        "bird": (14, 8, [(BIRD_DIVE_BODY, 1, 1), (BIRD_TANK, 2, 0)],
+                 [(("kbbk", ".kk."), 4, 3)], [((".kbk", "..kbk", "...k"), 3, 5)], True)}
+DIVE_ART = {k: dive(*g) for k, g in GEAR.items()}
 DIVE_MOUTH = {"cat": (30, 6), "dog": (30, 6), "rabbit": (26, 7), "penguin": (20, 5), "bird": (13, 3)}  # 호흡기·부리 끝 칸
 DIVE_SIZE = {k: (len(v[0][0]) * SCALE, len(v[0]) * SCALE) for k, v in DIVE_ART.items()}  # 화면 px
+SNORK_UP = 3  # 스노클 관이 그림 맨 위보다 더 솟는 칸
+
+
+def snorkel(name):
+    """수도꼭지에 반 넘게 찬 물: 공기통을 벗고 입에서 머리 위로 솟는 J 자 스노클을 문 그림 두 장. 관은 입 앞 한 칸
+    (강아지 코끝 바로 앞)에서 곧게 서고 끝이 빨감. 판은 관만큼 위로 늘고 모자라면 옆으로도."""
+    w, h, parts, legs_a, legs_b, top = GEAR[name]
+    mx, my = DIVE_MOUTH[name]
+    down = lambda ps: [(r, x, y + SNORK_UP) for r, x, y in ps]
+    tube = ("r", "r") + ("y",) * (my + SNORK_UP - 1)
+    body = down([p for p in parts if p[0] not in (TANK, BIRD_TANK)]) + [(tube, mx + 1, 0)]
+    return dive(max(w, mx + 2), h + SNORK_UP, body, down(legs_a), down(legs_b), top)
+
+
+SNORK_ART = {k: snorkel(k) for k in GEAR}
+SNORK_MOUTH = {k: (mx + 1, 0) for k, (mx, my) in DIVE_MOUTH.items()}  # 숨이 나오는 관 끝 칸
+SNORK_SIZE = {k: (len(v[0][0]) * SCALE, len(v[0]) * SCALE) for k, v in SNORK_ART.items()}
+SOAK = ((96, 178, 226), 0.45)  # 물에 잠긴 몸 색: weather 수도꼭지 물빛(AQ_TOP) 쪽으로 섞는 몫
 
 WALK, RUN = 38, 150      # px/초. 비 올 때 걷기는 RUN 의 절반
 STEP, RUN_STEP = 0.2, 0.08  # 걸음 그림 바꾸는 간격 초
@@ -302,6 +322,8 @@ FLY, FLY_ALT, FLAP = 170, 60, 0.09  # 새가 날 때 px/초, 높이 px(weather �
 # 어항 헤엄: 바닥 위로 뜨는 높이 px · 오르내림 px · 높이를 옮기는 px/초(weather 거품보다 느리게 — 제 숨을 앞지르지 않게) · 돌아서거나 높이를 바꾸는 간격 초 ·
 # 발차기 그림 바꾸는 간격 초 · 숨 내쉬는 간격 초
 SWIM_DEPTH, SWIM_BOB, SWIM_RISE, SWIM_TURN, KICK, BREATH = (40, 320), 6, 20, (4, 10), 0.3, (1.2, 2.6)
+# 수도꼭지 수면 헤엄: SWIM_V 에 곱하는 몫 · 다리 그림 바꾸는 간격 초 · 물을 한 번 차는 간격 초(weather 가 물방울·물결) · 오르내림 px
+PADDLE_V, PADDLE_STEP, STROKE, PADDLE_BOB = 0.5, 0.18, 0.36, 1.5
 LEDGE, CLIMB = 8, 400  # 발밑이 한 번에 이 px 넘게 바뀌면(작업 표시줄 틀 단) 뜀 · 작은 굴곡(눈 더미)을 따라가는 px/초
 HIDE, PEEK_UP, PEEK_HOLD = (0.3, 0.8), 0.35, 0.9  # 솟은 틀 뒤에 묻힘: 숨어 있는 초 · 머리를 내미는 초 · 두리번하는 초
 
@@ -340,6 +362,15 @@ def sprites():
           for name, rows in art.items() for right in (True, False)}
     sp.update({("%s_dive%d" % (k, i + 1), right): segments(rows, not right)
                for k, pair in DIVE_ART.items() for i, rows in enumerate(pair) for right in (True, False)})
+    # 물에 잠긴 몫을 그릴 물빛 섞은 벌 — 같은 그림이라 조각 차례가 같아 행마다 바꿔 낄 수 있음(Pet.paint)
+    tint, k = SOAK
+    soaked = {c: tuple(int(v + (t - v) * k) for v, t in zip(rgb, tint)) for c, rgb in COLORS.items()}
+    arts = [(name, rows) for art in (ART, BIRD_ART, DOG_ART, RABBIT_ART, PENG_ART) for name, rows in art.items()]
+    arts += [("%s_snork%d" % (k, i + 1), rows) for k, pair in SNORK_ART.items() for i, rows in enumerate(pair)]
+    for name, rows in arts:
+        for right in (True, False):
+            sp.setdefault((name, right), segments(rows, not right))
+            sp[(name, right, "wet")] = segments(rows, not right, soaked)
     sp[("zzz", True)] = segments(ZZZ, False)
     for mark, rows in EMOTES.items():
         sp[("emo" + mark, True)] = segments(rows, False)
@@ -384,6 +415,12 @@ class Pet:
     leap = None    # 단을 뛰는 중이면 (시작 시각, 출발 높이, 오르나)
     DIVER, SWIM_V = "cat", 50  # 어항에서 쓰는 잠수 그림(DIVE_ART), 헤엄 px/초
     dive = None      # 어항에서 헤엄치기 시작한 시각. 어항이 아니면 None — weather 가 지움
+    snork = False    # 잠수 그림 대신 스노클 그림(SNORK_ART) — 수도꼭지 물이 반 넘게 찼을 때 weather 가 켬
+    swam = None      # 수도꼭지 수면에서 개헤엄을 시작한 시각. 물에서 나오면 weather 가 지움
+    stroke = False   # 이번 프레임에 물을 참 — weather 가 물방울·물결을 냄
+    awake = False    # 발이 물에 잠겨 잠들지 않음 — weather 가 넣음
+    PRE, FLOAT = "", 0.5  # 그림 이름 앞머리 · 수면에 뜰 때 잠기는 키 몫
+    PADDLE = ("walk1", "walk2")  # 개헤엄 다리 두 장 (PRE 뒤)
     lift = 0.0       # 헤엄치며 바닥 위로 뜬 높이 px
     breathe = False  # 이번 프레임에 숨을 내쉼 — weather 가 mouth 에서 거품을 띄움
     mouth = (0, 0)   # 마지막으로 그린 호흡기 자리 (화면 px)
@@ -398,7 +435,10 @@ class Pet:
         """마지막으로 그린 그림 상자 (x, y, 폭, 높이) — 집을 수 있는 자리. 아직 안 그렸으면 None."""
         if self.at is None:
             return None
-        return (*self.at, *(DIVE_SIZE[self.DIVER] if self.dive is not None else (self.W, self.H)))
+        return (*self.at, *(self.dive_size() if self.dive is not None else (self.W, self.H)))
+
+    def dive_size(self):
+        return (SNORK_SIZE if self.snork else DIVE_SIZE)[self.DIVER]
 
     def grab(self, now, dx, dy):
         """마우스로 집힘: 하던 짓·뛰기·떨어지기를 멈추고 선 채로 들림."""
@@ -422,36 +462,73 @@ class Pet:
     peek = None      # 묻힌 뒤 첫 follow 에서 (머리를 내밀기 시작하는 시각, 묻힐 때 보던 쪽)
     PEEK = 5         # 빼꼼할 때 틀 위로 내미는 그림 줄 수 — 눈까지
 
-    def swim(self, dt, now):
+    def swim(self, dt, now, ceil=None, start=0.0):
         """어항: 사람처럼 물속에서 숨을 못 쉬니 잠수 장비를 차고 바닥에서 천천히 떠올라 헤엄침. 가끔 돌아서며
-        그때마다 새 높이로 옮겨 감. 하던 짓(state)은 그대로 둬서 어항을 벗어나면 바닥에서 이어 감."""
-        rng, room = self.rng, max(0, self.width - max(self.W, DIVE_SIZE[self.DIVER][0]))
+        그때마다 새 높이로 옮겨 감. 하던 짓(state)은 그대로 둬서 어항을 벗어나면 바닥에서 이어 감.
+        ceil(수도꼭지)을 주면 높이를 그 아래 물 전체에서 고르고 그보다 높이 안 뜸 — 물이 빠지면 같이 눌려 내려감.
+        start 는 처음 높이 — 수면에서 바로 잠수."""
+        rng, room = self.rng, max(0, self.width - max(self.W, self.dive_size()[0]))
+        lo, hi = SWIM_DEPTH if ceil is None else (SWIM_DEPTH[0], max(SWIM_DEPTH[0], ceil))
         if self.dive is None:
-            self.dive, self.depth, self.bob = now, 0.0, rng.uniform(0, math.tau)
+            self.dive, self.depth, self.bob = now, start, rng.uniform(0, math.tau)
             self.under = False  # 틀 뒤에 묻혀 있었으면 헤엄쳐 나옴
-            self.aim, self.turn_at = rng.uniform(*SWIM_DEPTH), now + rng.uniform(*SWIM_TURN)
+            self.aim, self.turn_at = rng.uniform(lo, hi), now + rng.uniform(*SWIM_TURN)
             self.breath_at = now + rng.uniform(*BREATH)
         edge = self.x <= 0 or self.x >= room  # 돌고 나서 움직임 — 늘 가는 쪽을 봄
         if edge or now >= self.turn_at:
             self.right = self.x <= 0 if edge else self.right != (rng.random() < 0.5)
-            self.aim, self.turn_at = rng.uniform(*SWIM_DEPTH), now + rng.uniform(*SWIM_TURN)
+            self.aim, self.turn_at = rng.uniform(lo, hi), now + rng.uniform(*SWIM_TURN)
         self.x = min(max(self.x + self.SWIM_V * dt * (1 if self.right else -1), 0), room)
         self.depth += max(-SWIM_RISE * dt, min(SWIM_RISE * dt, self.aim - self.depth))
         self.lift = self.depth + SWIM_BOB * math.sin(now * 2.1 + self.bob) * min(1.0, self.depth / SWIM_DEPTH[0])
+        if ceil is not None:
+            self.aim, self.depth, self.lift = min(self.aim, ceil), min(self.depth, ceil), max(0.0, min(self.lift, ceil))
         self.breathe = now >= self.breath_at
         if self.breathe:
             self.breath_at = now + rng.uniform(*BREATH)
 
-    def draw_swim(self, px, stride, height, sprites, ground, now):
-        """잠수 그림을 발차기 두 장 번갈아 찍고 호흡기 자리(mouth)를 남김."""
-        sw, sh = DIVE_SIZE[self.DIVER]
+    def draw_swim(self, px, stride, height, sprites, ground, now, wet=None):
+        """잠수(스노클) 그림을 발차기 두 장 번갈아 찍고 호흡기(관 끝) 자리(mouth)를 남김. wet 은 paint 처럼."""
+        sw, sh = self.dive_size()
         x, y = int(self.x), height - int(ground) - sh - int(self.lift)
         n = int((now - self.dive) / KICK) % 2 + 1
-        stamp(px, stride, x, y, sprites[("%s_dive%d" % (self.DIVER, n), self.right)], self.width, height)
-        mx, my = DIVE_MOUTH[self.DIVER]
+        self.paint(px, stride, height, sprites, "%s_%s%d" % (self.DIVER, "snork" if self.snork else "dive", n), x, y,
+                   now, wet=wet)
+        mx, my = (SNORK_MOUTH if self.snork else DIVE_MOUTH)[self.DIVER]
         mx = mx if self.right else sw // SCALE - 1 - mx
         self.mouth = (x + mx * SCALE + SCALE // 2, y + my * SCALE + SCALE // 2)
         self.draw_mood(px, stride, height, sprites, x, y, now)
+
+    def paint(self, px, stride, height, sprites, name, x, y, now, floor=None, wet=None):
+        """그림 name 을 (x, y) 에 찍음. 수면에 떠 있으면 name 대신 개헤엄 그림. wet(화면 y)을 주면 그 행부터
+        아래는 물빛 섞은 벌로 — 수면 밑에 잠긴 몸."""
+        if self.swam is not None:
+            a, b = self.PADDLE
+            name = self.PRE + (a if int((now - self.swam) / PADDLE_STEP) % 2 == 0 else b)
+        segs = sprites[(name, self.right)]
+        if wet is not None and wet < y + len(segs) and segs:
+            under = sprites[(name, self.right, "wet")]
+            segs = [b if y + a[0] >= wet else a for a, b in zip(segs, under)]
+        stamp(px, stride, x, y, segs, self.width, height, floor)
+
+    def paddle(self, dt, now):
+        """수도꼭지 수면에 떠서 개헤엄: 다리를 저으며 천천히 오가고 끝에 닿거나 가끔 돌아섬. 물이 닿는 순간 놀라
+        '!' 하고 깸 — 이러는 동안 update 를 안 불러 잠들지 않음. 하던 짓은 서기로 둬서 물이 빠지면 거기서 이어 감."""
+        rng, room = self.rng, max(0, self.width - self.W)
+        if self.swam is None:
+            self.swam, self.turn_at, self.stroke_at, self.bob = now, now + rng.uniform(*SWIM_TURN), now, rng.uniform(0, 7)
+            self.go("stand", now)
+            self.zz, self.leap, self.under, self.peek, self.pounce = [], None, False, None, False
+            self.emote("!", now)
+        edge = self.x <= 0 or self.x >= room
+        if edge or now >= self.turn_at:
+            self.right = self.x <= 0 if edge else self.right != (rng.random() < 0.5)
+            self.turn_at = now + rng.uniform(*SWIM_TURN)
+        self.x = min(max(self.x + self.SWIM_V * PADDLE_V * dt * (1 if self.right else -1), 0), room)
+        self.hop = self.alt = PADDLE_BOB * math.sin(now * 3.1 + self.bob)  # Cat 무리는 hop, 새·토끼는 alt 로 그림
+        self.stroke = now >= self.stroke_at
+        if self.stroke:
+            self.stroke_at = now + STROKE
 
     def follow(self, want, dt, now):
         """발밑 높이 want(발 밑 열들의 바닥+눈 중 가장 높은 것)를 따라가 그릴 높이를 돌려줌. 틀 단처럼 크게 바뀌면
@@ -571,7 +648,7 @@ class Cat(Pet):
                 self.go("sit" if r < 0.65 else "stand", now)
                 if self.state == "sit" and self.kind == "snow" and r < 0.45:  # 앉아서 눈 구경
                     self.emote("♥", now, 2.5)
-        elif self.state == "sit" and r < 0.4 and not rainy:
+        elif self.state == "sit" and r < 0.4 and not rainy and not self.awake:
             self.go("sleep", now)
         else:
             if self.state != "run" and r < 0.5:
@@ -624,11 +701,12 @@ class Cat(Pet):
         a, b = self.FOOT if self.right else (self.W - self.FOOT[1], self.W - self.FOOT[0])
         return int(self.x) + a, int(self.x) + b
 
-    def draw(self, px, stride, height, sprites, ground, now, rainy, floor=None):
-        """ground: 발 밑 열들 중 가장 높이 쌓인 높이 px. 그 위에 섬. floor: 틀 뒤에 묻혔을 때 그 아래를 가림."""
+    def draw(self, px, stride, height, sprites, ground, now, rainy, floor=None, wet=None):
+        """ground: 발 밑 열들 중 가장 높이 쌓인 높이 px. 그 위에 섬. floor: 틀 뒤에 묻혔을 때 그 아래를 가림.
+        wet: 수면 화면 y — 그 아래 몸은 물빛 섞은 벌로."""
         x = int(self.x)
         y = height - int(ground) - self.H - int(self.hop)
-        stamp(px, stride, x, y, sprites[(self.pose(now, rainy), self.right)], self.width, height, floor)
+        self.paint(px, stride, height, sprites, self.pose(now, rainy), x, y, now, floor, wet)
         for t in self.zz:  # 머리 위에서 비스듬히 떠오름
             k = (now - t) / ZZ_RISE
             hx = x + (self.W - 5 * SCALE if self.right else 2 * SCALE)
@@ -645,6 +723,7 @@ class Bird(Pet):
     W, H = BIRD_W, BIRD_H
     LEAP, NO_LEAP = {"up": (0.3, 8), "down": (0.4, 4)}, ("fly",)  # 날갯짓하며 사뿐히. 나는 중엔 그냥 높이만 따라감
     DIVER, SWIM_V, PEEK = "bird", 45, 4
+    PADDLE, FLOAT = ("bird_stand", "bird_air"), 0.3  # 오리처럼 얕게 떠서 물속 발만 저음
     FALL = (600, 180)  # 놓이면 날갯짓하며 천천히 내려앉음
 
     def __init__(self, width, rng=random):
@@ -732,9 +811,9 @@ class Bird(Pet):
         a, b = BIRD_FOOT if self.right else (BIRD_W - BIRD_FOOT[1], BIRD_W - BIRD_FOOT[0])
         return int(self.x) + a, int(self.x) + b
 
-    def draw(self, px, stride, height, sprites, ground, now, rainy, floor=None):
+    def draw(self, px, stride, height, sprites, ground, now, rainy, floor=None, wet=None):
         y = height - int(ground) - BIRD_H - int(self.alt)
-        stamp(px, stride, int(self.x), y, sprites[(self.pose(now), self.right)], self.width, height, floor)
+        self.paint(px, stride, height, sprites, self.pose(now), int(self.x), y, now, floor, wet)
         self.draw_mood(px, stride, height, sprites, int(self.x), y, now)
 
 
@@ -765,6 +844,7 @@ class Penguin(Cat):
     # 오를 땐 낮게 뒤뚱 뛰고, 내려올 땐 배를 깔고 미끄러져 내려옴(위로 안 뜸)
     LEAP, LEAP_POSE = {"up": (0.5, 4), "down": (0.6, 0)}, ("slide", "stand")
     DIVER, SWIM_V, PEEK = "penguin", 95, 4  # 부리까지
+    FLOAT = 0.4
 
     def next_state(self, now, rainy):
         r = self.rng.random()
@@ -785,6 +865,7 @@ class Rabbit(Pet):
     JUMP = {"hop": (0.42, 34, 20, (2, 6)), "run": (0.3, 60, 28, (4, 6))}  # 한 번에 초, 앞으로 px, 높이 px, 몇 번
     LEAP = {"up": (0.34, 26), "down": (0.34, 18)}  # 제일 높이 깡충. 늘 뛰는 깡충 위에 얹힘
     DIVER, SWIM_V, PEEK = "rabbit", 55, 6  # 긴 귀가 먼저 솟음
+    PADDLE = ("rab_stand", "rab_jump")
 
     def __init__(self, width, rng=random):
         self.rng, self.width = rng, width
@@ -844,9 +925,9 @@ class Rabbit(Pet):
         a, b = self.FOOT if self.right else (self.W - self.FOOT[1], self.W - self.FOOT[0])
         return int(self.x) + a, int(self.x) + b
 
-    def draw(self, px, stride, height, sprites, ground, now, rainy, floor=None):
+    def draw(self, px, stride, height, sprites, ground, now, rainy, floor=None, wet=None):
         y = height - int(ground) - self.H - int(self.alt)
-        stamp(px, stride, int(self.x), y, sprites[(self.pose(now), self.right)], self.width, height, floor)
+        self.paint(px, stride, height, sprites, self.pose(now), int(self.x), y, now, floor, wet)
         self.draw_mood(px, stride, height, sprites, int(self.x), y, now)
 
 

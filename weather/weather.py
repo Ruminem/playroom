@@ -496,8 +496,17 @@ TAP_ALPHA = (0.14, 0.26)  # 물빛 (맨 위, 맨 아래) 불투명도 — 어항
 TAP_LIP = ((214, 238, 255), 170, 105)  # 수면 윗변 두 줄 색 · 알파
 TAP_G, TAP_V0, TAP_JET = 1800, 250, 8  # 물줄기 중력 px/초² · 꼭지에서 나오는 빠르기 px/초 · 꼭지 끝 굵기 px (떨어질수록 가늘어짐)
 TAP_STREAM = ((206, 234, 255), (150, 198, 240), 210, 160)  # 물줄기 가운데 · 가장자리 색, 밝은 · 어두운 마디 알파
-TAP_STRIPE, TAP_FLOW = 14, 900  # 물줄기 무늬 한 마디 px · 흘러내리는 px/초
+# 물줄기는 꼭지를 나온 시각으로 무늬를 매겨 물과 같이 떨어짐 — 떨어지며 빨라지는 만큼 마디가 길게 늘어남.
+# 무늬 · 불룩한 마디 · 끊긴 방울이 꼭지를 나오는 /초
+TAP_PULSE, TAP_BULGE, TAP_DRIP = 9, 2.3, 13
+TAP_BREAK = (420, 1100, 0.55)  # 이만큼 떨어지면 끊기기 시작해 · 여기서 가장 많이 끊김 px · 그때 빈 몫
 TAP_SPRAY, TAP_SPRAY_V = 70, ((-160, 160), (-420, -160))  # 물줄기가 닿는 자리에서 튀는 방울 수 /초 · (가로, 세로) 처음 빠르기
+TAP_FOAM = (240, 250, 255)  # 물줄기가 닿는 자리의 흰 거품
+# 물속 거품: 물줄기가 끌고 드는 수 /초 · 바닥 꼬르륵 간격 초 · 한 번에 수 · 뜨는 힘 px/초² · 물 저항 /초(끝 빠르기 = 힘/저항,
+# 큰 거품일수록 빠름)
+TAP_PLUME, TAP_GURGLE, TAP_GURGLE_N, TAP_BUOY, TAP_DRAG = 18, (3, 7), (3, 6), 240, 4
+TAP_SNORKEL, TAP_RISE = 8, 160  # 스노클 관 끝을 수면 아래 둘 px · 물속에서 수면으로 떠오르는 px/초
+TAP_PADDLE = 90  # 개헤엄 한 번에 뒤쪽 수면 마디를 누르는 빠르기 px/초
 TAP_HOLE_R, TAP_CRACKS, TAP_CRACK_LEN = 30, 7, (30, 80)  # 구멍 가로 반지름 px(세로는 1/3) · 금 가닥 수 · 가닥 길이 px
 TAP_CHIPS, TAP_SWIRL = 12, 24  # 구멍이 열릴 때 튀는 조각 수 · 빠질 때 구멍으로 빨려드는 거품 수
 TAP_COLORS = {"k": (38, 43, 68), "s": (150, 162, 182), "l": (214, 222, 236), "r": (222, 62, 62), "b": (40, 90, 170)}
@@ -958,13 +967,35 @@ def tap_rows(h):
     return rows
 
 
-def jet_rows(h):
+def jet_time(h):
+    """꼭지에서 j 행까지 떨어지는 초 — V0 로 나와 TAP_G 로 빨라짐."""
+    return [(math.sqrt(TAP_V0 ** 2 + 2 * TAP_G * j) - TAP_V0) / TAP_G for j in range(h)]
+
+
+def jet_gaps(h):
+    """j 행에서 물줄기가 끊겨 빈 몫 — TAP_BREAK 위로는 0, 아래로 갈수록 늘어 방울이 됨."""
+    lo, hi, most = TAP_BREAK
+    return [most * min(1.0, max(0.0, (j - lo) / (hi - lo))) for j in range(h)]
+
+
+def foam(seed, w=24, h=9):
+    """물줄기가 닿는 자리의 흰 거품 한 장 — 아래로 몰린 작은 알갱이들. seed 마다 다른 장을 번갈아 찍어 끓는 듯 보임."""
+    rng, grid = random.Random(seed), [[0.0] * w for _ in range(h)]
+    for _ in range(16):
+        cx, cy, r = rng.gauss(w / 2, w / 6), h - 1.5 - abs(rng.gauss(0, h / 3)), rng.uniform(0.8, 2.2)
+        for y in range(h):
+            for x in range(w):
+                grid[y][x] = max(grid[y][x], min(1.0, max(0.0, r + 0.5 - math.hypot(x - cx, y - cy))))
+    return w, [trim(b"".join(pixel(TAP_FOAM, 225 * v) for v in row)) for row in grid]
+
+
+def jet_rows(h, extra=0):
     """꼭지 끝에서 j px 아래 물줄기 행 → (가운데에서 왼쪽 끝까지 px, 밝은 마디, 어두운 마디). 떨어지며 빨라지는 만큼
-    가늘어짐 — 흐르는 양이 같으니 단면적 ∝ 1/빠르기, 폭 ∝ 1/√빠르기."""
+    가늘어짐 — 흐르는 양이 같으니 단면적 ∝ 1/빠르기, 폭 ∝ 1/√빠르기. extra 는 불룩한 마디에 더 붙는 폭."""
     core, edge, lit, dim = TAP_STREAM
     made, out = {}, []
     for j in range(h):
-        width = max(3, round(TAP_JET * math.sqrt(TAP_V0 / math.sqrt(TAP_V0 ** 2 + 2 * TAP_G * j))))
+        width = max(3, round(TAP_JET * math.sqrt(TAP_V0 / math.sqrt(TAP_V0 ** 2 + 2 * TAP_G * j)))) + extra
         if width not in made:
             made[width] = (width // 2, *(b"".join(pixel(edge if x in (0, width - 1) else core, a) for x in range(width))
                                         for a in (lit, dim)))
@@ -2714,9 +2745,11 @@ class Weather:
             self.sprite_cache["faucet"] = {
                 "art": pet.segments(TAP_ART, False, TAP_COLORS),
                 "size": (len(TAP_ART[0]) * pet.SCALE, len(TAP_ART) * pet.SCALE),
-                "jet": jet_rows(h), "holes": holes,
+                "jet": jet_rows(h), "bulge": jet_rows(h, 2), "tau": jet_time(h), "gap": jet_gaps(h), "holes": holes,
                 "lip": [memoryview(pixel(TAP_LIP[0], a) * w) for a in TAP_LIP[1:]],
-                "drop": place(disc(1.2, 0.8, 200, TAP_STREAM[0], TAP_STREAM[1]), st),
+                "drops": [place(disc(r, 0.8, 200, TAP_STREAM[0], TAP_STREAM[1]), st) for r in (0.6, 1.2)],
+                "foam": [place(foam(seed), st) for seed in range(4)],
+                "bubbles": [bubble(r, 150) for r in (1.2, 2.0, 3.0)],
                 "bubble": bubble(2.5, 150), "chip": pixel(TAP_RIM, 255) * 3, "crack": pixel(TAP_CRACK_COLOR, 210) * 2}
         self.tap = self.sprite_cache["faucet"]
         if getattr(self, "tap_px", None) is None:
@@ -2735,6 +2768,7 @@ class Weather:
         self.hole_x = random.choice(spots) if spots else w // 2
         self.cracks = crack_lines(random)
         self.spray, self.swirl, self.chips, self.spray_due = [], [], [], 0.0
+        self.tap_bubbles, self.plume_due, self.gurgle_at = [], 0.0, 0.0  # 물속 거품 [x, y, 세로 빠르기, 크기, 흔들림]
         self.jet = [None, None]  # 물줄기를 튼 시각 · 잠근 시각 — 머리와 꼬리가 그 뒤로 떨어진 거리
         self.tap_go("fill", None)
 
@@ -2763,9 +2797,7 @@ class Weather:
         c = min(max(int(x), 0), self.w - 1)
         return self.h - max(self.sea(c), self.base[c])
 
-    def afloat(self, x, tall):
-        """수면에 뜬 키 tall 동물의 발밑 높이(밑변에서 px) — 몸 1/3 이 잠기고 머리는 화면 안. 물이 없으면 0."""
-        return 0 if self.level <= 0 else int(min(self.sea(x) - tall // 3, self.h - tall))
+
 
     def flood(self, dt, now):
         """수도꼭지 한 프레임의 물: 단계를 넘기고 수위를 옮긴 뒤 출렁이고, 화면 전체를 물빛과 빈 칸으로 덮음(지우기 대신)."""
@@ -2904,7 +2936,8 @@ class Weather:
                 lay(px, st, w, h, tap["bubble"], int(x), int(y))
 
     def spout(self, dt, now):
-        """꼭지와 물줄기, 물줄기가 닿는 자리에서 튀는 방울 — 동물 앞. 잠그면 꼬리가 떨어져 내려가 사라짐."""
+        """꼭지와 물줄기, 물줄기가 닿는 자리의 거품과 튀는 방울, 물속 거품 — 동물 앞. 잠그면 꼬리가 떨어져 내려가 사라짐.
+        물줄기 행마다 그 행의 물이 꼭지를 나온 시각(tau)으로 무늬·불룩한 마디·끊긴 틈을 정해 물과 같이 흘러내림."""
         px, st, w, h, tap = self.surface.pixels, self.stride, self.w, self.h, self.tap
         nx, ny = self.tap_x + TAP_NOZZLE * pet.SCALE + 1, tap["size"][1]
         on, off = self.jet
@@ -2912,33 +2945,89 @@ class Weather:
         if on is not None:
             fall = lambda s: TAP_V0 * s + drop(s, TAP_G)
             a, b = 0 if off is None else fall(now - off), min(fall(now - on), hit - ny)
-            jet, flow = tap["jet"], now * TAP_FLOW
+            jet, bulge, tau, gap = tap["jet"], tap["bulge"], tap["tau"], tap["gap"]
             for j in range(max(0, int(a)), int(b)):
-                y = ny + j
-                half, lit, dim = jet[j]
-                o = y * st + (nx - half) * 4
-                px[o:o + len(lit)] = lit if int((y - flow) // TAP_STRIPE) % 2 else dim
+                t = now - tau[j]  # 이 행의 물이 꼭지를 나온 시각
+                if t * TAP_DRIP % 1 < gap[j]:  # 아래쪽은 방울로 끊김
+                    continue
+                half, lit, dim = (bulge if t * TAP_BULGE % 1 < 0.12 else jet)[j]
+                o = (ny + j) * st + (nx - half) * 4
+                px[o:o + len(lit)] = lit if int(t * TAP_PULSE * 2) & 1 else dim
             if off is not None and a >= hit - ny:
                 self.jet = [None, None]
             elif off is None and fall(now - on) >= hit - ny:
-                self.spray_due += TAP_SPRAY * min(1.0, self.amount / 50) * dt
+                flow = min(1.0, self.amount / 50)
+                fw, foam = tap["foam"][0][0], tap["foam"][int(now * 18) % len(tap["foam"])][1]
+                if 0 <= nx - fw // 2 <= w - fw and hit >= 8:
+                    stamp(px, st, nx - fw // 2, int(hit) - 7, foam)
+                self.spray_due += TAP_SPRAY * flow * dt
                 while self.spray_due >= 1:
                     self.spray_due -= 1
                     self.spray.append([nx + random.uniform(-3, 3), hit - 1, random.uniform(*TAP_SPRAY_V[0]),
-                                       random.uniform(*TAP_SPRAY_V[1])])
-        n, live = tap["drop"][0], []
-        for s in self.spray:
+                                       random.uniform(*TAP_SPRAY_V[1]), random.random() < 0.6])
+                if self.sea(nx) > 12:  # 물에 꽂히며 끌고 든 공기 — 가라앉다 곧 떠오름
+                    self.plume_due += TAP_PLUME * flow * dt
+                    while self.plume_due >= 1:
+                        self.plume_due -= 1
+                        self.tap_bubbles.append([nx + random.uniform(-5, 5), hit + random.uniform(2, 10),
+                                                 random.uniform(80, 260), random.randrange(3), random.uniform(0, 7)])
+        live = []
+        for s in self.spray:  # [x, y, 가로, 세로 빠르기, 큰 방울인가]
             s[3] += TAP_G * dt
             s[0] += s[2] * dt
             s[1] += s[3] * dt
             if s[3] > 0 and s[1] >= self.impact(s[0]) or not 0 <= s[0] < w:
                 continue
             live.append(s)
+            n, rows = tap["drops"][s[4]]
             x, y = int(s[0]) - n // 2, int(s[1]) - n // 2
             if 0 <= x <= w - n and 0 <= y <= h - n:
-                stamp(px, st, x, y, tap["drop"][1])
+                stamp(px, st, x, y, rows)
         self.spray = live
+        self.fizz(dt, now)
         pet.stamp(px, st, self.tap_x, 0, tap["art"], w, h)
+
+    def fizz(self, dt, now):
+        """수도꼭지 물속 거품: 물줄기가 끌고 든 공기, 바닥에서 몇 초마다 올라오는 꼬르륵, 동물 숨. 가라앉던 것도 뜨는 힘에
+        곧 떠올라 흔들리며 오르고 수면에 닿으면 터짐."""
+        if self.level <= 0:
+            self.tap_bubbles = []
+            return
+        px, st, w, h, sprites = self.surface.pixels, self.stride, self.w, self.h, self.tap["bubbles"]
+        if now >= self.gurgle_at:
+            self.gurgle_at = now + random.uniform(*TAP_GURGLE)
+            x = random.randrange(w)
+            if self.sea(x) - self.base[x] > 60:
+                for k in range(random.randint(*TAP_GURGLE_N)):
+                    self.gulp(x, h - self.base[x] - 4 - k * random.uniform(6, 12), 1)
+        live = []
+        for b in self.tap_bubbles:
+            b[2] += (-TAP_BUOY * (1 + b[3] / 2) - TAP_DRAG * b[2]) * dt
+            c = min(max(int(b[0]), 0), w - 1)
+            b[1] = min(b[1] + b[2] * dt, h - self.base[c] - 2)
+            x = b[0] + 1.5 * math.sin(b[4] + now * 6)
+            if b[1] <= h - self.sea(x) + 2:  # 수면에서 터짐
+                continue
+            live.append(b)
+            n = sprites[b[3]][0]
+            lay(px, st, w, h, sprites[b[3]], int(x) - n // 2, int(b[1]) - n // 2)
+        self.tap_bubbles = live
+
+    def gulp(self, x, y, n=0):
+        """수도꼭지 물속 (x, y) 에 거품 n 개(0 이면 숨 한 번만큼) — 천천히 오르기 시작함."""
+        for _ in range(n or random.randint(*BREATH_BUBBLES)):
+            self.tap_bubbles.append([x + random.uniform(-2, 2), y - random.uniform(0, 6), -random.uniform(10, 30),
+                                     random.randrange(2), random.uniform(0, 7)])
+
+    def stroke(self, p, line):
+        """개헤엄 한 번 — 뒤쪽 수면을 눌러 물결을 내고 물방울을 뒤로 튀김."""
+        back, away = p.x + p.W * (0.2 if p.right else 0.8), -1 if p.right else 1
+        i, v = min(max(int(back) // TAP_NODE, 0), len(self.wave_v) - 1), self.wave_v
+        for j in range(max(0, i - 1), min(len(v), i + 2)):
+            v[j] -= TAP_PADDLE
+        for _ in range(random.randint(1, 3)):
+            self.spray.append([back + random.uniform(-3, 3), line - 1, away * random.uniform(30, 110),
+                               -random.uniform(120, 260), False])
 
     # ── 돌리기 ──
     def reset(self):
@@ -3140,33 +3229,55 @@ class Weather:
             hit.grab(time.perf_counter(), cx - hit.at[0], cy - hit.at[1])
 
     def walk_pet(self, dt, now):
-        rainy, wet = self.kind in RAINY, self.kind == "aquarium"
+        """동물 한 프레임. 어항이거나 수도꼭지 물이 반 넘게 차면 잠수(수도꼭지는 스노클)로 헤엄, 수도꼭지 물이 그보다
+        얕아도 뜰 만큼이면 수면에서 개헤엄, 발만 잠기면 걸으며 안 잠."""
+        rainy, tap = self.kind in RAINY, self.kind == "faucet"
+        deep = tap and self.level >= self.h / 2
+        wet = self.kind == "aquarium" or deep
         self.react(now)
         cx, cy = self.surface.cursor() if any(p.held for p in self.pets.values()) else (0, 0)
         for p in self.pets.values():
-            wide, tall = pet.DIVE_SIZE[p.DIVER] if wet else (p.W, p.H)
+            p.snork = deep
+            wide, tall = p.dive_size() if wet else (p.W, p.H)
+            a, b = p.feet()
+            want = max(v + f for v, f in zip(self.pile.h[a:b], self.base[a:b]))
+            sea = self.sea((a + b) // 2) if tap and self.level > 0 else 0.0  # 수면 높이 (밑변에서 px)
+            top = min(sea - p.H * p.FLOAT, self.h - p.H) if sea else 0.0  # 떠 있을 때 발밑 높이
+            floats = not wet and top > want  # 나는 새도 수면 위를 남
+            paddle = floats and not p.held and not p.air and p.state != "fly"
+            if p.swam is not None and not paddle:  # 개헤엄을 멈춤 — 오르내리던 몫을 지움
+                p.swam, p.hop, p.alt = None, 0.0, 0.0
+            if wet and p.dive is None:  # 바닥이나 수면, 지금 있는 높이에서 바로 잠수
+                start = max(0.0, (want if p.ground is None else p.ground) - want)
+                p.ground, p.leap = want, None
+            else:
+                start = 0.0
+            ceil = sea - want - tall - TAP_SNORKEL if deep else None  # 관 끝까지 물속
+            if not wet and p.dive is not None:  # 물이 반 아래로 빠짐 — 헤엄치던 높이에서 떠올라 수면으로
+                p.ground, p.dive = (want if p.ground is None else p.ground) + p.lift, None
             if p.held:  # 커서를 따라감. 높이는 발밑을 구한 뒤에
                 if wet and p.dive is None:
-                    p.swim(0.0, now)  # 들고 있는 사이에 어항이 되면 잠수 장비부터 갖춤
-                elif not wet:
-                    p.dive = None
+                    p.swim(0.0, now, ceil, start)  # 들고 있는 사이에 어항이 되면 잠수 장비부터 갖춤
                 p.x = min(max(cx - p.held[0], 0), max(0, self.w - wide))
             elif wet:  # 잠수 장비를 차고 헤엄 — 하던 짓은 멈춰 둠
                 p.air = 0.0  # 떨어지던 중에 어항이 되면 그 자리에서 헤엄
-                p.swim(dt, now)
-            else:
-                p.dive = None  # 어항을 벗어나면 바닥에서 하던 짓을 이어 감
-                if p.air:
-                    p.fall(dt, now)
-                elif not p.under:  # 틀 뒤에 묻혀 빼꼼하는 동안은 제자리
-                    p.update(dt, now, rainy)
-            a, b = p.feet()
-            want = max(v + f for v, f in zip(self.pile.h[a:b], self.base[a:b]))
-            sea = self.afloat((a + b) // 2, tall) if self.kind == "faucet" and not p.held else 0
-            floating = sea > want
-            if floating:  # 물에 뜸 — 수면을 따라 바로 오르내리고, 떨어지던 중이면 물에 받힘
-                want, p.air = sea, 0.0
-            if p.held or p.air or floating:  # 들리거나 떨어지는 동안은 틀 단을 안 뜀 — 발밑을 바로 바닥으로
+                p.swim(dt, now, ceil, start)
+            elif p.air:
+                p.fall(dt, now)
+            elif paddle:
+                p.paddle(dt, now)
+            elif not p.under:  # 틀 뒤에 묻혀 빼꼼하는 동안은 제자리
+                p.awake = sea > want  # 발이 물에 잠겨 있으면 안 잠. 자고 있었으면 깸
+                if p.awake and p.state == "sleep":
+                    p.go("stand", now)
+                    p.zz = []
+                    p.emote("!", now)
+                p.update(dt, now, rainy)
+            if floats:  # 물에 뜸 — 수면을 따라 오르내림. 물속에서 떠오를 땐 천천히, 떨어지던 중이면 물에 받힘
+                g0 = top if p.ground is None else p.ground
+                g = p.ground = min(top, g0 + TAP_RISE * dt) if top > g0 else top
+                p.leap = None
+            elif p.held or p.air:  # 들리거나 떨어지는 동안은 틀 단을 안 뜀 — 발밑을 바로 바닥으로
                 g = p.ground = want
                 p.leap = None
             else:
@@ -3177,13 +3288,19 @@ class Weather:
                     p.lift = p.depth = up  # 놓으면 이 높이에서 헤엄을 이어 감
                 else:
                     p.air = up
+            line = self.h - int(sea) if sea > want else None  # 수면 화면 y — 그 아래 몸은 물빛을 섞어 그림
             if wet:
-                p.draw_swim(self.surface.pixels, self.stride, self.h, self.pet_sprites, g, now)
+                p.draw_swim(self.surface.pixels, self.stride, self.h, self.pet_sprites, g, now, line)
                 if p.breathe:
-                    self.exhale(*p.mouth)
+                    if tap:
+                        self.gulp(*p.mouth)
+                    else:
+                        self.exhale(*p.mouth)
             else:
                 p.draw(self.surface.pixels, self.stride, self.h, self.pet_sprites, g + p.air, now, rainy,
-                       self.base if p.under else None)
+                       self.base if p.under else None, line)
+                if p.swam is not None and p.stroke:
+                    self.stroke(p, line)
 
     def frame(self, dt, now):
         kind = self.kind
@@ -4389,15 +4506,20 @@ def check():
 
 def check_faucet():
     random.seed(5)
-    w, h, rise = 400, 300, 20
-    a = Weather.__new__(Weather)
-    a.w, a.h, a.stride, a.rise, a.amount, a.kind, a.strip_h = w, h, w * 4, rise, 100, "faucet", PILE_STRIP + rise
-    a.base, a.snow_pile, a.sprite_cache, a.aq_tint = [rise] * w, pile_column_parts(PILE_STRIP + rise), {}, None
-    a.next_base, a.full_clear, a.pets, a.on_top, a.last_settle = None, False, {}, False, 0
-    a.goal, a.fall, a.crumble, a.tank = a.base, None, crumble(w), {k: TANK[k][1] for k in TANK}
-    a.bolt_seen, a.pet_startled, a.bangs, a.pet_sprites = None, {}, [], pet.sprites()
-    a.surface = types.SimpleNamespace(pixels=bytearray(w * h * 4), clear=lambda top=0: None, present=lambda top=0: None)
-    a.reset()
+    rise = 20
+
+    def make(w, h):
+        a = Weather.__new__(Weather)
+        a.w, a.h, a.stride, a.rise, a.amount, a.kind, a.strip_h = w, h, w * 4, rise, 100, "faucet", PILE_STRIP + rise
+        a.base, a.snow_pile, a.sprite_cache, a.aq_tint = [rise] * w, pile_column_parts(PILE_STRIP + rise), {}, None
+        a.next_base, a.full_clear, a.pets, a.on_top, a.last_settle = None, False, {}, False, 0
+        a.goal, a.fall, a.crumble, a.tank = a.base, None, crumble(w), {k: TANK[k][1] for k in TANK}
+        a.bolt_seen, a.pet_startled, a.bangs, a.pet_sprites = None, {}, [], pet.sprites()
+        a.surface = types.SimpleNamespace(pixels=bytearray(w * h * 4), clear=lambda top=0: None, present=lambda top=0: None)
+        a.reset()
+        return a
+    w, h = 400, 300
+    a = make(w, h)
     top, n = h + TAP_AMP, len(a.wave)
     # 물결: 어떤 fps 에서도 안 터지고, 물은 생기거나 사라지지 않음
     for dt in (0.1, 1 / 30, 1 / 120):
@@ -4474,17 +4596,85 @@ def check_faucet():
         for y in range(h):
             want = bytes(4) if y < tp else lips[y - tp] if y - tp < 2 else a.tap_px[y * st + x * 4:][:4]
             assert px[y * st + x * 4:][:4] == want, ("물 그림", x, y, tp)
-    # 동물은 수면에 뜨고 물이 없으면 바닥에
-    a.pets = {"cat": pet.Cat(w, random.Random(2))}
-    c = a.pets["cat"]
-    a.walk_pet(1 / 60, 1.0)
-    fa, fb = c.feet()
-    assert c.ground == a.afloat((fa + fb) // 2, c.H) > rise, ("물에 뜸", c.ground)
-    assert c.ground == int(a.sea((fa + fb) // 2)) - c.H // 3 or c.ground == h - c.H, "몸 1/3 이 잠김"
+    # 동물: 반 아래 물에선 수면에 떠 개헤엄(안 잠), 발만 잠기면 걸으며 안 잠, 반 넘으면 스노클로 잠수, 다시 반 아래면 떠오름
+    a.wave, a.wave_v = [0.0] * n, [0.0] * n
+    a.surface.pixels = bytearray(w * h * 4)
+
+    def run(secs, t0, each=None):
+        for i in range(int(secs * 60)):
+            a.walk_pet(1 / 60, t0 + i / 60)
+            a.wave, a.wave_v = [0.0] * n, [0.0] * n  # 수면은 평평하게 — 개헤엄이 친 물결을 지움
+            if each:
+                each(t0 + i / 60)
+    for cls in (pet.Cat, pet.Dog, pet.Rabbit, pet.Penguin, pet.Bird):
+        c = cls(w, random.Random(2))
+        a.pets, a.spray, a.tap_bubbles, a.level = {"p": c}, [], [], h * 0.35
+        sleeper = issubclass(cls, pet.Cat)  # 잠은 고양이 갈래만 잠
+        if sleeper:
+            c.go("sit", 0.0)
+            c.until = 0.0  # 바로 다음 짓으로 — 앉아 있다 잠들 차례
+        seen = {"x": c.x, "ways": set(), "drops": 0}
+
+        def floating(now):
+            fa, fb = c.feet()
+            assert c.swam is not None and c.dive is None and c.state != "sleep" and not getattr(c, "zz", []), cls
+            assert abs(c.ground - (a.sea((fa + fb) // 2) - c.H * c.FLOAT)) < 1e-9, ("수면에 떠 몸이 잠김", cls, c.ground)
+            if c.x != seen["x"]:
+                seen["ways"].add(c.x > seen["x"])
+            seen["x"] = c.x
+            seen["drops"] += len(a.spray)
+        run(60, 1.0, floating)
+        assert seen["ways"] == {True, False} and seen["drops"] > 0, ("오가며 물을 참", cls, seen)
+        a.level = h * 0.6  # 반 넘게 참 — 그 자리에서 스노클 잠수
+        top = h - a.sea(w // 2)
+
+        def diving(now):
+            sw, sh = c.dive_size()
+            y = h - int(c.ground) - sh - int(c.lift)
+            assert c.dive is not None and c.snork and c.swam is None, cls
+            assert y >= top + TAP_SNORKEL - 1, ("스노클 관 끝까지 물속", cls, y, top)
+        run(30, 61.0, diving)
+        assert a.tap_bubbles, ("관 끝에서 숨 거품", cls)
+        a.level = h * 0.4  # 빠져서 반 아래 — 떠올라 다시 개헤엄
+        run(3, 91.0)
+        assert c.dive is None and c.swam is not None, ("반 아래로 빠지면 떠올라 수면", cls)
+        a.level = rise + 4  # 발만 잠김
+        if sleeper:
+            c.go("sleep", 95.0)
+        run(0.1, 95.0)
+        assert c.swam is None and c.state != "sleep", ("발이 잠기면 깸", cls, c.state)
+
+        def awake(now):
+            assert c.state != "sleep", ("발이 잠긴 동안은 안 잠", cls, now)
+        run(120, 96.0, awake)
     a.level = 0.0
-    for i in range(60):
-        a.walk_pet(1 / 60, 2.0 + i / 60)
-    assert c.ground == rise, ("물이 빠지면 바닥", c.ground)
+    run(1, 300.0)
+    assert c.ground == rise and c.swam is None and not c.awake, ("물이 빠지면 바닥", c.ground)
+    # 물속 거품: 바닥에서 올라오는 것도 물줄기가 끌고 든 것도 다 수면에서 터지고 수면 위로는 안 나감
+    a.pets, a.level, a.tap_bubbles, a.gurgle_at = {}, h * 0.6, [], 0.0
+    a.gulp(w / 2, h - rise - 4, 8)
+    a.tap_bubbles += [[w / 3, h - a.level + 30, 260.0, 2, 0.0]]  # 깊이 꽂혔다 떠오름
+    born = len(a.tap_bubbles)
+    for i in range(60 * 20):
+        a.surface.pixels = bytearray(w * h * 4)
+        a.fizz(1 / 60, i / 60)
+        a.gurgle_at = math.inf
+        sea_y = h - a.level
+        assert all(sea_y + 2 < b[1] <= h - rise - 2 for b in a.tap_bubbles), "거품은 수면과 바닥 사이"
+    assert born >= 9 and not a.tap_bubbles, ("다 떠올라 터짐", len(a.tap_bubbles))
+    # 물줄기: 위쪽은 이어져 있고 TAP_BREAK 아래로는 끊겨 방울이 됨. 무늬는 흘러내림
+    b = make(120, 1400)
+    b.jet, b.tap_state = [0.0, None], "fill"
+    nx, ny = b.tap_x + TAP_NOZZLE * pet.SCALE + 1, b.tap["size"][1]
+    col = lambda: [b.surface.pixels[(ny + j) * b.stride + nx * 4 + 3] for j in range(1300)]
+    b.spout(1 / 60, 3.0)
+    first = col()
+    assert all(first[:TAP_BREAK[0]]), "위쪽 물줄기는 안 끊김"
+    gaps = first[TAP_BREAK[1]:1300].count(0) / (1300 - TAP_BREAK[1])
+    assert 0.2 < gaps < TAP_BREAK[2] + 0.1, ("아래쪽은 방울로 끊김", gaps)
+    b.surface.pixels = bytearray(len(b.surface.pixels))
+    b.spout(1 / 60, 3.05)
+    assert col() != first, "끊긴 자리는 흘러내림"
     a.kind = "snow"
     a.reset()
     assert a.tap_px is None and a.tap_zero is None, "딴 종류로 가면 화면 크기 버퍼를 돌려줌"
