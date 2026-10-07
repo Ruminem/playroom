@@ -24,6 +24,7 @@ import tempfile
 import threading
 import time
 import tkinter as tk
+import traceback
 import webbrowser
 from pathlib import Path
 
@@ -38,6 +39,7 @@ from tray import Tray, write_ico
 PID_FILE = Path(tempfile.gettempdir()) / "playroom-usage-hud.pid"
 ICON_FILE = Path(tempfile.gettempdir()) / "playroom-usage-hud.ico"
 LOG_FILE = Path(tempfile.gettempdir()) / "playroom-usage-hud.log"  # pythonw 로 돌다 죽을 때 남는 traceback
+DIAG_FILE = Path(tempfile.gettempdir()) / "playroom-taskbar.txt"  # 메뉴의 작업 표시줄 진단
 SETTINGS = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "playroom" / "usage-hud.json"
 TRAY_CLASS = "PlayroomUsageHudTray"  # --stop 이 이 이름으로 창을 찾아 닫으라고 보냄
 REFRESH_SEC = 60   # 정가를 다시 셈. 한도는 usage.LIMIT_EVERY 가 따로 5분에 한 번으로 묶음
@@ -51,7 +53,7 @@ SYSMON_CLASS = "PlayroomSysmonSurface"
 PAGE_PORT = 8765
 
 # 메뉴 id
-SHOW, PAGE, HELP, AUTOSTART, EXIT = 1, 30, 40, 50, 99
+SHOW, PAGE, HELP, DIAG, AUTOSTART, EXIT = 1, 30, 40, 45, 50, 99
 
 RUN_NAME = "PlayroomUsageHud"  # Run 키 값 이름. 바꾸면 이미 켜 둔 등록이 꺼진 것으로 보임
 CORNERS = {10: ("bl", "왼쪽 아래"), 11: ("br", "오른쪽 아래"), 12: ("tl", "왼쪽 위"), 13: ("tr", "오른쪽 위"),
@@ -157,6 +159,7 @@ class Hud:
                 None,
                 ("페이지 열기 (7일치)", PAGE, False),
                 ("도움말", HELP, False),
+                ("작업 표시줄 진단", DIAG, False),
                 None,
                 ("끝내기", EXIT, False)]
 
@@ -200,8 +203,18 @@ class Hud:
             # MessageBox 는 닫힐 때까지 막으므로 HUD 가 멈추지 않게 따로 띄움
             threading.Thread(target=ctypes.windll.user32.MessageBoxW, daemon=True,
                              args=(None, HELP_TEXT, "사용량 HUD 도움말", 0x40040)).start()  # 정보 · 맨 위
+        elif cid == DIAG:
+            threading.Thread(target=self.diagnose, daemon=True).start()  # UI 자동화가 몇십 ms 막음
         elif cid == EXIT:
             self.tray.close()  # 트레이가 닫히면 None 이 와서 poll 이 끝냄
+
+    def diagnose(self):
+        """작업 표시줄 위의 창 목록을 파일로 남기고 메모장으로 염. 다른 프로그램을 피해 자리를 잡기 전에 실물을 보려고."""
+        try:
+            DIAG_FILE.write_text(taskbar.report(), encoding="utf-8")
+        except Exception:  # noqa: BLE001 — 진단이 HUD 를 죽이면 안 됨. 무엇이 났는지는 파일에 남김
+            DIAG_FILE.write_text(traceback.format_exc(), encoding="utf-8")
+        os.startfile(DIAG_FILE)
 
     def show(self, on):
         self.root.deiconify() if on else self.root.withdraw()

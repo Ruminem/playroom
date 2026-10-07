@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.9 — 2026-10-07
+
+- usage-hud: a new **Taskbar diagnostic** item in the tray menu writes what is on the taskbar — each taskbar and the windows inside it, and other windows lying over it, with class, title, position and program name — to `%TEMP%\playroom-taskbar.txt` and opens it in Notepad. On the taskbar the HUD does not yet step around other programs that sit there too and can land on top of them; this is for seeing how they sit before teaching it to avoid them. Window titles are in it, so look it over before sharing
+- weather: five new kinds — **Raindrops on the window** (drops bead up on the glass in front of everything, merge and run down, and now and then a slanted shower passes; the rain sound plays with it), **Fog** (a pale bank drifting over the bottom two fifths of the screen), **Aurora** (three curtains of light over the top of the screen, with a meteor now and then), **Butterflies and dragonflies**, and **Soap bubbles** that pop after a while, on an animal, or when clicked. The kind buttons in the settings panel now take four rows
+- weather: snow flutters as it falls, a big out-of-focus flake drifts past the lens now and then, landed flakes stay on the bank for a moment before sinking in, and the bank has a bright rim, shaded slopes and glints along its edge
+
+**한국어**
+
+- usage-hud: 트레이 메뉴에 **작업 표시줄 진단** 이 생김. 작업 표시줄 위에 무엇이 있는지 — 작업 표시줄마다 그 안의 창, 그 위에 얹힌 다른 창을 클래스·제목·자리·프로그램 이름과 함께 — `%TEMP%\playroom-taskbar.txt` 에 적고 메모장으로 염. 작업 표시줄 자리의 HUD 는 거기 같이 뜨는 다른 프로그램을 아직 피하지 않아 그 위에 겹칠 수 있는데, 피하게 만들기 전에 그런 프로그램이 어떻게 떠 있는지 보려고 둔 것임. 창 제목이 들어 있으니 남에게 보내기 전에 한 번 훑어볼 것
+- weather: 종류 다섯이 새로 생김 — **창문 빗방울**(모든 것 앞의 유리에 빗방울이 맺혀 합쳐지고 흘러내리며, 가끔 비스듬한 소나기가 지나감. 빗소리도 같이 남), **안개**(화면 아래 2/5 위로 흐르는 옅은 안개), **오로라**(화면 위쪽에 드리운 빛의 커튼 세 겹, 가끔 유성), **나비·잠자리**, 그리고 시간이 지나거나 동물에 닿거나 누르면 터지는 **비눗방울**. 설정 창의 종류 단추가 네 줄이 됨
+- weather: 눈이 내려오며 팔랑이고, 가끔 초점 밖의 크고 흐린 눈송이가 렌즈 앞을 지나가며, 내려앉은 눈송이가 잠깐 더미 위에 보였다가 스며들고, 더미에 밝은 테두리와 비탈 명암, 가장자리 반짝임이 생김
+
 ## 0.2.8 — 2026-10-05
 
 - weather: right-clicking the tray icon on Windows now opens the same settings panel as a left click, instead of a separate menu that could fall out of step with it. The macOS menu bar keeps its menu

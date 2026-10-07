@@ -4,7 +4,12 @@
 자리 찾기, 전체 화면 앱 알아보기, GDI 회색조 글자를 알파로 바꿔 줄마다 색 입히기.
 """
 import ctypes
+import sys
+import time
 from ctypes import wintypes
+from pathlib import Path
+
+import overlay
 
 user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
 user32.FindWindowW.restype = wintypes.HWND
@@ -134,6 +139,88 @@ def frames():
             user32.GetWindowRect(h, ctypes.byref(r))
             out.append((r.left, r.top, r.right, 0))
     return [(l, t, r) for l, t, r, _ in out if r > l]
+
+
+user32.GetTopWindow.restype = wintypes.HWND
+user32.GetTopWindow.argtypes = (wintypes.HWND,)
+user32.GetWindow.restype = wintypes.HWND
+user32.GetWindow.argtypes = (wintypes.HWND, wintypes.UINT)
+user32.GetWindowLongW.argtypes = (wintypes.HWND, ctypes.c_int)
+user32.GetClassNameW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
+user32.GetWindowTextW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
+user32.GetWindowThreadProcessId.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.DWORD))
+EX_FLAGS = ((0x8, "topmost"), (0x80, "toolwindow"), (0x80000, "layered"), (0x20, "transparent"),
+            (0x08000000, "noactivate"))
+
+
+def siblings(h):
+    """h 부터 같은 층의 창을 앞에서 뒤 순서로."""
+    while h:
+        yield h
+        h = user32.GetWindow(h, 2)  # GW_HWNDNEXT
+
+
+def rect_of(h):
+    r = wintypes.RECT()
+    user32.GetWindowRect(h, ctypes.byref(r))
+    return r.left, r.top, r.right, r.bottom
+
+
+def class_of(h):
+    buf = ctypes.create_unicode_buffer(256)
+    user32.GetClassNameW(h, buf, 256)
+    return buf.value
+
+
+def describe(h):
+    """창 한 줄: 핸들 · 클래스 · 제목 · (왼, 위, 오른, 아래) · 확장 스타일과 숨김 · exe 이름."""
+    title, pid, cloaked = ctypes.create_unicode_buffer(256), wintypes.DWORD(), ctypes.c_int()
+    user32.GetWindowTextW(h, title, 256)
+    user32.GetWindowThreadProcessId(h, ctypes.byref(pid))
+    ctypes.windll.dwmapi.DwmGetWindowAttribute(h, 14, ctypes.byref(cloaked), 4)  # DWMWA_CLOAKED
+    ex = user32.GetWindowLongW(h, -20)  # GWL_EXSTYLE
+    flags = [name for bit, name in EX_FLAGS if ex & bit]
+    flags += ["hidden"] * (not user32.IsWindowVisible(h)) + ["cloaked"] * bool(cloaked.value)
+    exe = Path(overlay.exe_of(pid.value) or "?").name
+    return "%#x %r %r %s %s %s" % (h, class_of(h), title.value, rect_of(h), " ".join(flags) or "-", exe)
+
+
+def report():
+    """작업 표시줄 위에 무엇이 있는지 글로 — 다른 프로그램의 창을 피해 자리를 잡으려고 먼저 실물을 봄.
+    작업 표시줄(모니터마다)과 그 안의 자식 창, 띠와 겹치는 보이는 최상위 창(앞에서 뒤 순서), UI 자동화 요소."""
+    out = [time.strftime("%Y-%m-%d %H:%M:%S"), "windows %s" % (sys.getwindowsversion()[:3],)]
+    tops = list(siblings(user32.GetTopWindow(None)))
+    bars = [h for h in tops if class_of(h) in ("Shell_TrayWnd", "Shell_SecondaryTrayWnd")]
+    bar_rects = [rect_of(h) for h in bars]
+    out.append("\n## 작업 표시줄 %d개" % len(bars))
+    for bar in bars:
+        out.append(describe(bar))
+        stack = [(user32.GetWindow(bar, 5), 1)]  # GW_CHILD
+        while stack:  # 자식을 깊이 우선으로, 들여쓰기가 깊이
+            h, depth = stack.pop()
+            if h:
+                out.append("  " * depth + describe(h))
+                stack += [(user32.GetWindow(h, 2), depth), (user32.GetWindow(h, 5), depth + 1)]
+    out.append("\nspot %s\nframes %s" % (spot(), frames()))
+    out.append("\n## 띠와 겹치는 보이는 최상위 창 (앞에서 뒤)")
+    hidden = 0
+    for z, h in enumerate(tops):
+        l, t, r, b = rect_of(h)
+        if h in bars or not any(l < br and r > bl and t < bb and b > bt for bl, bt, br, bb in bar_rects):
+            continue
+        if user32.IsWindowVisible(h):
+            out.append("z%d %s" % (z, describe(h)))
+        else:
+            hidden += 1
+    out.append("숨은 창 %d개는 뺌" % hidden)
+    main_bar = user32.FindWindowW("Shell_TrayWnd", None)
+    if main_bar:
+        out.append("\n## Shell_TrayWnd 의 UI 자동화 요소")
+        try:
+            out += ["%r %s" % item for item in ui_items(main_bar)]
+        except OSError as e:
+            out.append("못 읽음: %s" % e)
+    return "\n".join(out) + "\n"
 
 
 def font(bar_h):

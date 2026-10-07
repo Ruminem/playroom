@@ -54,6 +54,12 @@ jobs:
           if (-not $m.Success) { throw "CHANGELOG.md 에 '## $env:VERSION — 날짜' 절이 없음" }
           $m.Value.Trim() | Set-Content notes.md -Encoding utf8
           Get-Content notes.md
+      # HUD 메뉴의 작업 표시줄 진단. 러너 화면이 실제 PC 와 달라 내용은 못 보고, 죽지 않고 머리와 마지막 절까지 나오는지만 봄
+      - name: 작업 표시줄 진단 돌려 보기
+        run: |
+          # 한글 비교는 파이썬 안에서 — 파이프로 받은 글은 콘솔 코드 페이지로 읽혀 깨질 수 있음
+          python -c "import sys; sys.path.insert(0, 'shared'); import taskbar; r = taskbar.report(); print(r); assert '## 작업 표시줄' in r and '개는 뺌' in r, '빠진 절이 있음'"
+          if ($LASTEXITCODE) { throw "taskbar.report() 가 죽거나 절이 빠짐" }
       - run: python -m pip install "pyinstaller>=6.16"
       - name: exe 굽기
         run: |
