@@ -354,6 +354,15 @@ FISH_ART = (
       "....kkk...kk........"),
      ("", "", "", "", "", "", "...", "...", "..k", "..k", "...k", "..k", "..k", "...", "...", "", "", "", "", "", "")),
 )
+FISH_FLIP, FISH_PULSE = 0.4, 0.3  # 돌아서는 초 · 꼬리를 칠 때 빨라졌다 느려지는 몫
+# 떼: 은빛 작은 물고기 몇 마리가 안 보이는 우두머리를 저마다 다른 늦음으로 따라감 (FISH_ART 와 같은 꼴)
+SCHOOL_ART = (("....kkkk..",
+               "kc.ksssssk",
+               "kcsccccwek",
+               "kc.ktttttk",
+               "....kkkk.."),
+              ("", "..k", ".c", "..k", ""))
+SCHOOL_N, SCHOOL_BACK, SCHOOL_SIDE, SCHOOL_PULL = (6, 9), (10, 90), 26, (1.0, 2.6)  # 마릿수 · 뒤로 px · 위아래 px · 따라가는 빠르기 /초
 # 바닥 장식: 해초 사이 틈마다 DECOR_SHARE 확률로 하나. 산호 둘 · 조개 · 불가사리 · 돌
 DECOR_COLORS = {"k": (38, 43, 68), "p": (255, 122, 160), "q": (196, 64, 112), "v": (170, 122, 222), "u": (112, 72, 172),
                 "l": (252, 222, 198), "d": (226, 160, 128), "o": (255, 150, 64), "g": (140, 150, 170), "s": (186, 196, 212),
@@ -1247,16 +1256,29 @@ def sand_heights(w, rng):
             for x in range(w)]
 
 
-def weed(height, rng):
-    """해초 한 포기: 아래에서 위로 행마다 불투명 픽셀 바이트. 폭 2–3px 에 몇 줄마다 잎이 양옆으로 돋음."""
+def weed(height, rng, dark=1.0):
+    """해초 한 포기: 아래에서 위로 행마다 불투명 픽셀 바이트. 폭 2–3px 에 몇 줄마다 잎이 양옆으로 돋음. dark 는 색 배율."""
     rows, wide = [], rng.random() < 0.5
+    cols = [pixel(tuple(int(v * dark) for v in c), 255) for c in WEED_COLORS]
     for j in range(height):
         u = j / height
-        col = pixel(WEED_COLORS[min(2, int(u * 3))], 255)
+        col = cols[min(2, int(u * 3))]
         n = (3 if wide and u < 0.7 else 2) if u < 0.9 else 1
         leaf = j % 9 in (4, 5) and u < 0.85
         rows.append(col * (n + leaf * 2))
     return rows
+
+
+def tuft(x, rng):
+    """해초 덤불: 한 자리(x)에 2–3 포기 [(x, 행, 위상, 빠르기, 흔들림)]. 뒤 포기는 낮고 어둡게 먼저, 제일 큰 포기는
+    마지막(맨 앞). 옆 포기는 x ± 3–7px — 자리는 화면 끝에서 10px 안쪽이라 안 넘침. 흔들림은 행마다 (p, q, 반 폭):
+    WEED_SWAY·u²·sin(t − 2.4u) = sin t · p − cos t · q 라 그릴 때 포기마다 sin·cos 한 번 (행마다 부르면 덤불이 두 배 느림)."""
+    top, phase, speed = rng.randint(*WEED_H), rng.uniform(0, math.tau), rng.uniform(0.6, 1.3)
+    back = [(x + rng.choice((-1, 1)) * rng.randint(3, 7), weed(int(top * rng.uniform(0.45, 0.8)), rng, 0.72),
+             phase + rng.uniform(0.4, 1.2), speed * rng.uniform(0.85, 1.15)) for _ in range(rng.randint(1, 2))]
+    sway = lambda rows: [(WEED_SWAY * u * u * math.cos(u * 2.4), WEED_SWAY * u * u * math.sin(u * 2.4), len(d) // 8)
+                         for j, d in enumerate(rows) for u in (j / len(rows),)]
+    return [(*b, sway(b[1])) for b in (*back, (x, weed(top, rng), phase, speed))]
 
 
 def tinted(rows, colors, under):
@@ -2258,7 +2280,9 @@ class Weather:
             while x < w - 10:
                 spots.append(int(x))
                 x += rng.uniform(0.4, 1.6) * WEED_EVERY
-            frames = [(rows, tuple(a + r[len(a):] for r, a in zip(rows, alt))) for rows, alt in FISH_ART]
+            tail = lambda rows, alt: (rows, tuple(a + r[len(a):] for r, a in zip(rows, alt)))  # (그대로, 꼬리 친 그림)
+            frames, school = [tail(*art) for art in FISH_ART], tail(*SCHOOL_ART)
+            sides = lambda rows: {right: pet.segments(rows, not right, FISH_COLORS) for right in (True, False)}
             size = lambda rows: (len(rows[0]) * pet.SCALE, len(rows) * pet.SCALE)
             # 상자는 화면 60% 자리에 제일 가까운 넉넉한 틈에, 나머지 틈엔 DECOR_SHARE 확률로 장식 하나 (해초와 6px 띄움)
             gaps, cw = list(zip([0, *spots], [*spots, w])), size(CHEST_ART[0])[0]
@@ -2280,18 +2304,21 @@ class Weather:
                 "bubbles": [[[bubble(r, layer[3], fx / 4, fy / 4) for fy in range(4) for fx in range(4)]
                              for r in layer[1]] for layer in BUBBLE_LAYERS],
                 "rays": [ray_shape(max(8, int(w * f)), int(h * RAY_REACH), rng) for f in RAY_WIDTHS],
-                "fish": [[{right: pet.segments(rows, not right, FISH_COLORS) for right in (True, False)} for rows in pair]
-                         for pair in frames],
-                "fish_size": [(len(rows[0]) * pet.SCALE, len(rows) * pet.SCALE) for rows, _ in FISH_ART],
+                # [종류][꼬리][오른쪽] — thin 은 한 칸 건너 하나씩 뺀 반쪽 폭: 돌아서는 동안 옆모습이 좁아 보임
+                "fish": [[sides(rows) for rows in pair] for pair in frames],
+                "fish_thin": [[sides([r[::2] for r in rows]) for rows in pair] for pair in frames],
+                "fish_size": [size(rows) for rows, _ in FISH_ART],
+                "fish_thin_w": [size([r[::2] for r in rows])[0] for rows, _ in FISH_ART],
+                "school": [[sides([r[::2] for r in rows] if thin else rows) for rows in school] for thin in (False, True)],
+                "school_size": size(SCHOOL_ART[0]), "school_thin_w": size([r[::2] for r in SCHOOL_ART[0]])[0],
                 "sand": sand_columns(16, rng), "sand_h": sand_heights(w, rng), "sand_pick": [rng.randrange(16) for _ in range(w)],
-                "weeds": [(x, weed(rng.randint(*WEED_H), rng), rng.uniform(0, math.tau), rng.uniform(0.6, 1.3))
-                          for x in spots]}
+                "weeds": [blade for x in spots for blade in tuft(x, rng)]}
         aq = self.aq = self.sprite_cache["aquarium"]
         self.sand = aq["sand_h"]
         self.pile.h = list(self.sand)  # 모래는 안 녹는 더미 — 동물이 그 위를 걷고 거품이 거기서 나옴
         self.sand_base = None  # 다음 프레임에 모래 띠를 그림
         self.vents = [x for x, *_ in random.sample(aq["weeds"], min(3, len(aq["weeds"])))]  # 거품 줄기가 나오는 해초 밑
-        self.fish, self.rays_at, self.rays_drawn = [], [], None  # 물빛과 물고기·거품·빛줄기 수는 retune 이 맞춤
+        self.fish, self.school, self.rays_at, self.rays_drawn = [], None, [], None  # 물빛과 물고기·떼·거품·빛줄기 수는 retune 이 맞춤
         cw = aq["crab_size"][0]
         # 게 [x, 1 오른쪽 · -1 왼쪽, 지금 짓이 끝나는 시각, 걷는 중, 화면 y] · 해파리 [x, y, 오르내리는 px/초, 다음에
         # 오므릴 시각, 오므린 시각, 위상, 가려는 높이] · 상자 [열리는 시각, 다음 거품 시각]. 시각은 첫 프레임에 정함
@@ -2467,11 +2494,11 @@ class Weather:
     def weeds(self, now):
         """해초: 뿌리는 그 열의 바닥(틀 윗변) + 모래 위. 위로 갈수록 크게, 물결처럼 조금씩 늦게 흔들림."""
         px, stride, h, base, ph = self.surface.pixels, self.stride, self.h, self.base, self.pile.h
-        for x, rows, phase, speed in self.aq["weeds"]:
-            y, n = h - base[x] - int(ph[x]), len(rows)
-            for j, data in enumerate(rows):
-                u = j / n
-                xx = x + int(WEED_SWAY * u * u * math.sin(now * speed + phase - u * 2.4)) - len(data) // 8
+        for x, rows, phase, speed, sway in self.aq["weeds"]:
+            y, t = h - base[x] - int(ph[x]), now * speed + phase
+            st, ct = math.sin(t), math.cos(t)
+            for data, (p, q, half) in zip(rows, sway):
+                xx = x + int(st * p - ct * q) - half
                 y -= 1
                 if 0 <= xx and xx * 4 + len(data) <= stride and y >= 0:
                     o = y * stride + xx * 4
@@ -2522,28 +2549,70 @@ class Weather:
         lo = self.h * 0.12
         return lo, max(lo, self.h - self.rise - SAND_H[1] - fh - 20)
 
-    def new_fish(self):
+    def new_fish(self, size=None):
+        """물고기 하나. size(폭, 키)를 주면 그 크기의 떼 우두머리 — 종류는 안 씀."""
         sp = random.randrange(len(FISH_ART))
-        fw, fh = self.aq["fish_size"][sp]
+        fw, fh = size or self.aq["fish_size"][sp]
         lo, hi = self.fish_band(fh)
-        # [x, y, 오른쪽이면 1 왼쪽이면 -1, 빠르기, 종류, 위상, 가려는 높이]
+        # [x, y, 오른쪽이면 1 왼쪽이면 -1, 빠르기, 종류, 위상, 가려는 높이, 돌아서기 남은 초]
         return [random.uniform(0, max(0, self.w - fw)), random.uniform(lo, hi), random.choice((1, -1)),
-                random.uniform(*FISH_SPEED), sp, random.uniform(0, math.tau), random.uniform(lo, hi)]
+                random.uniform(*FISH_SPEED), sp, random.uniform(0, math.tau), random.uniform(lo, hi), 0.0]
+
+    def new_school(self):
+        """떼 [우두머리, 따르는 것들]. 따르는 것 [x, y, 뒤로 px, 위아래 px, 따라가는 빠르기, 위상, 오른쪽을 봄]."""
+        lead = self.new_fish(self.aq["school_size"])
+        lead[3] = random.uniform(30, 44)  # 떼는 고르게 — 빠른 우두머리면 뒤가 늘어져 흩어짐
+        members = []
+        for _ in range(random.randint(*SCHOOL_N)):
+            back, side = random.uniform(*SCHOOL_BACK), random.uniform(-SCHOOL_SIDE, SCHOOL_SIDE)
+            members.append([lead[0] - lead[2] * back, lead[1] + side, back, side, random.uniform(*SCHOOL_PULL),
+                            random.uniform(0, math.tau), lead[2] > 0])
+        return [lead, members]
+
+    def swim(self, f, fw, fh, dt, now):
+        """f 를 dt 만큼 헤엄치게 하고 (그릴 y, 꼬리 그림, 돌아서는 몫) 을 돌려줌. 몫은 돌아서기 시작에 1 → 끝에 0 이고
+        그동안 빠르기가 옛 방향에서 0 을 지나 새 방향으로 넘어감 — 제자리에서 한 프레임에 뒤집히지 않음."""
+        beat = now * (2 + f[3] / 15) + f[5]  # 빠른 물고기가 꼬리를 자주 침 — 한 번 칠 때(2 만큼) 앞으로 한 번 밀림
+        k = f[7] / FISH_FLIP
+        f[7] = max(0.0, f[7] - dt)
+        f[0] += f[2] * f[3] * (1 - 2 * k) * (1 + FISH_PULSE * math.cos(math.pi * beat)) * dt
+        w = self.w
+        if not f[7] and (f[0] <= 0 < -f[2] or f[0] >= w - fw and f[2] > 0 or random.random() < FISH_TURN * dt):
+            f[2], f[7] = -f[2], FISH_FLIP
+            f[6] = random.uniform(*self.fish_band(fh))
+        f[0] = min(max(f[0], 0), max(0, w - fw))
+        f[1] += max(-12 * dt, min(12 * dt, f[6] - f[1]))
+        return min(max(int(f[1] + 4 * math.sin(now * 1.7 + f[5])), 0), self.h - fh), int(beat) % 2, k
 
     def fishes(self, dt, now):
-        """물고기: 좌우로 헤엄치다 화면 끝이나 가끔 돌아서고, 돌아설 때 고른 새 높이로 천천히 옮겨 감."""
-        px, stride, w, h = self.surface.pixels, self.stride, self.w, self.h
+        """물고기: 좌우로 헤엄치다 화면 끝이나 가끔 천천히 돌아서고(swim), 돌아설 때 고른 새 높이로 옮겨 감. 돌아서는
+        가운데 반 동안은 반쪽 폭 그림 — 옛 방향 → 새 방향. 떼는 우두머리 뒤 제 자리를 늦게 쫓아 돌 때 둥글게 휨."""
+        px, stride, w, h, aq = self.surface.pixels, self.stride, self.w, self.h, self.aq
         for f in self.fish:
-            fw, fh = self.aq["fish_size"][f[4]]
-            f[0] += f[2] * f[3] * dt
-            if f[0] <= 0 or f[0] >= w - fw or random.random() < FISH_TURN * dt:
-                f[2] = 1 if f[0] <= 0 else -1 if f[0] >= w - fw else -f[2]
-                f[0] = min(max(f[0], 0), max(0, w - fw))
-                f[6] = random.uniform(*self.fish_band(fh))
-            f[1] += max(-12 * dt, min(12 * dt, f[6] - f[1]))
-            y = min(max(int(f[1] + 4 * math.sin(now * 1.7 + f[5])), 0), h - fh)
-            frame = int(now * (2 + f[3] / 15) + f[5]) % 2  # 빠른 물고기가 꼬리를 자주 침
-            pet.stamp(px, stride, int(f[0]), y, self.aq["fish"][f[4]][frame][f[2] > 0], w, h)
+            fw, fh = aq["fish_size"][f[4]]
+            y, frame, k = self.swim(f, fw, fh, dt, now)
+            right = (f[2] > 0) == (k <= 0.5)
+            if 0.25 < k < 0.75:
+                tw = aq["fish_thin_w"][f[4]]
+                pet.stamp(px, stride, int(f[0]) + (fw - tw) // 2, y, aq["fish_thin"][f[4]][frame][right], w, h)
+            else:
+                pet.stamp(px, stride, int(f[0]), y, aq["fish"][f[4]][frame][right], w, h)
+        if self.school:
+            (sw, sh), tw = aq["school_size"], aq["school_thin_w"]
+            lead, members = self.school
+            lo, hi = self.fish_band(sh)  # 따르는 것도 물고기와 같은 높이 띠 안에만 그림
+            self.swim(lead, sw, sh, dt, now)
+            for m in members:
+                pull = min(1.0, m[4] * dt)
+                dx = (min(max(lead[0] - lead[2] * m[2], 0), w - sw) - m[0]) * pull
+                m[0] += dx
+                m[1] += (lead[1] + m[3] + 3 * math.sin(now * 1.3 + m[5]) - m[1]) * pull
+                if abs(dx) > 8 * dt:  # 거의 멈췄을 땐 보던 쪽 그대로 — 안 그러면 제자리에서 떨림
+                    m[6] = dx > 0
+                thin = abs(dx) < 14 * dt
+                y = int(min(max(m[1], lo), hi))
+                pet.stamp(px, stride, int(m[0]) + thin * (sw - tw) // 2, y,
+                          aq["school"][thin][int(now * 3 + m[5]) % 2][m[6]], w, h)
 
     # ── 돌리기 ──
     def reset(self):
@@ -2635,6 +2704,8 @@ class Weather:
             n = count(self.tank["bubbles"])  # 막대 50% 가 예전 양 50% 의 거품 수
             self.flakes = refit(self.flakes, layer(BUBBLE_LAYERS, BUBBLE_SHARE), lambda li: self.new_bubble(li, False))
             self.fish = refit(self.fish, [self.tank["fish"]], lambda _: self.new_fish(), False)
+            if bool(self.school) != (self.tank["fish"] > 0):  # 떼는 물고기를 하나라도 고르면 하나
+                self.school = self.new_school() if self.tank["fish"] else None
             rays = round(RAY_COUNT * self.tank["rays"] / 50)
             if len(self.rays_at) != rays:  # 고르게 벌려 놓으므로 수가 바뀌면 다시 놓음
                 h, w = self.h, self.w
@@ -3529,6 +3600,23 @@ def check():
             y = ah - a.base[x] - a.sand[x]
             assert at(x, y - 1) == rows[0][:4] and at(x, y) == sand_top, ("해초 뿌리는 틀 윗변의 모래 위", x, nb)
         assert at(5, ah - a.base[5] - a.sand[5]) == sand_top and at(5, ah - a.base[5]) != sand_top, "모래는 틀 위"
+    xs = [x for x, *_ in a.aq["weeds"]]
+    assert all(any(0 < abs(x - y) <= 7 for y in xs) for x in xs), "해초는 2–3 포기씩 덤불로"
+    assert len({rows[0][:4] for _, rows, *_ in a.aq["weeds"]}) == 2, "뒤 포기는 어두움"
+    _, rows, _, _, sway = a.aq["weeds"][0]
+    for t in (0.3, 2.0, 4.5):
+        for j, (p, q, _) in enumerate(sway):
+            u = j / len(rows)
+            assert abs(math.sin(t) * p - math.cos(t) * q - WEED_SWAY * u * u * math.sin(t - u * 2.4)) < 1e-9, "흔들림 펼친 식"
+    keep, (x, rows, phase, speed, _) = a.aq["weeds"], a.aq["weeds"][-1]
+    a.aq["weeds"], now = keep[-1:], (math.tau - phase) / speed  # cos t = 1 — 펼친 식의 둘째 항이 제일 큰 때
+    px[:] = bytes(len(px))
+    a.weeds(now)
+    j = len(rows) - 1
+    u, y = j / len(rows), ah - a.base[x] - int(a.pile.h[x]) - 1 - j
+    xx = x + int(WEED_SWAY * u * u * math.sin(math.tau - u * 2.4)) - len(rows[j]) // 8
+    assert at(xx, y) == rows[j][:4], ("해초 꼭대기는 흔들린 자리에", xx, y)
+    a.aq["weeds"] = keep
     a.flakes = [a.new_bubble(li, False) for li in (0, 1) for _ in range(10)]
     for f in a.flakes:
         f[1] = ah / 2
@@ -3579,12 +3667,60 @@ def check():
             pinned[k] += f[0] in (0, aw - fw)
             seen.add(f[2])
     assert max(pinned) < 60 * 120 * 0.05 and seen == {1, -1}, ("끝에 닿으면 돌아섬", pinned)
+    # 돌아서기: 빠르기가 옛 방향에서 0 을 지나 새 방향으로 넘어가고, 가운데 반 동안은 반쪽 폭 그림
+    random.seed(3)
+    f = a.new_fish()
+    f[0], f[2], f[7] = 0.0, -1, 0.0
+    a.swim(f, 30, 30, 1 / 60, 0.0)
+    assert f[2] == 1 and f[7] == FISH_FLIP, ("벽에 닿으면 천천히 돌기 시작", f)
+    f[0], f[2], f[4], f[7] = 150.0, 1, 0, FISH_FLIP
+    xs = [f[0]]
+    for _ in range(int(FISH_FLIP * 60) + 6):
+        a.swim(f, 30, 30, 1 / 60, 0.0)
+        xs.append(f[0])
+    dx = [b - c for c, b in zip(xs, xs[1:])]
+    assert dx[0] < 0 < dx[-1] and min(map(abs, dx)) < max(map(abs, dx)) * 0.2, ("돌아설 때 빠르기가 0 을 지나감", dx)
+    a.fish, a.school = [f], None
+    for left, want in ((FISH_FLIP / 2, a.aq["fish_thin_w"][0]), (0.0, a.aq["fish_size"][0][0])):
+        f[7] = left
+        px[:] = bytes(len(px))
+        a.fishes(0, 0.0)
+        cols = {i // 4 % aw for i in range(3, len(px), 4) if px[i]}
+        assert max(cols) - min(cols) + 1 == want, ("돌아서는 가운데만 반쪽 폭", left, max(cols) - min(cols) + 1, want)
+    shots = []
+    for d, left in ((1, FISH_FLIP * 0.9), (-1, 0.0)):
+        f[2], f[7] = d, left
+        px[:] = bytes(len(px))
+        a.fishes(0, 0.0)
+        shots.append(bytes(px))
+    assert shots[0] == shots[1], "돌아서기 앞 반은 아직 옛 방향을 봄"
+    xs = [f[0]]
+    for i in range(60):
+        a.swim(f, 30, 30, 1 / 60, i / 60)
+        xs.append(f[0])
+    dx = [abs(b - c) for c, b in zip(xs, xs[1:])]
+    assert max(dx) > 1.5 * min(dx), ("꼬리를 칠 때마다 빨라졌다 느려짐", min(dx), max(dx))
+    # 떼: 따르는 것들이 우두머리 곁에 위아래로 퍼져 대개 우두머리와 같은 쪽을 봄
+    random.seed(5)
+    a.fish, a.school = [], a.new_school()
+    lead, members = a.school
+    facing, behind, far = [0] * len(members), [0] * len(members), 0
+    for i in range(60 * 60):
+        a.fishes(1 / 60, i / 60)
+        if i >= 600:
+            for j, m in enumerate(members):
+                facing[j] += m[6] == (lead[2] > 0)
+                behind[j] += (m[0] - lead[0]) * lead[2] < 0
+                far = max(far, abs(m[1] - lead[1] - m[3]))
+    assert min(facing) > 50 * 60 * 0.7 and min(behind) > 50 * 60 * 0.6 and far < 20, \
+        ("떼는 우두머리 뒤를 따름", facing, behind, far)
+    assert max(m[3] for m in members) - min(m[3] for m in members) > 10, "떼는 위아래로 퍼짐"
     # 바닥 장식 · 보물상자 · 게 · 해파리 · 새 물고기
     arts = [*((r, DECOR_COLORS) for r in (*DECOR_ART, *CHEST_ART, *CRAB_ART)), *((r, JELLY_COLORS) for r in JELLY_ART),
-            *((r, FISH_COLORS) for r, _ in FISH_ART)]
+            *((r, FISH_COLORS) for r, _ in (*FISH_ART, SCHOOL_ART))]
     for rows, colors in arts:
         assert len({len(r) for r in rows}) == 1 and set("".join(rows)) <= {".", *colors}, ("그림 칸이 맞음", rows[0])
-    assert all(len(alt) == len(rows) for rows, alt in FISH_ART), "꼬리 그림 행 수"
+    assert all(len(alt) == len(rows) for rows, alt in (*FISH_ART, SCHOOL_ART)), "꼬리 그림 행 수"
     a.kind, a.pets = "aquarium", {}
     del a.sprite_cache["aquarium"]  # 폭 400 이라 틈이 몇 없음 — 장식 · 상자가 다 놓이는 자리로 다시 고름
     random.seed(1)  # 장식 둘 · 상자 (scratchpad 에서 찾은 값)
@@ -3671,6 +3807,7 @@ def check():
     reach = int(ah * RAY_REACH)
     assert (len(a.fish), len(a.flakes), len(a.rays_at)) == (0, 60, 2 * RAY_COUNT), \
         ("막대 0·100% 면 없음·두 배, 양과 무관", len(a.fish), len(a.flakes), len(a.rays_at))
+    assert a.school is None, "물고기 0 이면 떼도 없음"
     assert all(0 <= int(x0 + j * (slant + sw)) + lead and int(x0 + j * (slant + sw)) + lead + len(d) // 4 <= aw
                for x0, shape, _, _, slant, *_ in a.rays_at for sw in (-RAY_SWAY, RAY_SWAY)
                for lv in a.ray_rows[shape] for j, (lead, d) in enumerate(lv)), "빛줄기가 두 배여도 퍼진 아래 끝까지 화면 안"
@@ -3690,10 +3827,11 @@ def check():
     # 막대를 끄는 동안(retune): 다시 깔지 않고 수만 맞춤 — 있던 물고기·거품·게는 제자리, 양이 바뀌면 물빛만 다시
     a.amount, a.tank = 50, {k: TANK[k][1] for k in TANK}
     a.reset()
-    fish, flakes, crab, rays = a.fish[:3], list(a.flakes), a.crab, a.rays_at
+    fish, flakes, crab, rays, school = a.fish[:3], list(a.flakes), a.crab, a.rays_at, a.school
     a.tank["fish"] = 3
     a.retune()
     assert len(a.fish) == 3 and all(f is g for f, g in zip(a.fish, fish)), "물고기를 줄이면 있던 것 중에서 남음"
+    assert school and a.school is school, "마릿수를 바꿔도 떼는 그대로"
     a.tank["fish"], a.tank["bubbles"], a.amount = FISH_MAX, 100, 80
     a.frame(1 / 60, 400.0)  # 모래 띠를 그려 둠 — 물빛이 바뀌면 띠 바탕도 다시 그려야 함
     assert a.sand_base is not None
