@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""모든 창 위에 내리는 눈·비·뇌우·우박, 유리창에 맺히는 빗방울, 안개·오로라, 떠다니는 반딧불이·나비·잠자리·비눗방울, 불꽃놀이, 어항. 보이기만 하고 클릭은 그대로 아래 창으로 간다.
+"""모든 창 위에 내리는 눈·우박·비·뇌우, 유리창에 맺히는 빗방울, 안개·오로라, 떠다니는 반딧불이·나비·잠자리·비눗방울, 불꽃놀이, 어항. 보이기만 하고 클릭은 그대로 아래 창으로 간다.
 
   pythonw weather.py            띄우기 (창 없이 뒤에서 돎)
   python weather.py --toggle    떠 있으면 치우고, 없으면 띄움 (weather.bat 이 이걸 부름)
@@ -520,7 +520,7 @@ TAP_HOLE_COLOR, TAP_RIM, TAP_CRACK_COLOR = (16, 20, 34), (96, 84, 72), (52, 46, 
 TAP_LE = [bytes(int(v <= r) for v in range(256)) for r in range(256)]  # 띠 r 행에 잠긴 마디 = 수면 행 ≤ r 인 마디
 TAP_EQ = [bytes(int(v == r) for v in range(256)) for r in range(256)]  # 수면 행이 꼭 r 인 마디 — 윗변 줄
 
-KINDS = {1: ("snow", "눈"), 2: ("rain", "비"), 3: ("storm", "뇌우"), 4: ("hail", "우박"), 35: ("window", "창문 빗방울"),
+KINDS = {1: ("snow", "눈"), 4: ("hail", "우박"), 2: ("rain", "비"), 3: ("storm", "뇌우"), 35: ("window", "창문 빗방울"),
          31: ("fog", "안개"), 33: ("aurora", "오로라"), 6: ("fireflies", "반딧불이"), 34: ("bugs", "나비·잠자리"),
          32: ("soap", "비눗방울"), 5: ("fireworks", "불꽃놀이"), 8: ("aquarium", "어항"),
          36: ("faucet", "수도꼭지"), 7: ("none", "날씨 없음")}  # 없음은 동물만. id 는 설정 파일과 무관해 순서만 바꿔도 됨
