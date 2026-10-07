@@ -77,6 +77,7 @@ ST (번개) — 5시간 한도의 남은 양
 동전 — 이 PC 에서 오늘 쓴 토큰을 API 정가로 친 달러. 구독이면 실제로 나가는 돈은 아님
 
 막대 옆은 재설정까지 남은 시간이고, 10% 아래로 내려가면 깜빡입니다.
+창이 열린 뒤의 평균 속도로 가면 재설정 전에 바닥나는 때는 그 자리에 빨간 ! 와 바닥까지 남은 시간이 뜹니다.
 한도는 5분, 정가는 1분마다 다시 받습니다.
 
 고양이 — 이 PC 의 Claude Code 세션이 일하는 동안 달리고, 쉬면 잠듭니다. 한 차례가 끝나면 테두리가 3초 깜빡입니다.
@@ -287,7 +288,9 @@ class Hud:
             limits = "LOGIN 만료 — 터미널에서 claude"
         else:
             def pct(bar):
-                return "?" if bar is None else "%d%%" % round(bar["left"] * 100)
+                if bar is None:
+                    return "?"
+                return "%d%%" % round(bar["left"] * 100) + (" (%s 뒤 바닥)" % bar["empty"] if bar.get("empty") else "")
             limits = "HP %s · ST %s" % (pct(snap["bars"]["7d"]), pct(snap["bars"]["5h"]))
         return "사용량 HUD\n%s\n오늘 $%.2f" % (limits, snap["today"])
 
@@ -355,8 +358,11 @@ class Hud:
             self.px(x0 + i * 3, y + 1, color if i < filled else COLORS["slot"], 2, 5)
         pct = "%d%%" % round(left * 100)
         self.text(x0 + SEGMENTS * 3 + 2, y + 1, pct, color)
-        until = usage.left(bar["reset"] - time.time())
-        self.text(right - text_width(until), y + 1, until, COLORS["dim"])
+        if bar.get("empty_at"):  # 지금 속도면 재설정 전에 바닥 — 재설정 대신 바닥까지 남은 시간을 빨갛게
+            until, tint = "!" + usage.left(bar["empty_at"] - time.time()), COLORS["low"]
+        else:
+            until, tint = usage.left(bar["reset"] - time.time()), COLORS["dim"]
+        self.text(right - text_width(until), y + 1, until, tint)
 
     def draw(self):
         c = self.canvas
