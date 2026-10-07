@@ -266,6 +266,95 @@ def spend(days=7):
     return total, unknown
 
 
+# ── 일하는 중인가 ────────────────────────────────────────────────────────
+ACTIVE_SEC = 10 * 60  # 이보다 오래 안 고친 기록은 안 봄. 그래서 10분 넘게 도는 도구는 잠든 것으로 보임
+TAIL_START, TAIL_MAX = 64 * 1024, 8 * 1024 * 1024  # 끝에서 읽을 바이트. 줄 하나가 크면 넷 배씩 늘림
+
+
+def entry_state(rec):
+    """기록 한 줄 → 'work' · 'done' · 'idle' · 'side'(서브에이전트) · None(판정에 안 씀)."""
+    kind = rec.get("type")
+    if kind not in ("user", "assistant"):
+        return None  # system(stop_hook_summary 등)·attachment·queue-operation·last-prompt …
+    if rec.get("isSidechain"):
+        return "side"
+    msg = rec.get("message") or {}
+    if kind == "assistant":
+        # 블록이 끝나야 줄이 되므로 생성 중에는 앞의 user 줄이 마지막이다. None 은 중단될 때 남는 줄
+        return "work" if msg.get("stop_reason") in ("tool_use", None) else "done"
+    if rec.get("isMeta"):
+        return None  # 스킬 본문·Stop 훅 되먹임 등. 뒤따르는 줄이 정함
+    content = msg.get("content")
+    if isinstance(content, list):
+        text = next((b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"), "")
+        if not text:
+            return "work"  # tool_result — 다음 호출을 기다리는 중
+    else:
+        text = content if isinstance(content, str) else ""
+    if text.startswith("[Request interrupted") or "<local-command-std" in text:
+        return "idle"  # Esc 로 끊음 · /model 같은 로컬 명령 (모델을 안 부름)
+    return "work"
+
+
+def turn_state(lines):
+    """기록 줄들(오래된 것부터) → 마지막 판정. 판정할 줄이 없으면 None, 서브에이전트 기록이면 'side'."""
+    for line in reversed(lines):
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue  # 쓰는 중이라 잘린 마지막 줄, 앞을 잘라 읽은 첫 줄
+        state = entry_state(rec) if isinstance(rec, dict) else None
+        if state:
+            return state
+    return None
+
+
+def tail_state(path, size):
+    """파일 끝부분만 읽어 turn_state. 큰 tool_result 한 줄이 끝을 다 차지하면 넓혀 다시 읽음."""
+    chunk = TAIL_START
+    with path.open("rb") as f:
+        while True:
+            f.seek(max(0, size - chunk))
+            lines = f.read(chunk).decode("utf-8", "replace").splitlines()
+            state = turn_state(lines)
+            if state or chunk >= size or chunk >= TAIL_MAX:
+                return state
+            chunk *= 4
+
+
+_tails = {}  # 경로 → ((mtime, size), 판정)
+
+
+def activity(now=None):
+    """최근 ACTIVE_SEC 안에 고친 세션 기록마다 {경로: 'work' | 'done' | 'idle'}.
+
+    세션 기록은 projects/<프로젝트>/<세션>.jsonl 한 층만 본다 — 서브에이전트는 더 깊이 있고,
+    도구 출력 폴더까지 훑지 않게. 2초마다 불려도 바뀐 파일만 다시 읽는다.
+    권한 허락을 기다리는 동안도 마지막 줄은 tool_use 라 'work' 로 보인다 — 기록만으로는 못 가른다.
+    """
+    now = time.time() if now is None else now
+    out = {}
+    for path in PROJECTS.glob("*/*.jsonl"):
+        try:
+            st = path.stat()
+        except OSError:
+            continue
+        if now - st.st_mtime > ACTIVE_SEC:
+            _tails.pop(path, None)
+            continue
+        sig = (st.st_mtime, st.st_size)
+        cached = _tails.get(path)
+        if not cached or cached[0] != sig:
+            try:
+                cached = (sig, tail_state(path, st.st_size))
+            except OSError:
+                continue
+            _tails[path] = cached
+        if cached[1] in ("work", "done", "idle"):
+            out[path] = cached[1]
+    return out
+
+
 # ── 찍기 ────────────────────────────────────────────────────────────────
 def left(sec):
     """재설정까지 남은 시간을 짧게: 2D6H · 3H20M · 12M."""
@@ -336,6 +425,55 @@ def check():
     h["anthropic-ratelimit-unified-5h-reset"] = str(now - 1)
     assert windows_from(h, now)["5h"] is None
     assert windows_from({}, now) == {"5h": None, "7d": None}
+
+    # 일하는 중인가: 이 PC 기록에서 본 줄 모양들
+    def ent(kind, **kw):
+        return json.dumps({"type": kind, "isSidechain": False, **kw}, ensure_ascii=False)
+
+    def said(content, **kw):
+        return ent("user", message={"role": "user", "content": content}, **kw)
+
+    def ai(stop, block="text"):
+        return ent("assistant", message={"stop_reason": stop, "content": [{"type": block}]})
+    prompt, result = said("고쳐 줘"), said([{"type": "tool_result", "content": "ok"}])
+    hook = ent("system", subtype="stop_hook_summary")
+    cases = [([prompt], "work"),                                   # 생각 중 — 아직 assistant 줄 없음
+             ([prompt, ai("tool_use", "thinking"), ai("tool_use", "tool_use")], "work"),  # 도구 도는 중
+             ([prompt, ai("tool_use", "tool_use"), result], "work"),
+             ([prompt, ai(None, "thinking")], "work"),                 # 끝맺음 없이 남은 줄 — 끊겼으면 뒤에 표시가 옴
+             ([prompt, ai("end_turn"), hook, ent("last-prompt"), ent("attachment")], "done"),
+             ([prompt, ai(None, "thinking"), said([{"type": "text", "text": "[Request interrupted by user]"}])], "idle"),
+             ([ai("end_turn"), said("<command-name>/model</command-name>"),
+               said("<local-command-stdout>Set model</local-command-stdout>")], "idle"),
+             ([ai("end_turn"), said("Stop hook feedback: …", isMeta=True)], "done"),  # 뒤따르는 줄이 정함
+             ([prompt, ai("end_turn"), '{"type": "user", "mess'], "done"),           # 쓰는 중에 잘린 줄
+             ([ent("queue-operation")], None),
+             ([prompt.replace('"isSidechain": false', '"isSidechain": true')], "side")]
+    for lines, want in cases:
+        assert turn_state(lines) == want, (lines, turn_state(lines))
+
+    global PROJECTS, TAIL_START
+    real_dirs = PROJECTS, TAIL_START
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        PROJECTS, TAIL_START = tmp, 256
+        (tmp / "p" / "s" / "subagents").mkdir(parents=True)
+        files = {"p/a.jsonl": [prompt, ai("tool_use", "tool_use")],
+                 "p/b.jsonl": [prompt, ai("end_turn"), said([{"type": "tool_result", "content": "x" * 3000}])],
+                 "p/old.jsonl": [prompt],
+                 "p/s/subagents/c.jsonl": [prompt]}
+        for name, lines in files.items():
+            (tmp / name).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        now = time.time()
+        os.utime(tmp / "p/old.jsonl", (now - ACTIVE_SEC - 5,) * 2)
+        # 끝의 3000자 한 줄이 처음 읽는 256바이트를 다 차지해도 넓혀 읽어 판정함. 깊은 곳·오래된 것은 안 봄
+        assert activity(now) == {tmp / "p/a.jsonl": "work", tmp / "p/b.jsonl": "work"}, activity(now)
+        with (tmp / "p/a.jsonl").open("a", encoding="utf-8") as f:
+            f.write(ai("end_turn") + "\n")
+        assert activity(now)[tmp / "p/a.jsonl"] == "done", "바뀐 파일은 다시 읽음"
+    finally:
+        PROJECTS, TAIL_START = real_dirs
+        shutil.rmtree(tmp, ignore_errors=True)
 
     assert left(2 * 86400 + 6 * 3600 + 59) == "2D6H"
     assert left(3 * 3600 + 20 * 60) == "3H20M"

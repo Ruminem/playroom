@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.10 — 2026-10-08
+
+- usage-hud: a little cat now sits in the HUD. It runs while a Claude Code session on this PC is working and curls up asleep when none is, and when a turn finishes the HUD's border flashes for three seconds — so you can look away while Claude works. It reads the end of the session records changed in the last ten minutes every two seconds. A turn you stop with Esc does not flash. While Claude waits for you to allow a tool the cat keeps running, and a tool that runs for over ten minutes without a new line looks asleep. On the taskbar the flat panel is a little wider to make room for it; in the corners the size is unchanged
+- weather: fireworks now burst in eight kinds instead of one — peony (sometimes changing colour halfway), chrysanthemum with short tails, gold willow whose long trails of different lengths droop for over three seconds, palm, tilted ring, crossettes that split into four, blinking strobe glitter, and now and then a heart
+
+**한국어**
+
+- usage-hud: HUD 에 작은 고양이가 생김. 이 PC 의 Claude Code 세션이 일하는 동안 달리고, 일하는 세션이 없으면 웅크려 자며, 한 차례가 끝나면 HUD 테두리가 3초 깜빡임 — Claude 가 일하는 동안 딴 데를 보고 있어도 됨. 최근 10분 안에 바뀐 세션 기록의 끝부분을 2초마다 읽음. Esc 로 끊은 차례는 안 깜빡임. Claude 가 도구 허락을 기다리는 동안은 고양이가 계속 달리고, 새 줄 없이 10분 넘게 도는 도구는 잠든 것으로 보임. 작업 표시줄의 납작한 패널은 고양이 자리만큼 조금 넓어졌고, 구석 패널은 크기가 그대로임
+- weather: 불꽃놀이가 한 가지 대신 여덟 가지 모양으로 터짐 — 모란(가끔 중간에 색이 바뀜), 짧은 꼬리를 끄는 국화, 가닥마다 길이가 다른 금빛 꼬리가 3초 넘게 처지는 버들, 야자, 기울어진 고리, 넷으로 쪼개지는 갈라지기, 깜빡이는 반짝이, 가끔 하트
+
 ## 0.2.9 — 2026-10-07
 
 - usage-hud: a new **Taskbar diagnostic** item in the tray menu writes what is on the taskbar — each taskbar and the windows inside it, and other windows lying over it, with class, title, position and program name — to `%TEMP%\playroom-taskbar.txt` and opens it in Notepad. On the taskbar the HUD does not yet step around other programs that sit there too and can land on top of them; this is for seeing how they sit before teaching it to avoid them. Window titles are in it, so look it over before sharing
