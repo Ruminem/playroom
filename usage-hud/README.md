@@ -14,11 +14,11 @@ Each bar shows the time left until it resets, and blinks below 10%.
 
 Double-click [hud.bat](hud.bat) to show or hide it. It sits in the bottom-left corner above the taskbar, on top of every window, even a picture-in-picture video that is topmost too, but clicks pass straight through it and it never takes focus.
 
-Because the HUD itself cannot be clicked, a heart icon sits in the notification area. Its menu shows or hides the HUD, moves it to another corner or onto the **taskbar**, changes its size (2–5×) or **theme**, starts it with Windows, opens the page, shows a short help and exits. The corner, size and theme you pick are remembered in `%LOCALAPPDATA%\playroom\usage-hud.json`. Hovering the icon shows the numbers as text.
+Because the HUD itself cannot be clicked, a heart icon sits in the notification area. Its menu shows or hides the HUD, moves it to another corner or onto the **taskbar**, changes its size (2–5×) or **theme**, starts it with Windows, opens the page, shows a short help, saves a taskbar diagnostic and exits. The corner, size and theme you pick are remembered in `%LOCALAPPDATA%\playroom\usage-hud.json`. Hovering the icon shows the numbers as text.
 
 There are six themes — only the colours change: classic, Game Boy (four greens), neon, amber terminal, deep sea and paper (a light one). The tray icon picks up a new theme the next time the HUD starts, and the page always stays classic
 
-On the taskbar it turns into a flat two-line panel — HP and ST on the left, the coin and today's cost on the right — just left of [sysmon](../sysmon/) (or of the notification icons when sysmon is off). Its size follows the taskbar height there, so the size menu applies only in the corners. It follows when sysmon moves or changes width, hides with a full-screen app, and may cover the end of a long row of taskbar buttons
+On the taskbar it turns into a flat two-line panel — HP and ST on the left, the coin and today's cost on the right — just left of [sysmon](../sysmon/) (or of the notification icons when sysmon is off). Its size follows the taskbar height there, so the size menu applies only in the corners. It follows when sysmon moves or changes width, hides with a full-screen app, and may cover the end of a long row of taskbar buttons. It does not yet step around other programs that also sit on the taskbar, so it can land on top of them. **Taskbar diagnostic** in the menu writes what is on the taskbar — each taskbar and the windows inside it, and other windows lying over it, with class, title, position and program name — to `%TEMP%\playroom-taskbar.txt` and opens it in Notepad. It is there to find out how such programs sit before teaching the HUD to avoid them; window titles are in it, so look it over before sharing
 
 **Start with Windows** adds `pythonw hud.py` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, the same per-user place as other startup apps, so it also shows up in Settings → Apps → Startup. The tick reflects that switch too, and clears if the folder was moved (tick it again to point at the new path). The code is [shared/startup.py](../shared/startup.py), which sysmon, weather and layers use too. `hud.bat` again or `python hud.py --stop` also closes it.
 
@@ -77,11 +77,11 @@ Claude Code 구독 한도를 레트로 게임 HUD 로 그림. 파이썬 표준 �
 
 [hud.bat](hud.bat) 을 더블클릭하면 켜지고 다시 누르면 꺼짐. 작업 표시줄 위 왼쪽 아래 구석에 모든 창보다 위에 뜨지만(같이 맨 위에 뜨는 PIP 영상보다도 위), 클릭은 그대로 아래로 통과하고 포커스도 안 뺏음.
 
-HUD 자체는 클릭이 안 되므로 알림 영역에 하트 아이콘이 뜸. 그 메뉴에서 HUD 보이기·숨기기, 다른 구석이나 **작업 표시줄** 로 옮기기, 크기(2–5배)나 **테마** 바꾸기, 윈도우 시작 시 실행, 페이지 열기, 짧은 도움말, 끝내기를 함. 고른 위치·크기·테마는 `%LOCALAPPDATA%\playroom\usage-hud.json` 에 남음. 아이콘에 마우스를 올리면 숫자가 글로 보임.
+HUD 자체는 클릭이 안 되므로 알림 영역에 하트 아이콘이 뜸. 그 메뉴에서 HUD 보이기·숨기기, 다른 구석이나 **작업 표시줄** 로 옮기기, 크기(2–5배)나 **테마** 바꾸기, 윈도우 시작 시 실행, 페이지 열기, 짧은 도움말, 작업 표시줄 진단, 끝내기를 함. 고른 위치·크기·테마는 `%LOCALAPPDATA%\playroom\usage-hud.json` 에 남음. 아이콘에 마우스를 올리면 숫자가 글로 보임.
 
 테마는 여섯이고 색만 바뀜: 클래식, 게임보이(초록 네 가지), 네온, 앰버 단말기, 심해, 종이(밝은 바탕). 트레이 아이콘은 다음에 켤 때 새 테마 색이 되고, 페이지는 늘 클래식임
 
-작업 표시줄에서는 두 줄짜리 납작한 패널이 됨 — 왼쪽에 HP·ST, 오른쪽에 동전과 오늘 정가 — [sysmon](../sysmon/) 바로 왼쪽(sysmon 이 꺼져 있으면 알림 아이콘 왼쪽)에 붙음. 크기는 작업 표시줄 높이에 맞춰 정해져서 크기 메뉴는 구석에서만 먹음. sysmon 이 옮기거나 폭이 바뀌면 따라가고, 전체 화면 앱이 돌면 숨고, 작업 표시줄 단추가 길게 늘어서 있으면 그 끝을 덮을 수 있음
+작업 표시줄에서는 두 줄짜리 납작한 패널이 됨 — 왼쪽에 HP·ST, 오른쪽에 동전과 오늘 정가 — [sysmon](../sysmon/) 바로 왼쪽(sysmon 이 꺼져 있으면 알림 아이콘 왼쪽)에 붙음. 크기는 작업 표시줄 높이에 맞춰 정해져서 크기 메뉴는 구석에서만 먹음. sysmon 이 옮기거나 폭이 바뀌면 따라가고, 전체 화면 앱이 돌면 숨고, 작업 표시줄 단추가 길게 늘어서 있으면 그 끝을 덮을 수 있음. 작업 표시줄에 같이 뜨는 다른 프로그램은 아직 피하지 않아서 그 위에 겹칠 수 있음. 메뉴의 **작업 표시줄 진단** 은 작업 표시줄 위에 무엇이 있는지 — 작업 표시줄마다 그 안의 창, 그 위에 얹힌 다른 창을 클래스·제목·자리·프로그램 이름과 함께 — `%TEMP%\playroom-taskbar.txt` 에 적고 메모장으로 염. 그런 프로그램이 어떻게 떠 있는지 보고 피하게 만들려고 둔 것임. 창 제목이 들어 있으니 남에게 보내기 전에 한 번 훑어볼 것
 
 **Windows 시작 시 실행** 은 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 에 `pythonw hud.py` 를 넣음. 다른 시작 프로그램과 같은 사용자별 자리라 설정 → 앱 → 시작 프로그램에도 뜸. 체크 표시는 그쪽 스위치도 따르고, 폴더를 옮겨 경로가 달라지면 풀림(다시 체크하면 새 경로로 고쳐 씀). 코드는 [shared/startup.py](../shared/startup.py) 이고 sysmon·weather·layers 도 같이 씀. `hud.bat` 을 다시 누르거나 `python hud.py --stop` 으로도 끔.
 
