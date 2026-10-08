@@ -121,6 +121,10 @@ HAIL_SHARE = 0.4   # 양 → 우박 알 수 ('보통' 60개)
 # (반지름, 알파, 꼬리 px, 뽑힐 몫, 빠르기 배수) — 작은 알, 중간 알, 드문 큰 알
 HAIL_SIZES = ((1.2, 225, 7, 0.6, 1.0), (2.1, 245, 10, 0.32, 1.1), (3.2, 250, 13, 0.08, 1.2))
 HAIL_COLOR, HAIL_RIM = (250, 252, 255), (160, 192, 228)  # 빛 받는 왼쪽 위, 그늘진 오른쪽 아래
+# 쌓인 우박: 찌그러진 얼음 알 무늬(폭 BEAD_TILE 에서 이어짐) · 알 반지름 범위 · 반지름이 각도마다 흔들리는 몫
+BEAD_TILE, BEAD_R, BEAD_LUMP = 256, (1.0, 2.8), 0.2
+BEAD_REACH = 6  # 알 중심에서 그 알 픽셀까지 가장 먼 칸 — bead_field 가 1.5·반지름 + 1 까지만 칠함
+BEAD_LIT, BEAD_DARK, BEAD_GAP = (244, 248, 255), (170, 192, 224), (120, 142, 182)  # 우윳빛 · 그늘 · 알 사이 틈
 HAIL_TAIL = (0.6, 120)  # 끝 빠르기의 이 몫보다 빨리 떨어지는 알만 꼬리, 꼬리 밑동 알파
 HAIL_CHIPS = (0.3, 0.5, 1500)  # 닿을 때 튀는 얼음 부스러기: 사는 초 범위, 중력
 HAIL_SPEED = (820, 1050)  # 떨어지는 빠르기 px/초. 튀어 오른 뒤엔 중력으로 다시 이 빠르기까지
@@ -948,7 +952,7 @@ class Pile:
             h[i] += f
             h[i + 1] -= f
         if melt:
-            k = 1 - melt
+            k = max(0.0, 1 - melt)  # 1 을 넘으면 높이가 음수로 뒤집혀 띠를 그리다 죽음 — 가려져 프레임을 오래 쉬면 남
             self.h = [v * k if v > 0.01 else 0.0 for v in h]
 
     def blow(self, f):
@@ -1013,6 +1017,47 @@ def pile_column(v, edges, body, zero, room=PILE_STRIP):
     n = min(int(v), room - 1)
     q = int((v - int(v)) * 16)
     return zero[:(room - n - 1) * 4] + edges[q] + body[:n * 4]
+
+
+def bead_field(height, rng, tile=BEAD_TILE):
+    """쌓인 우박 무늬: 찌그러진 얼음 알을 위에서 떨어뜨려 쌓음. 열마다 아래에서 위로 (드러나는 높이, 높이를 볼 열, 픽셀).
+    알 픽셀은 알 중심 열의 더미가 중심 높이에 닿으면 통째로 드러나 윗면이 알 모양대로 울퉁불퉁함 — 픽셀마다 제 열을
+    보면 더미 높이가 한 칸 바뀌는 데서 알이 세로로 잘려 가시가 솟음. 볼 열은 이 열에서 -BEAD_REACH..BEAD_REACH 를
+    0..2·BEAD_REACH 로. 알 사이 틈은 더 묻혀야 그늘로 채워짐.
+    폭 256 · 높이 71 이면 알 2천여 개, 한 번 0.1초쯤 — 종류를 처음 고를 때만 만듦."""
+    tops, own = [0.0] * tile, {}
+    while min(tops) < height:
+        r = rng.uniform(*BEAD_R)
+        lump = [(k, rng.uniform(-BEAD_LUMP, BEAD_LUMP), rng.uniform(0, math.tau)) for k in (2, 3, 5)]
+        rest = []
+        for _ in range(3):  # 세 자리 중 제일 낮은 데로 굴러감 — 아니면 탑처럼 솟은 데가 생김
+            x0 = rng.uniform(0, tile)
+            cy = max(tops[c % tile] + math.sqrt(r * r - (c + 0.5 - x0) ** 2)
+                     for c in range(int(x0 - r + 0.5), int(x0 + r + 0.5)) if abs(c + 0.5 - x0) < r)
+            rest.append((cy, x0))
+        cy, x0 = min(rest)
+        hi = (int(x0 - 0.4 * r), int(cy + 0.4 * r)) if r > 1.8 else None  # 큰 알만 반짝이는 한 점
+        for c in range(int(x0 - 1.5 * r) - 1, int(x0 + 1.5 * r) + 2):
+            dx = c + 0.5 - x0
+            if abs(dx) < r:
+                tops[c % tile] = max(tops[c % tile], cy + math.sqrt(r * r - dx * dx))
+            for y in range(max(0, int(cy - 1.5 * r) - 1), int(cy + 1.5 * r) + 2):
+                if (c % tile, y) in own:  # 먼저 앉은 알은 안 깎임 — 깎이면 남은 조각이 가시처럼 솟음
+                    continue
+                dy = y + 0.5 - cy
+                a = math.atan2(dy, dx)
+                R = 1.15 * r * (1 + sum(m * math.cos(k * a + p) for k, m, p in lump))
+                d = math.hypot(dx, dy)
+                if d > R:
+                    continue
+                s = min(1.0, max(0.0, 0.5 + (dx - dy) / (2.4 * R)))  # 왼쪽 위가 밝음
+                col = tuple(int(u + (v - u) * s) for u, v in zip(BEAD_LIT, BEAD_DARK))
+                if d > R - 0.9:  # 테두리
+                    col = tuple((u + v) // 2 for u, v in zip(col, BEAD_DARK))
+                own[c % tile, y] = (int(cy), int(x0) - c + BEAD_REACH,
+                                    pixel((255, 255, 255) if (c, y) == hi else col, 255))
+    gap = pixel(BEAD_GAP, 220)  # 틈은 묻힌 깊이를 2–4px 로 흔듦 — 한 값이면 틈 윗선이 일자로 보임
+    return [[own.get((t, y)) or (y + rng.randint(2, 4), BEAD_REACH, gap) for y in range(height)] for t in range(tile)]
 
 
 # ── 어항 ── 물빛 위에 덮어 찍는 반투명 그림은 물빛을 미리 섞어 둠. 안 섞으면 옅은 가장자리가 물빛에 구멍을 냄
@@ -1866,6 +1911,27 @@ class Weather:
                 last[x] = key  # 띠는 위에서부터 빈 칸 · 더미 · 틀 높이만큼 빈 칸
                 strip32[x::w] = memoryview(pile_column(v, self.pile_edges, bodies[i], zero, sh - b)
                                            + zero[:b * 4]).cast("I")
+
+    def render_beads(self):
+        """쌓인 우박: render_pile 과 같은 띠에 눈 더미 대신 얼음 알 무늬. 알 픽셀은 알 중심 열의 높이를 보므로 열은
+        양옆 BEAD_REACH 열의 높이 중 하나라도 정수 칸이 바뀌면 다시 그림."""
+        strip32 = self.strip.cast("I")
+        w, last, zero, sh, field, rr, clear = self.w, self.pile_last, self.pile_zero, self.strip_h, self.pile_beads, \
+            2 * BEAD_REACH + 1, bytes(4)
+        ns = [min(int(v), sh - b - 1) for v, b in zip(self.pile.h, self.base)]
+        ns = ns[:1] * BEAD_REACH + ns + ns[-1:] * BEAD_REACH
+        bs = self.base[:1] * BEAD_REACH + self.base + self.base[-1:] * BEAD_REACH
+        for x, b in enumerate(self.base):
+            key = (ns[x:x + rr], bs[x:x + rr])
+            if key != last[x]:
+                last[x] = key
+                near, bw = key
+                if bw.count(b) != rr:  # 틀 가장자리: 바닥이 다른 열에 중심을 둔 알은 이 열에서 안 보임
+                    near = [m if c == b else -1 for m, c in zip(near, bw)]
+                room = sh - b
+                top = min(room, max(near) + BEAD_REACH + 1)  # 틀 옆 언덕 꼭대기에선 삐져나온 알이 띠 위로 잘림
+                c = b"".join(p if k <= near[o] else clear for k, o, p in reversed(field[x % len(field)][:top]))
+                strip32[x::w] = memoryview(zero[:(room - top) * 4] + c + zero[:b * 4]).cast("I")
 
     # ── 반딧불이 ──
     def fly_sprites(self):
@@ -3290,6 +3356,9 @@ class Weather:
             if "hail" not in self.sprite_cache:
                 self.sprite_cache["hail"] = hail_set(self.stride)
             (self.hail_sprites, self.chip), self.stones, self.chips = self.sprite_cache["hail"], [], []
+            if "beads" not in self.sprite_cache:
+                self.sprite_cache["beads"] = bead_field(self.strip_h, random.Random(4))
+            self.pile_beads = self.sprite_cache["beads"]
         elif kind == "fireworks":
             self.fw = self.fw_sprites()
         elif kind == "aquarium":
@@ -3546,6 +3615,7 @@ class Weather:
             self.surface.clear()
         piled = kind in ("snow", "hail")
         if piled:
+            draw = self.render_beads if kind == "hail" else self.render_pile
             if now - self.last_settle >= SETTLE_SEC:
                 melt = MELT_PER_SEC * (HAIL_MELT if kind == "hail" else 1)
                 el = now - self.last_settle
@@ -3553,9 +3623,9 @@ class Weather:
                 if kind == "snow":  # 우박 알은 무거워 안 날림
                     self.pile.blow(DRIFT * self.wind(now) * el)
                 self.last_settle = now
-                self.render_pile()
+                draw()
             elif moved:  # 바뀐 열만 그림
-                self.render_pile()
+                draw()
             self.surface.pixels[(self.h - self.strip_h) * self.stride:] = self.strip
         elif kind == "aquarium":
             if self.sand_base is not self.base:  # 처음이거나 틀이 바뀜
@@ -3777,6 +3847,46 @@ def check():
     col = lambda x: [bytes(lf.strip[(r * 6 + x) * 4:(r * 6 + x) * 4 + 4]) for r in range(PILE_STRIP)]
     assert sum(p[2] + p[0] for p in col(1)) > sum(p[2] + p[0] for p in col(4)) + 40, "빛 받는 비탈이 밝음"
     assert col(1)[PILE_STRIP - 4] == pixel(PILE_RIM, 255), "높이 4 면 밑에서 넷째 칸이 테두리"
+    # 쌓인 우박: 찌그러진 얼음 알 더미. 알은 (드러나는 높이, 중심 열) 로 묶임
+    bsh = PILE_STRIP + 24
+    field, gap, beads = bead_field(bsh, random.Random(4)), pixel(BEAD_GAP, 220), {}
+    for t, cl in enumerate(field):
+        for y, (k, o, p) in enumerate(cl):
+            if p != gap:
+                beads.setdefault((k, (t + o - BEAD_REACH) % BEAD_TILE), []).append((BEAD_REACH - o, y))  # 중심에서 떨어진 열
+    large = [v for v in beads.values() if len(v) >= 14]
+    span = lambda v, i: max(q[i] for q in v) - min(q[i] for q in v)
+    # 2026-10-08 잼: 찌그러뜨리면 큰 알 262 개 중 13%, 동그랗게만(BEAD_LUMP 0) 하면 2.4%
+    assert sum(abs(span(v, 0) - span(v, 1)) >= 2 for v in large) > 0.05 * len(large), "알이 다 동그랗지는 않음"
+
+    def bead_strip(hs, base):
+        bw = len(hs)
+        bf = types.SimpleNamespace(w=bw, strip_h=bsh, base=base, pile=types.SimpleNamespace(h=hs), pile_last=[-1] * bw,
+                                   pile_zero=bytes(bsh * 4), pile_beads=field, strip=memoryview(bytearray(bw * bsh * 4)))
+        Weather.render_beads(bf)
+        alpha = bytes(bf.strip)[3::4]
+        return lambda x, y: alpha[(bsh - 1 - y) * bw + x] > 0  # y 는 띠 바닥에서 위로
+
+    on = bead_strip([8.0] * BEAD_TILE, [0] * BEAD_TILE)
+    assert all(on(x, 2) for x in range(BEAD_TILE)), "더미 속은 알과 틈 그늘로 꽉 참"
+    assert 0.1 < sum(on(x, 8) for x in range(BEAD_TILE)) / BEAD_TILE < 0.9, "윗면은 알 모양대로 울퉁불퉁함 — 높이 8 줄에 40%"
+    on = bead_strip([12.0] * BEAD_TILE, [0] * BEAD_TILE)
+    lone = lambda x, y: on(x, y) and not on(x - 1, y) and not on(x + 1, y)
+    assert not any(lone(x, y) and lone(x, y - 1) and not on(x, y + 1) for x in range(1, BEAD_TILE - 1) for y in range(1, bsh - 1)), \
+        "폭 1px 로 솟은 가시 없음 — 나중 알이 먼저 앉은 알을 깎으면 남은 조각이 솟음(256 열에 2개)"
+    on = bead_strip([1.5] * BEAD_TILE, [0] * BEAD_TILE)
+    assert 0.15 < sum(any(on(x, y) for y in range(bsh)) for x in range(BEAD_TILE)) / BEAD_TILE < 0.9, "얇으면 알이 듬성듬성"
+    # 비탈에서 더미 높이가 한 칸 바뀌는 열이 알을 세로로 가르면 반쪽 알이 가시처럼 솟음 — 알은 통째로 보이거나 안 보임
+    hs = [3 + 10 * x / 300 for x in range(300)]
+    on, seen = bead_strip(hs, [0] * 300), {}
+    for x in range(BEAD_REACH, 300 - BEAD_REACH):
+        for y, (k, o, p) in enumerate(field[x % BEAD_TILE]):
+            if p != gap:
+                seen.setdefault((k, x + o), set()).add(on(x, y))
+    assert all(len(s) == 1 for c, s in seen.items() if BEAD_REACH * 2 <= c[1] < 300 - BEAD_REACH), "알은 통째로"
+    # 틀 가장자리: 옆 바닥의 높은 더미가 틀 위 열의 알을 띄우면 안 됨
+    on, bare = (bead_strip([d] * 100 + [1.0] * 100, [0] * 100 + [24] * 100) for d in (16.0, 0.0))
+    assert all(on(x, y) == bare(x, y) for x in range(100, 110) for y in range(bsh)), "틀 위 열은 옆 바닥 더미와 상관없음"
     n = RAIN_LAYERS[1][1][0]
     wf = big(base=[0] * 100 + [48] * 100, kind="rain", gust_phase=0.0, bolt=None, sprite_cache={}, splashes=[], crowns=[],
              droplet=place(disc(0.8, 0.8, 190, RAIN_COLOR, RAIN_COLOR), 800), crown=[place(crown(k), 800) for k in range(3)],
@@ -4132,6 +4242,8 @@ def check():
         bird.x, bird.ground = x0, None
         Weather.walk_pet(ff, 1 / 60, t0)
         bird.fly(t0, True)
+        bird.land = 500.0 if x0 < 200 else 60.0  # 앉을 자리는 정해 둠 — 틈으로
+        bird.right = bird.land >= bird.x
         ys, g0 = [], bird.ground
         for i in range(1, 60 * 5):
             Weather.walk_pet(ff, 1 / 60, t0 + i / 60)
@@ -4165,6 +4277,8 @@ def check():
     assert abs(p.h[10] - p.h[30]) < 0.01, "한쪽으로 쏠리지 않음"
     p.settle(0.5)
     assert abs(sum(p.h) - vol / 2) < 0.1, "녹는 양은 높이에 비례"
+    p.settle(3.0)  # 가려져 프레임을 쉰 뒤 한 번에 몰아 녹임 — 우박은 56초면 1 을 넘음
+    assert min(p.h) == 0.0, "오래 쉬고 녹여도 더미가 음수로 뒤집히지 않음"
     spike = Pile(11)
     spike.h[5] = 20.0
     spike.settle(0)
@@ -4615,6 +4729,10 @@ def check():
     a.stones = junk * 500  # 지난번 우박 — 종류를 다시 고르면 새로 깔아야 함
     a.reset()
     assert len(a.stones) == round(count(50) * HAIL_SHARE) and not any(s is junk[0] for s in a.stones), "우박을 고르면 돌을 새로"
+    a.pile.h, a.last_settle = [6.0] * aw, 900.0 - SETTLE_SEC
+    a.frame(1 / 60, 900.0)
+    strip = bytes(a.strip)
+    assert any(strip[i:i + 4] == pixel(BEAD_GAP, 220) for i in range(0, len(strip), 4)), "쌓인 우박은 알 무늬로 그림"
     a.kind = "snow"
     a.reset()
     if not MAC:  # 전체 화면이면 틀을 안 읽고 바닥 0, 바뀌면 FRAMES_EVERY 를 안 기다리고 바로 다시 냄

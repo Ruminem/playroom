@@ -746,10 +746,12 @@ class Bird(Pet):
         self.until = now + self.rng.uniform(lo, hi)
 
     def fly(self, now, far):
-        """화면 안 다른 자리로 날아감. far 면 지금 자리에서 먼 쪽 1/3 로."""
+        """화면 안 다른 자리로 날아감. far 면 지금 자리에서 화면 1/3 넘게 떨어진 아무 데로(양쪽 다)."""
         room = max(0, self.width - BIRD_W)
-        if far:
-            self.land = self.rng.uniform(0, room / 3) if self.x > room / 2 else self.rng.uniform(room * 2 / 3, room)
+        if far:  # 먼 쪽 끝 1/3 로만 가면 자주 놀라는 우박·뇌우 때 양 끝 두 군데만 오감
+            lo, hi = max(0.0, self.x - room / 3), min(room, self.x + room / 3)
+            u = self.rng.uniform(0, room - (hi - lo))
+            self.land = u + (hi - lo) if u > lo else u
         else:
             self.land = self.rng.uniform(0, room)
             if abs(self.land - self.x) < 120:  # 너무 가까우면 넓은 쪽으로 120px 밀어 냄
@@ -1283,7 +1285,13 @@ def check():
         bird.x = x
         bird.go("peck", now)
         bird.startle(now)
-        assert bird.state == "fly" and abs(bird.land - x) > 200, "놀라면 먼 쪽으로 날아감"
+        assert bird.state == "fly" and abs(bird.land - x) >= (500 - BIRD_W) / 3, "놀라면 멀리 날아감"
+    spots = set()
+    for _ in range(300):  # 왼쪽 끝에서 놀라도 반대쪽 끝 1/3 만이 아니라 화면 1/3 너머 아무 데나 — 열 칸 중 일곱 칸
+        bird.x, bird.state = 20.0, "peck"
+        bird.startle(now)
+        spots.add(int(bird.land / (500 - BIRD_W) * 10))
+    assert len(spots) >= 6, ("놀라 앉는 자리가 고루 퍼짐", sorted(spots))
     # 가로 잘라내기: 왼쪽 끝 밖으로 반쯤 나간 새는 화면 안쪽 절반만, 버퍼 밖으로 안 넘침
     px = bytearray(100 * 4 * 50)
     full = bytearray(len(px))
