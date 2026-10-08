@@ -258,6 +258,14 @@ FLOWER_PETALS = ((232, 64, 64), (246, 140, 180), (250, 214, 60), (248, 246, 236)
 FLOWER_GREEN, FLOWER_EYE = {"s": (70, 140, 60), "f": (100, 176, 76)}, ((250, 200, 40), (130, 84, 36))  # 노란 꽃은 갈색 가운데
 # 앉은 벌레가 앉을 자리 윗변 아래로 내려앉는 px(다리) · 잠자리가 휙 날 때 빈자리에 앉으러 갈 확률 · 앉아 있는 초
 BUG_SIT, DRAGON_PERCH, DRAGON_REST = 3, 0.35, (3, 10)
+# 뜰의 바람: wind() 를 WIND_FULL 로 나눈 -1..1. 가지 끝이 위아래로 흔들리는 칸(벽 쪽은 안 움직임) · 커서가 가지에 올라오면
+# 그 알파. 바람줄: 폭 1000px 마다 초당 생기는 수(잔잔 · 센 바람) · 최대 수 · 알파 · 흘러가는 px/초(잔잔 · 센) · 길이 칸 · 사는 초.
+# 떨어지는 잎: 바람이 이보다 세면 가지에서 떨어짐 · 센 바람에 초당 수 · 최대 수 · 바람에 밀리는 px/초. 나는 나비가 밀리는
+# px/초 · 꽃에 앉은 나비가 날려 가는 바람 · 먼지가 밀리는 px/초
+WIND_FULL, BRANCH_SWAY, BRANCH_FADE = 29, 3, 80
+STREAK_RATE, STREAK_N, STREAK_ALPHA, STREAK_V, STREAK_LEN, STREAK_LIFE = (0.2, 1.6), 8, 90, (160, 420), (14, 34), (1.0, 1.8)
+LEAF_GUST, LEAF_RATE, LEAF_N, LEAF_V = 0.45, 2.5, 8, 140
+BUG_DRIFT, BUG_BLOWN, MOTE_WIND = 45, 0.85, 30
 
 # 창문 빗방울: 양 → 유리에 맺혀 있는 방울 수 ('보통' 150개) · 양 50% 에 초당 새로 맺히는 수 · 새 방울 반지름 범위 px ·
 # 이 반지름이 넘으면 초당 PANE_GO 확률로 흘러내리기 시작 · 반지름 최대 · 흐를 때 달리는 px/초 · 달리는 초 · 멈칫하는 초 ·
@@ -1690,6 +1698,38 @@ def flower_art(rng):
     return frames, {**FLOWER_GREEN, "p": petal, "c": FLOWER_EYE[petal == FLOWER_PETALS[2]]}, c
 
 
+def sag(c, n, off):
+    """폭 n 칸 가지의 벽에서 c 번째 열이 내려가는 칸 — 벽은 그대로, 끝이 off 칸 (제곱으로 휨)."""
+    return round(off * (c / n) ** 2)
+
+
+def bend(rows, off):
+    """가지 글자 판(벽이 0열)을 끝이 off 칸 내려가게 휨. 위아래로 BRANCH_SWAY 칸 빈 행을 둘러 판 크기는 off 와 무관."""
+    n, pad = len(rows[0]), BRANCH_SWAY
+    out = [["."] * n for _ in range(len(rows) + 2 * pad)]
+    for c in range(n):
+        d = pad + sag(c, n, off)
+        for r, line in enumerate(rows):
+            if line[c] != ".":
+                out[r + d][c] = line[c]
+    return ["".join(r) for r in out]
+
+
+def ghost(segs, a):
+    """pet.segments 조각을 알파 a 로 — premultiplied 라 색과 알파(255)를 한 표로 같이 줄임."""
+    t = bytes(v * a // 255 for v in range(256))
+    return [(dy, skip, data.translate(t)) for dy, skip, data in segs]
+
+
+def streak_art(n, rng):
+    """바람줄 한 가닥 → 높이 3칸, 길이 n 칸 글자 판. 사인 물결로 한 칸씩 오르내림."""
+    ph, k = rng.uniform(0, math.tau), rng.uniform(0.25, 0.45)
+    rows = [["."] * n for _ in range(3)]
+    for c in range(n):
+        rows[1 + round(math.sin(c * k + ph))][c] = "w"
+    return ["".join(r) for r in rows]
+
+
 def load_settings():
     try:
         data = json.loads(SETTINGS.read_text(encoding="utf-8"))
@@ -2537,8 +2577,8 @@ class Weather:
                 random.uniform(0, math.tau), random.uniform(*FLUTTER_V), x, y, -1]
 
     def sow(self):
-        """나비 날의 뜰을 깜: 햇볕과 벽에서 뻗은 가지를 화면 크기 배경에 굽고(처음 고를 때 한 번, sprite_cache), 꽃
-        자리와 그림을 정함. 프레임은 지우는 대신 배경으로 덮고(frame), 꽃과 빛 속 먼지는 garden 이 찍음."""
+        """나비 날의 뜰을 깜: 햇볕을 화면 크기 배경에 굽고(처음 고를 때 한 번, sprite_cache), 벽에서 뻗은 가지와 꽃
+        자리·그림을 정함. 프레임은 지우는 대신 배경으로 덮고(frame), 바람줄·가지·꽃·잎·빛 속 먼지는 garden 이 찍음."""
         w, h, S = self.w, self.h, pet.SCALE
         if "meadow" not in self.sprite_cache:
             rng = random.Random(random.random())  # 전역 random 을 따름 — 검사(random.seed)에서 같은 뜰
@@ -2546,8 +2586,10 @@ class Weather:
             rows, mid, spots = branch_art(int(w * rng.uniform(*BRANCH_LEN)) // S, rng)
             left, bw = rng.random() < 0.5, len(rows[0]) * S
             bx, by = 0 if left else w - bw, int(h * rng.uniform(*BRANCH_Y)) - mid * S
-            pet.stamp(bg, w * 4, bx, by, pet.segments(rows, not left, BRANCH_COLORS), w, h)
-            perches = [(bx + (x if left else len(rows[0]) - 1 - x) * S + S / 2, by + y * S, False) for x, y in spots]
+            # 앉을 자리: (화면 x, 벽에서 몇째 열, 칸 y). 휜 판은 끝의 휨 칸 → (조각, 흐린 조각) 으로 처음 쓸 때 만듦
+            twig = {"rows": rows, "left": left, "x": bx, "y": by, "w": bw, "h": len(rows) * S, "bends": {},
+                    "spots": [(bx + (x if left else len(rows[0]) - 1 - x) * S + S / 2, x, y) for x, y in spots]}
+            leaf = [pet.segments(f, False, BRANCH_COLORS) for f in (LEAF_ART[0], ("Gge",), LEAF_ART[1], (".G", "g."))]
             flowers, x = [], rng.uniform(5, 40)
             while x < w - 20:
                 frames, colors, c = flower_art(rng)
@@ -2555,22 +2597,50 @@ class Weather:
                                 rng.uniform(0, math.tau), rng.uniform(*FLOWER_SWAY)))
                 x += rng.uniform(*FLOWER_EVERY)
             self.sprite_cache["meadow"] = {"bg": bg, "bg_c": (ctypes.c_char * len(bg)).from_buffer(bg), "rays": rays,
-                                           "branch": perches, "flowers": flowers}
+                                           "twig": twig, "leaf": leaf, "flowers": flowers}
         self.meadow = self.sprite_cache["meadow"]
-        self.perch_xy, self.motes = [], []  # 앉을 자리는 garden 이 프레임마다 채움 — flutter 보다 먼저 불림
+        # 앉을 자리는 garden 이 프레임마다 채움 — flutter 보다 먼저 불림. breeze 는 이번 프레임 바람 -1..1
+        self.perch_xy, self.motes, self.streaks, self.leaves, self.breeze = [], [], [], [], 0.0
 
     def garden(self, dt, now):
-        """꽃: 줄기 밑이 그 열 바닥(틀 윗변)에 서서 바람에 살랑임(세 장 중 하나) — 앉을 자리(perch_xy) 앞쪽을 이번
-        프레임 송이 자리로 고침. 빛 속 먼지: 빛줄기 안에서 생겨 천천히 떠가며 밝아졌다 사그라듦 — 배경 위에 섞어 찍음."""
+        """바람(wind 를 -1..1 로)에 맞춰 뜰을 찍음. 바람줄(blow)은 가지 뒤. 가지: 벽은 그대로, 끝이 위아래로 흔들리고
+        바람이 셀수록 크고 빠르게 — 커서가 올라오면 반투명. 꽃: 줄기 밑이 그 열 바닥(틀 윗변)에 서서 살랑이다 바람
+        쪽으로 누움(세 장 중 하나). 앉을 자리(perch_xy)는 이번 프레임 송이·휜 가지 자리. 센 바람엔 가지에서 잎이 떨어져
+        날림. 빛 속 먼지: 빛줄기 안에서 생겨 바람에 떠가며 밝아졌다 사그라듦 — 배경 위에 섞어 찍음."""
         px, stride, w, h, base, S = self.surface.pixels, self.stride, self.w, self.h, self.base, pet.SCALE
+        k = self.breeze = max(-1.0, min(1.0, self.wind(now) / WIND_FULL))
+        self.blow(dt, now, k)
+        tw, pad = self.meadow["twig"], BRANCH_SWAY * S
+        off = round(BRANCH_SWAY * (0.3 + 0.7 * abs(k)) * math.sin(now * (1.3 + 1.2 * abs(k)) + 0.6 * math.sin(now * 0.7)))
+        if off not in tw["bends"]:
+            segs = pet.segments(bend(tw["rows"], off), not tw["left"], BRANCH_COLORS)
+            tw["bends"][off] = segs, ghost(segs, BRANCH_FADE)
+        cx, cy = (-1, -1) if MAC else self.surface.cursor()  # 맥 Surface 는 커서를 못 읽음
+        over = tw["x"] <= cx < tw["x"] + tw["w"] and tw["y"] - pad <= cy < tw["y"] + tw["h"] + pad
+        pet.stamp(px, stride, tw["x"], tw["y"] - pad, tw["bends"][off][over], w, h)
+        n = len(tw["rows"][0])
         spots = []
         for x, c, frames, fh, ph, sp in self.meadow["flowers"]:
-            s = math.sin(now * sp + ph)
+            s = math.sin(now * sp + ph) * (1 - 0.6 * abs(k)) + 1.2 * k
             lean = -1 if s < -0.6 else 1 if s > 0.6 else 0
             top = h - base[x] - fh
             pet.stamp(px, stride, x - c, top, frames[lean + 1], w, h)
             spots.append((x + S / 2 + lean * S, top, True))
-        self.perch_xy = spots + self.meadow["branch"]  # 꽃이 앞 — 자리 번호가 프레임마다 같음
+        # 꽃이 앞 — 자리 번호가 프레임마다 같음
+        self.perch_xy = spots + [(x, tw["y"] + (y + sag(c, n, off)) * S, False) for x, c, y in tw["spots"]]
+        lv, leaf = self.leaves, self.meadow["leaf"]
+        if abs(k) > LEAF_GUST and len(lv) < LEAF_N and random.random() < LEAF_RATE * (abs(k) - LEAF_GUST) / (1 - LEAF_GUST) * dt:
+            lv.append([tw["x"] + random.uniform(0.2, 0.8) * tw["w"], tw["y"] + random.uniform(0, tw["h"]), now,
+                       random.uniform(0, math.tau)])
+        for f in lv[:]:  # [x, y, 떨어진 시각, 위상] — 바람에 밀려 팔랑이며 내려오다 땅이나 화면 밖에서 사라짐
+            age = now - f[2]
+            f[0] += (k * LEAF_V + 25 * math.sin(age * 3 + f[3])) * dt
+            f[1] += (40 + 25 * math.sin(age * 2.3 + f[3])) * dt
+            xi = int(f[0])
+            if not 0 <= xi < w or f[1] > h - base[xi] - 2 * S:
+                lv.remove(f)
+                continue
+            pet.stamp(px, stride, xi, int(f[1]), leaf[int(age * 6 + f[3]) % len(leaf)], w, h)
         ms, rays = self.motes, self.meadow["rays"]
         while len(ms) < MOTE_N and rays:
             x0, sl, rows = random.choice(rays)
@@ -2583,7 +2653,7 @@ class Weather:
             if age >= m[5]:
                 ms.remove(m)
                 continue
-            m[0] += m[2] * dt
+            m[0] += (m[2] + k * MOTE_WIND) * dt
             m[1] += m[3] * dt
             a = int(MOTE_ALPHA * math.sin(math.pi * age / m[5]))
             x, y = int(m[0]), int(m[1])
@@ -2592,6 +2662,35 @@ class Weather:
                     u = px[o:o + 4]
                     px[o:o + 4] = bytes((*(v * a // 255 + q * (255 - a) // 255 for v, q in zip(col, u)),
                                          a + u[3] * (255 - a) // 255))
+
+    def blow(self, dt, now, k):
+        """바람줄: 바람이 셀수록 자주 생겨 바람 부는 쪽으로 흘러가며, 머리부터 그려지고 꼬리부터 지워짐. 옅은 흰
+        물결선이라 밑을 섞지 않고 덮어 찍음 — 가지·꽃·벌레가 그 뒤에 그려짐."""
+        px, stride, w, h, S, st = self.surface.pixels, self.stride, self.w, self.h, pet.SCALE, self.streaks
+        lo, hi = STREAK_RATE
+        if len(st) < STREAK_N and random.random() < (lo + (hi - lo) * abs(k)) * w / 1000 * dt:
+            n, d = random.randint(*STREAK_LEN), 1 if k >= 0 else -1
+            rows = streak_art(n, random)
+            v = STREAK_V[0] + (STREAK_V[1] - STREAK_V[0]) * abs(k)
+            # [왼쪽 x, 위 y, px/초(부호가 쪽), 생긴 시각, 사는 초, 글자 판(머리가 앞), 보이는 열 → 조각]
+            st.append([random.uniform(0, max(1, w - n * S)), random.uniform(h * 0.1, h * 0.75), d * v, now,
+                       random.uniform(*STREAK_LIFE), rows if d > 0 else [r[::-1] for r in rows], {}])
+        for s in st[:]:
+            t = (now - s[3]) / s[4]
+            if t >= 1:
+                st.remove(s)
+                continue
+            s[0] += s[2] * dt
+            n = len(s[5][0])
+            a, b = int(n * max(0.0, 2 * t - 1)), int(n * min(1.0, 2 * t))  # 꼬리 · 머리 (오른쪽으로 갈 때 열)
+            if s[2] < 0:
+                a, b = n - b, n - a
+            if a >= b:
+                continue
+            segs = s[6].get((a, b))
+            if segs is None:
+                segs = s[6][a, b] = ghost(pet.segments([r[a:b] for r in s[5]], False, {"w": (255, 255, 255)}), STREAK_ALPHA)
+            pet.stamp(px, stride, int(s[0]) + a * S, int(s[1]), segs, w, h)
 
     def flutter(self, dt, now):
         """나비는 이리저리 팔랑이다 가끔 빈 앉을 자리(꽃송이 · 가지 윗면 · 잔가지 끝, 가까운 쪽)로 팔랑이며 가서 앉아
@@ -2621,7 +2720,7 @@ class Weather:
             if s == "fly":
                 b[6] = max(-3.0, min(3.0, b[6] + random.gauss(0, 6) * dt))
                 b[5] += b[6] * dt
-                b[0] = (b[0] + math.cos(b[5]) * b[8] * dt) % w
+                b[0] = (b[0] + (math.cos(b[5]) * b[8] + self.breeze * BUG_DRIFT) * dt) % w  # 바람에 밀림
                 b[1] += math.sin(b[5]) * b[8] * 0.6 * dt
                 if (b[1] < h * 0.3 and math.sin(b[5]) < 0) or (b[1] > floor - 30 and math.sin(b[5]) > 0):
                     b[5] = -b[5]  # 화면 아래쪽 2/3 안에서 위아래로 튕김
@@ -2640,7 +2739,8 @@ class Weather:
                 y, frame = b[1] + min(5.0, d / 6) * math.sin(now * 5 + b[7]), (0, 1, 2, 1)[int(now * FLUTTER_HZ * 4 + b[7]) % 4]
             elif s == "rest":  # 앉아 날개를 천천히 접었다 폄
                 b[0], b[1] = tx, ty
-                if now >= b[4] or (low and any(abs(cx - b[0]) < BUG_SHY for cx in near)):
+                if now >= b[4] or (low and (any(abs(cx - b[0]) < BUG_SHY for cx in near) or  # 꽃 위는 센 바람에도 날림
+                                            abs(self.breeze) > BUG_BLOWN and random.random() < dt)):
                     taken.discard(b[11])
                     b[3], b[5], b[6], b[11] = "fly", -math.pi / 2 + random.uniform(-0.6, 0.6), 0.0, -1
                     b[1] -= 4
@@ -2672,6 +2772,8 @@ class Weather:
                         b[0], b[1], b[5] = b[0] + dx / d * v, b[1] + dy / d * v, math.atan2(dy, dx)
                 elif b[3] == "perch":
                     b[0], b[1] = tx, ty
+                else:  # 떠 있는 동안 바람에 조금 밀림
+                    b[0] = min(max(b[0] + self.breeze * BUG_DRIFT * 0.4 * dt, bw / 2), w - bw / 2)
                 right = math.cos(b[5]) >= 0
                 if b[3] == "perch":  # 날개를 펴고 멈춤
                     y, frame = b[1], 0
@@ -4337,7 +4439,7 @@ def check():
     assert not bf.splashes, "빗나간 클릭은 안 터트림"
     # 나비·잠자리: 꽃에 앉은 것만 동물이 다가오면 날아오름(가지 위와 먼 꽃은 그대로). 날던 나비는 정한 자리로 가서 앉음
     toy.held = None
-    gf = big(pets={"toy": toy}, sprite_cache={}, bugs=[])
+    gf = big(pets={"toy": toy}, sprite_cache={}, bugs=[], breeze=0.0)
     gf.bug_sprites = Weather.bug_sprites.__get__(gf)
     bw, bh = gf.bug_sprites()[1][0]
     sit = BUG_SIT - bh / 2
@@ -4356,6 +4458,16 @@ def check():
     assert gf.bugs[3][3] == "rest" and gf.bugs[3][:2] == [190.0, 190 + sit], "정한 꽃까지 가서 앉음"
     assert gf.bugs[1][3] == "rest", "가지 위는 그대로"
     assert all(0 <= b[0] <= 200 and 0 <= b[1] <= 200 for b in gf.bugs), "화면 안"
+    # 바람: 나는 나비는 밀리고, 센 바람엔 꽃에 앉은 것만 날려 감
+    gf.breeze, gf.perch_xy = 1.0, [(10.0, 190.0, True), (100.0, 40.0, False)]
+    gf.bugs = [[10.0, 190 + sit, 0, "rest", 99.0, 0.0, 0.0, 0.0, 40.0, 0, 0, 0],
+               [100.0, 40 + sit, 1, "rest", 99.0, 0.0, 0.0, 0.0, 40.0, 0, 0, 1],
+               [100.0, 100.0, 2, "fly", 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, -1]]  # 제 빠르기 0
+    Weather.flutter(gf, 0.1, 0.0)
+    assert abs(gf.bugs[2][0] - (100 + BUG_DRIFT * 0.1)) < 1e-9, "나는 나비는 바람에 밀림"
+    for i in range(50):
+        Weather.flutter(gf, 0.1, i * 0.1)
+    assert gf.bugs[0][3] != "rest" and gf.bugs[1][3] == "rest", "센 바람엔 꽃 위만 날려 감"
     # 나비 날의 뜰: 프레임은 햇볕·가지를 구운 배경으로 덮고, 꽃은 바닥에 서고, 벌레는 빈자리에 하나씩 앉았다 떠남
     random.seed(7)
     mw, mh, mr = 600, 400, 20
@@ -4366,24 +4478,60 @@ def check():
     m.goal, m.fall, m.crumble = m.base, None, crumble(mw)
     m.surface = types.SimpleNamespace(pixels=bytearray(mw * mh * 4), clear=lambda top=0: None, present=lambda top=0: None)
     m.surface.fill = lambda src: m.surface.pixels.__setitem__(slice(None), src)
+    cur = [(-1, -1)]
+    m.surface.cursor = lambda: cur[0]
     m.reset()
     bg, S = m.meadow["bg"], pet.SCALE
     al = lambda buf, x, y: buf[(y * mw + x) * 4 + 3]
     sun = [al(bg, x, 5) for x in range(mw)]
     assert 0 < max(sun) <= 255 * SUN_ALPHA + 1 and sun.count(0) > mw * 0.2, ("위쪽에 옅은 빛줄기, 사이는 빔", max(sun), sun.count(0))
-    br = m.meadow["branch"]
-    assert len(br) >= 2 and all(abs(p[0] - q[0]) >= BRANCH_GAP * S for p, q in itertools.combinations(br, 2)), "가지에 띄엄띄엄 앉을 자리"
-    assert all(al(bg, int(x), int(y)) == 255 and al(bg, int(x), int(y) - 1) < 255 for x, y, _ in br), "앉을 자리는 그 열 맨 윗칸"
-    assert any(al(bg, x, y) == 255 for x in (0, mw - 1) for y in range(mh)), "가지는 벽에 붙음"
+    m.wind = lambda now: 0.0  # 잔잔 — 가지 끝은 now=0 에서 안 휨
     m.bugs, m.surface.pixels[:] = [], b"\x07" * len(bg)
     m.frame(1 / 60, 0.0)
-    px, top = m.surface.pixels, mw * 4 * int(mh * 0.3)
-    assert sum(a == b for a, b in zip(px[:top:4], bg[:top:4])) > top / 4 * 0.99, "지우는 대신 구운 배경으로 덮음"
-    fl = m.meadow["flowers"]
+    px, fl, tw = m.surface.pixels, m.meadow["flowers"], m.meadow["twig"]
+    top = mw * 4 * (tw["y"] - BRANCH_SWAY * S)
+    assert top > 0 and sum(a == b for a, b in zip(px[:top:4], bg[:top:4])) > top / 4 * 0.99, "지우는 대신 구운 배경으로 덮음"
     assert len(fl) >= 3 and all(al(px, x + 1, mh - m.base[x] - 1) == 255 and (m.base[x] == 0 or al(px, x + 1, mh - m.base[x]) == 0)
                                 for x, *_ in fl), "꽃 줄기 밑이 바닥(틀 윗변)에 섬"
-    assert [(y, low) for _, y, low in m.perch_xy] == [(mh - m.base[x] - fh, True) for x, _, _, fh, *_ in fl] + \
-        [(y, False) for _, y, _ in br], "앉을 자리는 꽃송이 윗변 · 가지"
+    br = m.perch_xy[len(fl):]
+    assert [(y, low) for _, y, low in m.perch_xy[:len(fl)]] == [(mh - m.base[x] - fh, True) for x, _, _, fh, *_ in fl] and \
+        len(br) == len(tw["spots"]) and not any(low for *_, low in br), "앉을 자리는 꽃송이 윗변 · 가지"
+    assert len(br) >= 2 and all(abs(p[0] - q[0]) >= BRANCH_GAP * S for p, q in itertools.combinations(br, 2)), "가지에 띄엄띄엄 앉을 자리"
+    assert all(al(px, int(x), int(y)) == 255 and al(px, int(x), int(y) - 1) < 255 for x, y, _ in br), "앉을 자리는 그 열 맨 윗칸"
+    wall = 0 if tw["left"] else mw - 1
+    wall_col = [y for y in range(mh) if al(px, wall, y) == 255]
+    assert wall_col, "가지는 벽에 붙음"
+    x, y, _ = br[0]
+    cur[0] = (int(x), int(y))
+    m.frame(1 / 60, 0.0)
+    assert al(px, int(x), int(y)) == BRANCH_FADE, "커서가 가지에 올라오면 반투명"
+    cur[0] = (-1, -1)
+    m.frame(1 / 60, 0.0)
+    assert al(px, int(x), int(y)) == 255, "커서가 나가면 원래대로"
+    m.wind = lambda now: WIND_FULL * 2  # 오른쪽으로 센 바람 — -1..1 로 자름
+    tip, lv, sx, leaf = set(), 0, [], m.meadow["leaf"]
+    m.meadow["leaf"] = [[]] * len(leaf)  # 잎은 안 찍음 — 날리는 잎이 앉을 자리 바로 위에 찍히면 아래 검사가 운으로 깨짐
+    for i in range(20 * 10):
+        m.frame(1 / 20, i / 20)
+        br = m.perch_xy[len(fl):]
+        assert all(al(px, int(x), int(y)) == 255 and al(px, int(x), int(y) - 1) < 255 for x, y, _ in br), "휘어도 그 열 맨 윗칸"
+        assert all(al(px, wall, y) == 255 for y in wall_col), "벽 쪽은 안 움직임"
+        assert [x for x, *_ in m.perch_xy[:len(fl)]] == [x + S / 2 + S for x, *_ in fl], "꽃은 모두 바람 쪽으로 누움"
+        tip.add(max(br, key=lambda p: abs(p[0] - wall))[1])
+        lv = max(lv, len(m.leaves))
+        sx += [s[2] for s in m.streaks]
+    assert len(tip) >= 3, ("가지 끝 자리가 위아래로 흔들림", tip)
+    assert lv and sx and all(v > 0 for v in sx), ("센 바람엔 잎이 날리고 바람줄이 바람 쪽으로", lv, len(sx))
+    m.meadow["leaf"] = leaf
+    m.frame(1 / 20, 10.0)
+    assert m.leaves and all(any(al(px, min(mw - 1, max(0, int(f[0]) + dx)), min(mh - 1, int(f[1]) + dy)) == 255 for dx in range(9) for dy in range(6))
+                            for f in m.leaves), "잎을 찍음"
+    assert m.motes and all(mo[0] for mo in m.motes), "먼지"
+    m.wind = lambda now: -WIND_FULL
+    m.frame(1 / 20, 10.0)
+    assert [x for x, *_ in m.perch_xy[:len(fl)]] == [x + S / 2 - S for x, *_ in fl], "반대 바람엔 반대로"
+    del m.wind
+    m.motes, m.streaks, m.leaves = [], [], []  # 아래는 시각을 0 부터 다시 셈
     m.bugs = [m.new_bug() for _ in range(7)]
     for i, b in enumerate(m.bugs):  # 나비 넷 · 잠자리 셋
         b[2], b[3] = (i, "fly") if i < 4 else (4 + i % 2, "hover")
