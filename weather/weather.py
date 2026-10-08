@@ -241,11 +241,13 @@ DRAGONFLY_ART = (("....w..w....",  # 위에서 본 그림, 오른쪽을 봄. 날
                   "bbbbbbbbggee",
                   "...ww.ww....",
                   "...w..w....."))
-# 나비·잠자리 날의 뜰. 햇볕: 해에서 나란히 비스듬히 내려오는 빛줄기 — 위쪽 폭(화면 폭 비율) · 닿는 깊이(높이 비율) ·
-# 가장 밝은 알파 · 색 · 해가 낮을 때 색. 해는 시계를 따라 왼쪽(동)에서 떠 오른쪽(서)으로 짐 — 위도(서울) · 해가 가장 높은
-# 시각(KST, 경도 127°라 12시 반) · 가장 누운 기울기(가로/세로) · 다시 굽는 단위(낮 길이 비율, 4분쯤).
+# 나비·잠자리 날의 뜰. 햇볕: 화면 바로 위의 해에서 부챗살로 퍼지는 빛줄기와 해무리 — 줄기 각 폭(도) · 줄기 사이(도) · 닿는
+# 깊이(높이 비율) · 줄기 가장 밝은 알파 · 해무리 가장 밝은 알파 · 해무리 퍼짐(높이 비율) · 해까지 거리(화면 가운데에서, 높이
+# 비율) · 색 · 해가 낮을 때 색 · 가닥이 빠지는 깊이 단계 수(적으면 넓은 줄기에 가로 띠). 해는 시계를 따라 왼쪽(동)에서 떠 오른쪽(서)으로 짐 — 위도(서울) · 해가 가장 높은 시각(KST,
+# 경도 127°라 12시 반) · 가장 누운 기울기(가로/세로) · 다시 굽는 단위(낮 길이 비율, 4분쯤).
 # 빛 속 먼지: 수 · 사는 초 · 떠가는 px/초 · 가장 밝은 알파 · 색
-SUN_WIDTHS, SUN_REACH, SUN_ALPHA, SUN_COLOR, SUN_LOW = (0.03, 0.07), 0.85, 0.14, (255, 226, 150), (255, 170, 90)
+SUN_RAY, SUN_GAP, SUN_REACH, SUN_ALPHA, SUN_GLOW, SUN_HALO, SUN_DIST = (1.5, 5.0), (1.5, 6.0), 0.85, 0.22, 0.35, 0.4, 0.7
+SUN_COLOR, SUN_LOW, SUN_LEVELS = (255, 226, 150), (255, 170, 90), 16
 SUN_LAT, SUN_NOON, SUN_TILT, SUN_STEP = 37.5, 12.5, 1.5, 1 / 200
 MOTE_N, MOTE_LIFE, MOTE_V, MOTE_ALPHA, MOTE_COLOR = 24, (3, 8), 5, 170, (255, 246, 214)
 # 벽에서 가로로 뻗은 가지: 벽에 붙은 높이(화면 높이 비율) · 길이(화면 폭 비율) · 앉을 자리 사이 칸(잠자리 폭 12칸이 안 겹침)
@@ -1615,48 +1617,99 @@ def sun_at(hour, day):
     return max(-SUN_TILT, min(SUN_TILT, math.cos(math.pi * p) / s)), min(1.0, s / 0.35), (1 - s) ** 2
 
 
-def sun_rays(w, h, rng):
-    """빛줄기 무리 → ([(위 끝 가운데 x, ray_shape 행들)], 되풀이 폭). 단면·옅어짐은 어항 빛줄기를 그대로 씀. 모양 만들기가
-    굽기의 90%(2560×1440 에서 0.18초)라 처음 한 번만 — 기울기가 바뀌면 sun_bake 가 찍기만 다시 함."""
-    n, rays, x, last = int(h * SUN_REACH), [], 0.0, None
-    while True:
-        top_w = max(8, int(w * rng.uniform(*SUN_WIDTHS)))
-        if last is not None:
-            x += (last + top_w) / 2 * (1 + RAY_SPREAD) * rng.uniform(1.1, 1.8)
-        if x >= w:
-            break
-        last = top_w
-        rays.append((x, ray_shape(top_w, n, rng)))
-    return rays, x + w * SUN_WIDTHS[1] * (1 + RAY_SPREAD)  # 다음 무리 첫 줄기가 안 겹치게 넉넉히
+def sun_rays(rng):
+    """햇볕 부채 → {"fan": [(가운데 각, 반폭 각, 세기, 닿는 몫, 깊이 SUN_LEVELS 단계 단면)], "cache": {}}. 각은 아래 방향에서 잰
+    라디안(+ 가 오른쪽). 줄기는 -80°–80° 를 각 폭 SUN_RAY · 사이 SUN_GAP 로 채워 서로 안 겹침 — 해가 움직이면 부채가 해를 따라
+    옮겨 감. 단면은 어항 빛줄기처럼 가는 빛살 3–5가닥이 겹친 결이고, 가닥마다 끝나는 깊이가 달라 아래로 가며 가닥이 빠짐.
+    cache 는 sun_bake 가 폭별 단면·알파 표를 모아 두는 곳(다시 구울 때 그대로 씀)."""
+    fan, a = [], math.radians(-80)
+    while a < math.radians(80):
+        hw = math.radians(rng.uniform(*SUN_RAY)) / 2
+        strands = [(rng.uniform(0.2, 0.8), rng.uniform(0.06, 0.16), rng.uniform(0.45, 1.0), rng.uniform(0.4, 1.0))
+                   for _ in range(rng.randint(3, 5))]  # (가로 자리 0–1, 굵기, 세기, 끝나는 깊이 0–1)
+        ts = [(i + 0.5) / 256 for i in range(256)]
+        env = [255 * math.sin(math.pi * t) ** 2 for t in ts]
+        gs = [[k * math.exp(-((t - c) / s) ** 2) for t in ts] for c, s, k, _ in strands]
+        bases = []
+        for m in range(SUN_LEVELS):
+            ws = [min(1.0, max(0.0, (end - m / SUN_LEVELS) / 0.5)) for *_, end in strands]
+            sums = [sum(g[i] * wt for g, wt in zip(gs, ws)) for i in range(256)]
+            bases.append(bytes(int(e * min(1.0, 0.45 + 0.55 * v)) for e, v in zip(env, sums)))
+        fan.append((a + hw, hw, rng.uniform(0.5, 1.0), rng.uniform(0.55, 1.0), bases))
+        a += 2 * hw + math.radians(rng.uniform(*SUN_GAP))
+    return {"fan": fan, "cache": {}}
 
 
-def sun_bake(bg, w, rays, period, sun):
-    """햇볕을 화면 크기 premultiplied 버퍼 bg 에 덮어 구움(sun_at 의 값으로) → 화면에 걸친 빛줄기 [(위 끝 x, 기울기, 행들)].
-    무리를 period 마다 가로로 되풀이해 누운 빛도 화면 밖에서 들어옴. 줄기 사이는 아래 끝 폭만큼 띄워 안 겹침 — 겹치면 뒤
-    줄기가 앞 줄기를 덮어 이음매가 보임."""
+def sun_bake(bg, w, h, sky, sun):
+    """햇볕을 화면 크기 premultiplied 버퍼 bg 에 덮어 구움(sun_at 의 값으로) → 화면에 걸친 빛줄기 [(해 x, 해 y, 각, 반폭 각,
+    닿는 행 수)]. 해는 화면 가운데에서 빛이 오는 쪽으로 SUN_DIST 만큼(늘 위 가장자리 너머) — 아침엔 왼쪽 위 구석 가까이 낮게,
+    정오엔 가운데 위 높이. 둘레에 해무리(가우시안 — 가로 단면 하나를 행마다 세기 표로 줄여 씀)를 깔고, 그 위에 부채 줄기를
+    행마다 얹음(over).
+    ponytail: 줄기 × 행마다 파이썬 한 번(2560×1440 에서 2만 번쯤). 3–4분에 한 번이라 그대로 둠 — 끊김이 보이면 다른
+    버퍼에 나눠 구워 바꿔 끼우기로."""
     bg[:] = bytes(len(bg))
     if sun is None:
         return []
     sl, k, warm = sun
-    stride, out = w * 4, []
-    at = [min(255, int(v * k * SUN_ALPHA / RAY_ALPHA)) for v in range(256)]
+    stride, out, cache = w * 4, [], sky["cache"]
+    v = 1 / math.hypot(sl, 1)
+    sx, sy = w / 2 - sl * v * h * SUN_DIST, min(-h * 0.06, h * 0.45 - v * h * SUN_DIST)  # 해는 늘 위 가장자리 밖
     col = [c + (q - c) * warm for c, q in zip(SUN_COLOR, SUN_LOW)]
-    tabs = [bytes(int(a * c) // 255 for a in at) for c in col[::-1]] + [bytes(at)]
-    for x, rows in rays:
-        reach, pad = len(rows) * sl, w * 0.2  # 줄기가 가로로 건너는 폭 · 줄기 폭 여유
-        for c in range(math.floor((-max(0, reach) - pad - x) / period), math.ceil((w - min(0, reach) + pad - x) / period)):
-            x0, hit = x + c * period, False
-            for j, (lead, a) in enumerate(rows):
-                s = int(x0 + j * sl) + lead
-                lo, hi = max(0, s), min(w, s + len(a))
-                if lo >= hi:
-                    continue
-                a, hit = a[lo - s:hi - s], True
-                px = bytearray(len(a) * 4)
-                px[0::4], px[1::4], px[2::4], px[3::4] = (a.translate(t) for t in tabs)
-                bg[j * stride + lo * 4:j * stride + hi * 4] = px
-            if hit:
-                out.append((x0, sl, rows))
+    tabs = [bytes(int(a * c / 255) for a in range(256)) for c in col[::-1]]
+
+    def put(y, lo, a):
+        px = bytearray(len(a) * 4)
+        px[0::4], px[1::4], px[2::4] = (a.translate(t) for t in tabs)
+        px[3::4] = a
+        bg[y * stride + lo * 4:y * stride + lo * 4 + len(px)] = px
+
+    def table(q, g):  # 단면 c → c·q/255 를 밑 알파 g 위에 얹을 몫(over 의 a·(1 − g/255))
+        t = cache.get((q, g))
+        if t is None:
+            t = cache[q, g] = bytes(c * q // 255 * (255 - g) // 255 for c in range(256))
+        return t
+
+    sig = h * SUN_HALO
+    X = int(2.4 * sig)  # 이 밖은 해무리가 1/255 아래
+    halo = cache.get(("halo", X))
+    if halo is None:
+        halo = cache["halo", X] = bytes(int(255 * math.exp(-((dx - X) / sig) ** 2)) for dx in range(2 * X + 1))
+    cx, rows = int(sx), {}
+    lo, hi = max(0, cx - X), min(w, cx + X + 1)
+    for y in range(h):
+        q = int(255 * SUN_GLOW * k * math.exp(-((y - sy) / sig) ** 2))
+        if q and lo < hi:
+            if q not in rows:  # 세기가 같은 행은 같은 픽셀 — 40가지쯤만 만들고 베낌
+                put(y, lo, halo[lo - cx + X:hi - cx + X].translate(table(q, 0)))
+                rows[q] = bg[y * stride + lo * 4:y * stride + hi * 4]
+            else:
+                bg[y * stride + lo * 4:y * stride + hi * 4] = rows[q]
+    corners = [math.atan2(x - sx, y - sy) for x in (0, w) for y in (0, h)]
+    lo_a, hi_a = max(min(corners), math.radians(-80)), min(max(corners), math.radians(80))
+    for i, (a, hw, s, end, bases) in enumerate(sky["fan"]):
+        if a + hw < lo_a or a - hw > hi_a:
+            continue
+        tl, tr, n, hit = math.tan(a - hw), math.tan(a + hw), int(h * SUN_REACH * end), False
+        for y in range(n):
+            u, dy = y / n, y - sy
+            wj, lev = max(3, int(dy * (tr - tl))), int(u * SUN_LEVELS)
+            wj -= wj % (1 + wj // 100)  # 넓은 줄기만 폭을 몇 px 단위로 — 단면 수를 줄임. 좁은 줄기를 그러면 가닥이 지그재그
+            p = cache.get((i, lev, wj))
+            if p is None:
+                full = bytes(bases[lev][(2 * x + 1) * 128 // wj] for x in range(wj))
+                p = cache[i, lev, wj] = (len(full) - len(full.lstrip(b"\0")), full.strip(b"\0") or b"\0")
+            st = int(sx + dy * tl) + p[0]
+            lo, hi = max(0, st), min(w, st + len(p[1]))
+            if lo >= hi:
+                continue
+            # 깔린 해무리 알파에 줄기 몫 a·(1 − g/255) 를 더함(over). g 는 줄기 가운데 값 하나 — 줄기 양옆이 0 이라 모서리가
+            # 안 생김. 바이트끼리 더하기는 큰 정수 덧셈: SUN_ALPHA + SUN_GLOW ≤ 1 이라 바이트마다 255 를 안 넘어 안 올라감
+            under = bg[y * stride + lo * 4 + 3:y * stride + hi * 4:4]
+            add = p[1][lo - st:hi - st].translate(table(int(255 * SUN_ALPHA * k * s * (1 - u) ** 1.3), under[len(under) // 2]))
+            put(y, lo, (int.from_bytes(under, "little") + int.from_bytes(add, "little")).to_bytes(len(under), "little"))
+            hit = True
+        if hit:
+            out.append((sx, sy, a, hw, n))
     return out
 
 
@@ -2627,7 +2680,7 @@ class Weather:
         w, h, S = self.w, self.h, pet.SCALE
         if "meadow" not in self.sprite_cache:
             rng = random.Random(random.random())  # 전역 random 을 따름 — 검사(random.seed)에서 같은 뜰
-            bg, rays = bytearray(w * h * 4), sun_rays(w, h, rng)
+            bg, rays = bytearray(w * h * 4), sun_rays(rng)
             rows, mid, spots = branch_art(int(w * rng.uniform(*BRANCH_LEN)) // S, rng)
             left, bw = rng.random() < 0.5, len(rows[0]) * S
             bx, by = 0 if left else w - bw, int(h * rng.uniform(*BRANCH_Y)) - mid * S
@@ -2641,7 +2694,7 @@ class Weather:
                 flowers.append((int(x), c * S, [pet.segments(f, False, colors) for f in frames], len(frames[0]) * S,
                                 rng.uniform(0, math.tau), rng.uniform(*FLOWER_SWAY)))
                 x += rng.uniform(*FLOWER_EVERY)
-            # sun_rays 는 빛줄기 무리, sun 은 지금 구운 sun_at 값(처음엔 아직 안 구움), rays 는 화면에 걸친 빛줄기
+            # sun_rays 는 햇볕 부채, sun 은 지금 구운 sun_at 값(처음엔 아직 안 구움), rays 는 화면에 걸친 빛줄기
             self.sprite_cache["meadow"] = {"bg": bg, "bg_c": (ctypes.c_char * len(bg)).from_buffer(bg), "sun_rays": rays,
                                            "sun": False, "rays": [], "twig": twig, "leaf": leaf, "flowers": flowers}
         self.meadow = self.sprite_cache["meadow"]
@@ -2654,7 +2707,7 @@ class Weather:
         md = self.meadow
         sun = sun_at(*self.clock())
         if sun != md["sun"]:
-            md["sun"], md["rays"] = sun, sun_bake(md["bg"], self.w, *md["sun_rays"], sun)
+            md["sun"], md["rays"] = sun, sun_bake(md["bg"], self.w, self.h, md["sun_rays"], sun)
 
     def garden(self, dt, now):
         """바람(wind 를 -1..1 로)에 맞춰 뜰을 찍음. 바람줄(blow)은 가지 뒤. 가지: 벽은 그대로, 끝이 위아래로 흔들리고
@@ -2699,9 +2752,9 @@ class Weather:
             pet.stamp(px, stride, xi, int(f[1]), leaf[int(age * 6 + f[3]) % len(leaf)], w, h)
         ms, rays = self.motes, self.meadow["rays"]
         while len(ms) < MOTE_N and rays:
-            x0, sl, rows = random.choice(rays)
-            j = random.randrange(int(len(rows) * 0.7))
-            ms.append([x0 + j * sl + random.uniform(-0.35, 0.35) * len(rows[j][1]), float(j),
+            sx, sy, a, hw, n = random.choice(rays)
+            j = random.randrange(int(n * 0.7))
+            ms.append([sx + (j - sy) * math.tan(a + random.uniform(-0.7, 0.7) * hw), float(j),
                        random.uniform(-1, 1) * MOTE_V, random.uniform(-0.5, 1) * MOTE_V, now, random.uniform(*MOTE_LIFE)])
         col = MOTE_COLOR[::-1]
         for m in ms[:]:
@@ -4562,8 +4615,11 @@ def check():
     m.reset()
     bg, S = m.meadow["bg"], pet.SCALE
     al = lambda buf, x, y: buf[(y * mw + x) * 4 + 3]
-    sun = [al(bg, x, 5) for x in range(mw)]
-    assert 0 < max(sun) <= 255 * SUN_ALPHA + 1 and sun.count(0) > mw * 0.2, ("위쪽에 옅은 빛줄기, 사이는 빔", max(sun), sun.count(0))
+    top, mid = [al(bg, x, 5) for x in range(mw)], [al(bg, x, mh // 4) for x in range(mw)]
+    assert min(top) > 0 and top[mw // 2] > 2 * max(top[0], top[-1]) and max(top) <= 255 * (SUN_ALPHA + SUN_GLOW) + 1 and         max(mid) - min(mid) > 20, ("위 가운데 해무리, 그 위로 부챗살이 도드라짐", top[mw // 2], top[0], max(top), min(mid), max(mid))
+    halo = bytearray(len(bg))
+    sun_bake(halo, mw, mh, {"fan": [], "cache": {}}, m.meadow["sun"])
+    assert SUN_ALPHA + SUN_GLOW <= 1 and all(a >= b for a, b in zip(bg[3::4], halo[3::4])) and bg != halo,         "줄기는 해무리 위에 얹힘 — 덮어써서 파이지 않음, 더해도 255 를 안 넘음"
     # 해는 시계를 따름: 아침엔 왼쪽(동) 위에서 오른쪽 아래로, 정오엔 수직, 저녁엔 반대로. 해 뜨기 전·진 뒤엔 없음
     sl = {hr: sun_at(hr, 172) for hr in (5.0, 5.5, 8.0, 12.5, 17.0, 19.6, 20.0)}
     assert sl[5.0] is None and sl[20.0] is None and sl[5.5] and sl[19.6], ("하지 해는 5:12–19:51", sl)
@@ -4574,13 +4630,16 @@ def check():
     rays = m.meadow["rays"]
     m.shine()
     assert m.meadow["rays"] is rays, "해가 그대로면 다시 안 구움"
-    for hr in (8.0, 17.0):  # 누운 빛도 화면 양 끝까지 — 무리를 가로로 되풀이
+    for hr in (8.0, 17.0):  # 해가 구석 가까이 낮아도 부채가 화면 양 끝까지 닿음
         m.clock = lambda: (hr, 172)
         m.shine()
-        band = range(mh // 3, mh * 2 // 3)  # 위 끝에서 들어온 줄기는 여기까지 못 내려옴 — 되풀이한 무리만 닿음
-        assert m.meadow["sun"] == sl[hr] and all((s > 0) == (hr < 12) for _, s, _ in m.meadow["rays"]) and \
+        band = range(mh // 3, mh * 2 // 3)
+        assert m.meadow["sun"] == sl[hr] and all((sx < mw / 2) == (hr < 12) for sx, *_ in m.meadow["rays"]) and \
             any(al(bg, x, y) for x in range(mw // 6) for y in band) and \
             any(al(bg, mw - 1 - x, y) for x in range(mw // 6) for y in band), ("시각이 바뀌면 그 기울기로 다시 구움", hr, m.meadow["sun"])
+    m.clock = lambda: (5.5, 172)
+    m.shine()
+    assert m.meadow["rays"] and all(sy < 0 for _, sy, *_ in m.meadow["rays"]), "갓 뜬 해도 위 가장자리 밖 — 안이면 해 위로 거꾸로 된 부채"
     m.clock = lambda: (23.0, 172)
     m.shine()
     assert not any(bg) and m.meadow["rays"] == [], "밤엔 햇볕 없음"
