@@ -322,6 +322,10 @@ FLY, FLY_ALT, FLAP = 170, 60, 0.09  # 새가 날 때 px/초, 높이 px(weather �
 # 어항 헤엄: 바닥 위로 뜨는 높이 px · 오르내림 px · 높이를 옮기는 px/초(weather 거품보다 느리게 — 제 숨을 앞지르지 않게) · 돌아서거나 높이를 바꾸는 간격 초 ·
 # 발차기 그림 바꾸는 간격 초 · 숨 내쉬는 간격 초
 SWIM_DEPTH, SWIM_BOB, SWIM_RISE, SWIM_TURN, KICK, BREATH = (40, 320), 6, 20, (4, 10), 0.3, (1.2, 2.6)
+# 스노클은 높이를 고를 때 이 몫으로 수면(관 끝이 물 밖)을 고르고 나머지는 수면 아래 이 px 안으로 잠깐 잠수
+# — 오르내림이 SWIM_RISE 라 깊이 들어가면 수면에 못 머묾 · 수면에서 위아래로 까딱이는 px(SWIM_BOB 대신 — 그만큼이면 관
+# 끝이 수면을 넘나들어 숨이 끊김. weather 의 TAP_SNORKEL 이 2배보다 커야 늘 물 밖)
+SNORK_SURFACE, SNORK_DIP, SNORK_BOB = 0.7, 60, 2
 # 수도꼭지 수면 헤엄: SWIM_V 에 곱하는 몫 · 다리 그림 바꾸는 간격 초 · 물을 한 번 차는 간격 초(weather 가 물방울·물결) · 오르내림 px
 PADDLE_V, PADDLE_STEP, STROKE, PADDLE_BOB = 0.5, 0.18, 0.36, 1.5
 LEDGE, CLIMB = 8, 400  # 발밑이 한 번에 이 px 넘게 바뀌면(작업 표시줄 틀 단) 뜀 · 작은 굴곡(눈 더미)을 따라가는 px/초
@@ -469,18 +473,21 @@ class Pet:
         start 는 처음 높이 — 수면에서 바로 잠수."""
         rng, room = self.rng, max(0, self.width - max(self.W, self.dive_size()[0]))
         lo, hi = SWIM_DEPTH if ceil is None else (SWIM_DEPTH[0], max(SWIM_DEPTH[0], ceil))
+        bob = SNORK_BOB if self.snork else SWIM_BOB  # 위로 까딱인 만큼 ceil 에 잘리지 않게 수면은 그만큼 아래로 고름
+        pick = (lambda: hi - bob if rng.random() < SNORK_SURFACE else rng.uniform(max(lo, hi - SNORK_DIP), hi - bob)) \
+            if self.snork else lambda: rng.uniform(lo, hi)
         if self.dive is None:
             self.dive, self.depth, self.bob = now, start, rng.uniform(0, math.tau)
             self.under = False  # 틀 뒤에 묻혀 있었으면 헤엄쳐 나옴
-            self.aim, self.turn_at = rng.uniform(lo, hi), now + rng.uniform(*SWIM_TURN)
+            self.aim, self.turn_at = pick(), now + rng.uniform(*SWIM_TURN)
             self.breath_at = now + rng.uniform(*BREATH)
         edge = self.x <= 0 or self.x >= room  # 돌고 나서 움직임 — 늘 가는 쪽을 봄
         if edge or now >= self.turn_at:
             self.right = self.x <= 0 if edge else self.right != (rng.random() < 0.5)
-            self.aim, self.turn_at = rng.uniform(lo, hi), now + rng.uniform(*SWIM_TURN)
+            self.aim, self.turn_at = pick(), now + rng.uniform(*SWIM_TURN)
         self.x = min(max(self.x + self.SWIM_V * dt * (1 if self.right else -1), 0), room)
         self.depth += max(-SWIM_RISE * dt, min(SWIM_RISE * dt, self.aim - self.depth))
-        self.lift = self.depth + SWIM_BOB * math.sin(now * 2.1 + self.bob) * min(1.0, self.depth / SWIM_DEPTH[0])
+        self.lift = self.depth + bob * math.sin(now * 2.1 + self.bob) * min(1.0, self.depth / SWIM_DEPTH[0])
         if ceil is not None:
             self.aim, self.depth, self.lift = min(self.aim, ceil), min(self.depth, ceil), max(0.0, min(self.lift, ceil))
         self.breathe = now >= self.breath_at
@@ -1172,6 +1179,15 @@ def check():
         assert max(lifts) - min(lifts[600:]) > 60, ("높이를 바꿔 가며 헤엄", cls.__name__)
         assert sides == {True, False} and 120 / BREATH[1] - 2 <= breaths <= 120 / BREATH[0] + 1, (cls.__name__, breaths)
         assert a.state == state, ("하던 짓은 그대로", cls.__name__)
+    # 스노클: 대개 수면(관 끝이 물 밖 — 까딱여도 ceil 을 안 넘음)에 떠 있고 가끔 SNORK_DIP 안으로 잠깐 잠수
+    a = Cat(1920, random.Random(3))
+    a.snork, out, lifts = True, 0, []
+    for i in range(60 * 600):
+        a.swim(1 / 60, i / 60, 300.0, 300.0)
+        lifts.append(a.lift)
+        out += a.lift >= 300 - 2 * SNORK_BOB - 0.5
+    assert 0.55 < out / len(lifts) < 0.85, ("대개 수면", out / len(lifts))
+    assert max(lifts) <= 300 and 300 - SNORK_DIP - SNORK_BOB <= min(lifts), ("수면 밑 얕게만", min(lifts))
 
     def tally(a, kind, minutes=10):
         """kind 날씨에서 상태별 머문 프레임 수와 가장 높이 뜬 px."""

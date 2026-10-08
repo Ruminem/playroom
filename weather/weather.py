@@ -508,7 +508,8 @@ TAP_FOAM = (240, 250, 255)  # 물줄기가 닿는 자리의 흰 거품
 # 물속 거품: 물줄기가 끌고 드는 수 /초 · 바닥 꼬르륵 간격 초 · 한 번에 수 · 뜨는 힘 px/초² · 물 저항 /초(끝 빠르기 = 힘/저항,
 # 큰 거품일수록 빠름)
 TAP_PLUME, TAP_GURGLE, TAP_GURGLE_N, TAP_BUOY, TAP_DRAG = 18, (3, 7), (3, 6), 240, 4
-TAP_SNORKEL, TAP_RISE = 8, 160  # 스노클 관 끝을 수면 아래 둘 px · 물속에서 수면으로 떠오르는 px/초
+# 스노클 관 끝을 수면 아래 둘 px(음수면 물 밖으로 내민 px — 수면에서 까딱이는 pet.SNORK_BOB 의 2배보다 커야 늘 밖) · 물속에서 수면으로 떠오르는 px/초
+TAP_SNORKEL, TAP_RISE = -8, 160
 # 물속 거품이 이만큼 넘으면 동물 숨 거품은 안 냄. 깊은 데서 내쉰 거품은 20초쯤 걸려 올라와, 다섯 마리가 잠수하면 거품만
 # 130개쯤 쌓여 그리는 데 1ms 남짓 더 듦. 그림 비용이 문제되면 거품을 한 장에 미리 그려 두는 쪽으로
 TAP_BUBBLE_CAP = 64
@@ -3085,8 +3086,8 @@ class Weather:
             elif off is None and fall(now - on) >= hit - ny:
                 flow = min(1.0, self.amount / 50)
                 fw, foam = tap["foam"][0][0], tap["foam"][int(now * 18) % len(tap["foam"])][1]
-                if 0 <= nx - fw // 2 <= w - fw and hit >= 8:
-                    stamp(px, st, nx - fw // 2, int(hit) - 7, foam)
+                if 0 <= nx - fw // 2 <= w - fw and hit >= 8:  # 거품 그림 9행 — 바닥이 화면 밑변이면 밑변에 붙여 찍음
+                    stamp(px, st, nx - fw // 2, min(int(hit) - 7, h - 9), foam)
                 self.spray_due += TAP_SPRAY * flow * dt
                 while self.spray_due >= 1:
                     self.spray_due -= 1
@@ -3504,7 +3505,8 @@ class Weather:
                 p.draw_swim(self.surface.pixels, self.stride, self.h, self.pet_sprites, g, now, line)
                 if p.breathe:
                     if tap:
-                        self.gulp(*p.mouth)
+                        if p.mouth[1] > self.h - sea:  # 관 끝이 물 밖이면 숨은 공기로 — 잠깐 물속에 들어갔을 때만 거품
+                            self.gulp(*p.mouth)
                     else:
                         self.exhale(*p.mouth)
             else:
@@ -4750,7 +4752,9 @@ def check_faucet():
         a.next_base, a.full_clear, a.pets, a.on_top, a.last_settle = None, False, {}, False, 0
         a.goal, a.fall, a.crumble, a.tank = a.base, None, crumble(w), {k: TANK[k][1] for k in TANK}
         a.bolt_seen, a.pet_startled, a.bangs, a.pet_sprites = None, {}, [], pet.sprites()
-        a.surface = types.SimpleNamespace(pixels=bytearray(w * h * 4), clear=lambda top=0: None, present=lambda top=0: None)
+        # 진짜 Surface 처럼 memoryview — bytearray 는 끝을 넘겨 찍으면 조용히 늘어나 밖으로 찍는 것을 못 잡음
+        a.surface = types.SimpleNamespace(pixels=memoryview(bytearray(w * h * 4)), clear=lambda top=0: None,
+                                          present=lambda top=0: None)
         a.reset()
         return a
     w, h = 400, 300
@@ -4791,12 +4795,12 @@ def check_faucet():
             level_half = a.level
         if a.tap_state == "fill" and a.jet[1] is None and a.level > h / 2 and "stream" not in locals():
             nx, ny = a.tap_x + TAP_NOZZLE * pet.SCALE + 1, a.tap["size"][1]
-            stream = a.surface.pixels[(ny + 20) * a.stride + nx * 4:][:4]
+            stream = bytes(a.surface.pixels[(ny + 20) * a.stride + nx * 4:][:4])
         if a.tap_state == "crack" and "after" not in locals():
             after = list(a.jet)
         if a.tap_state == "drain" and now - a.tap_since > TAP_POP and "hole" not in locals():
             cx, cy = a.hole_at()
-            hole = a.surface.pixels[cy * a.stride + cx * 4:][:4]
+            hole = bytes(a.surface.pixels[cy * a.stride + cx * 4:][:4])
         now += dt
     states = [s for s, _ in seen]
     assert states == ["fill", "full", "crack", "drain", "seal", "fill"], states
@@ -4809,6 +4813,15 @@ def check_faucet():
     assert stream != bytes(4) and stream != a.tap_px[(ny + 20) * a.stride:][:4], "차는 동안 꼭지 밑에 물줄기"
     assert hole == pixel(TAP_HOLE_COLOR, 255), "빠지는 동안 바닥에 구멍"
     assert after == [None, None], ("가득 차면 꼭지를 잠가 금이 갈 땐 물줄기 꼬리까지 다 떨어짐", after)
+    # 꼭지가 바닥이 화면 밑변인 자리(작업 표시줄 틈)에 오면 빈 화면 밑변에 꽂히는 물줄기의 거품이 화면 밖으로 나가
+    # 프로그램이 죽었음 — 한 바퀴 돌아 꼭지 자리를 새로 고른 뒤에 꺼지던 것
+    keep = random.getstate()  # 아래 시험 몇은 씨앗을 타서(다른 씨앗이면 8 중 6 실패) 뽑는 차례를 안 흐트러뜨림
+    z = make(w, h)
+    z.base = z.goal = [0] * w
+    z.tap_x = w // 2
+    for i in range(120):
+        z.frame(1 / 60, i / 60)
+    random.setstate(keep)
     # 차는 빠르기는 양에 비례, 0% 면 잠김
     for amount in (10, 0):
         a.amount, a.level, a.tap_state, a.tap_since, a.jet = amount, 50.0, "fill", 0.0, [None if amount else 0.0, None]
@@ -4833,7 +4846,7 @@ def check_faucet():
             assert px[y * st + x * 4:][:4] == want, ("물 그림", x, y, tp)
     # 동물: 반 아래 물에선 수면에 떠 개헤엄(안 잠), 발만 잠기면 걸으며 안 잠, 반 넘으면 스노클로 잠수, 다시 반 아래면 떠오름
     a.wave, a.wave_v = [0.0] * n, [0.0] * n
-    a.surface.pixels = bytearray(w * h * 4)
+    a.surface.pixels = memoryview(bytearray(w * h * 4))
 
     def run(secs, t0, each=None):
         for i in range(int(secs * 60)):
@@ -4862,14 +4875,21 @@ def check_faucet():
         assert seen["ways"] == {True, False} and seen["drops"] > 0, ("오가며 물을 참", cls, seen)
         a.level = h * 0.6  # 반 넘게 참 — 그 자리에서 스노클 잠수
         top = h - a.sea(w // 2)
+        tip = {"out": 0, "in": 0, "n": 0}
+        assert -TAP_SNORKEL > 2 * pet.SNORK_BOB, "수면에서 까딱여도 관 끝이 안 잠김"
 
         def diving(now):
             sw, sh = c.dive_size()
             y = h - int(c.ground) - sh - int(c.lift)
             assert c.dive is not None and c.snork and c.swam is None, cls
-            assert y >= top + TAP_SNORKEL - 1, ("스노클 관 끝까지 물속", cls, y, top)
-        run(30, 61.0, diving)
-        assert a.tap_bubbles, ("관 끝에서 숨 거품", cls)
+            assert y >= top + TAP_SNORKEL - 1, ("스노클 관 끝은 TAP_SNORKEL 보다 높이 안 나감", cls, y, top)
+            out = c.mouth[1] < top - 2
+            tip["out" if out else "in"] += 1
+            assert not (out and len(a.tap_bubbles) > tip["n"]), ("관 끝이 물 밖이면 숨 거품 없음", cls)
+            tip["n"] = len(a.tap_bubbles)
+        run(60, 61.0, diving)
+        assert tip["out"] and tip["in"], ("관 끝을 물 밖에 내밀다 가끔 물속으로 — 몫은 pet 자체 점검", cls, tip)
+        assert a.tap_bubbles, ("물속에 들어갔을 때 관 끝에서 숨 거품", cls)
         a.level = h * 0.4  # 빠져서 반 아래 — 떠올라 다시 개헤엄
         run(3, 91.0)
         assert c.dive is None and c.swam is not None, ("반 아래로 빠지면 떠올라 수면", cls)
@@ -4895,7 +4915,7 @@ def check_faucet():
     a.tap_bubbles += [[w / 3, h - a.level + 30, 260.0, 2, 0.0]]  # 깊이 꽂혔다 떠오름
     born = len(a.tap_bubbles)
     for i in range(60 * 20):
-        a.surface.pixels = bytearray(w * h * 4)
+        a.surface.pixels = memoryview(bytearray(w * h * 4))
         a.fizz(1 / 60, i / 60)
         a.gurgle_at = math.inf
         sea_y = h - a.level
@@ -4911,7 +4931,7 @@ def check_faucet():
     assert all(first[:TAP_BREAK[0]]), "위쪽 물줄기는 안 끊김"
     gaps = first[TAP_BREAK[1]:1300].count(0) / (1300 - TAP_BREAK[1])
     assert 0.2 < gaps < TAP_BREAK[2] + 0.1, ("아래쪽은 방울로 끊김", gaps)
-    b.surface.pixels = bytearray(len(b.surface.pixels))
+    b.surface.pixels = memoryview(bytearray(len(b.surface.pixels)))
     b.spout(1 / 60, 3.05)
     assert col() != first, "끊긴 자리는 흘러내림"
     # 뜬금없는 물건: 떠다니는 건 하나씩. 오리는 수면에 높이, 병은 반쯤 잠겨 떠내려가 화면 밖으로, 장화는 퐁당 빠져
@@ -4945,14 +4965,15 @@ def check_faucet():
     fn, low = a.tap["junk"]["boot"][False][int(j["spin"] / 22.5 + 0.5) % 16][:2]
     assert hit[0] >= 10 and j["landed"] and j["spin"] % 90 == 0, ("퐁당 튀고 직각으로 누움", hit, j["spin"])
     assert abs(j["y"] - fn / 2 + low - (h - rise)) < 1e-9, ("바닥에 닿음", j["y"])
-    a.junk, a.junk_at, born, quiet = [j], None, set(), [100.0]
+    a.junk, a.junk_at, born, quiet = [j], None, [], [100.0]
 
     def one(now):
         moving = [k for k in a.junk if not k["landed"]]
         assert len(moving) <= 1, "떠다니는 건 하나씩"
-        if moving and id(moving[0]) not in born:
+        # id() 로 기억하면 떠난 것이 지워진 자리를 다음 것이 물려받아 같은 것으로 셈 — 붙들어 두고 is 로 견줌
+        if moving and all(k is not moving[0] for k in born):
             assert now - quiet[0] >= TAP_JUNK[0] - 0.1, ("앞엣것이 떠나고 TAP_JUNK 초 뒤에 옴", now - quiet[0])
-            born.add(id(moving[0]))
+            born.append(moving[0])
         elif not moving and quiet[0] is None:
             quiet[0] = now
         if moving:
