@@ -259,11 +259,13 @@ FLOWER_GREEN, FLOWER_EYE = {"s": (70, 140, 60), "f": (100, 176, 76)}, ((250, 200
 # 앉은 벌레가 앉을 자리 윗변 아래로 내려앉는 px(다리) · 잠자리가 휙 날 때 빈자리에 앉으러 갈 확률 · 앉아 있는 초
 BUG_SIT, DRAGON_PERCH, DRAGON_REST = 3, 0.35, (3, 10)
 # 뜰의 바람: wind() 를 WIND_FULL 로 나눈 -1..1. 가지 끝이 위아래로 흔들리는 칸(벽 쪽은 안 움직임) · 커서가 가지에 올라오면
-# 그 알파. 바람줄: 폭 1000px 마다 초당 생기는 수(잔잔 · 센 바람) · 최대 수 · 알파 · 흘러가는 px/초(잔잔 · 센) · 길이 칸 · 사는 초.
+# 그 알파. 바람줄: 폭 1000px 마다 초당 생기는 묶음 수(잔잔 · 센 바람) · 가닥 최대 수 · 가장 밝은 알파 · 머리가 나아가는 px/초
+# (잔잔 · 센) · 길 길이 px · 보이는 꼬리 몫(길 대비) · 한 바퀴 말릴 확률 · 말리는 반지름 px · 색.
 # 떨어지는 잎: 바람이 이보다 세면 가지에서 떨어짐 · 센 바람에 초당 수 · 최대 수 · 바람에 밀리는 px/초. 나는 나비가 밀리는
 # px/초 · 꽃에 앉은 나비가 날려 가는 바람 · 먼지가 밀리는 px/초
 WIND_FULL, BRANCH_SWAY, BRANCH_FADE = 29, 3, 80
-STREAK_RATE, STREAK_N, STREAK_ALPHA, STREAK_V, STREAK_LEN, STREAK_LIFE = (0.2, 1.6), 8, 90, (160, 420), (14, 34), (1.0, 1.8)
+STREAK_RATE, STREAK_N, STREAK_ALPHA, STREAK_V = (0.12, 0.8), 7, 150, (220, 520)
+STREAK_PATH, STREAK_TAIL, STREAK_CURL, STREAK_R, STREAK_COLOR = (280, 640), (0.3, 0.45), 0.5, (7, 15), (236, 244, 255)
 LEAF_GUST, LEAF_RATE, LEAF_N, LEAF_V = 0.45, 2.5, 8, 140
 BUG_DRIFT, BUG_BLOWN, MOTE_WIND = 45, 0.85, 30
 
@@ -1721,13 +1723,19 @@ def ghost(segs, a):
     return [(dy, skip, data.translate(t)) for dy, skip, data in segs]
 
 
-def streak_art(n, rng):
-    """바람줄 한 가닥 → 높이 3칸, 길이 n 칸 글자 판. 사인 물결로 한 칸씩 오르내림."""
-    ph, k = rng.uniform(0, math.tau), rng.uniform(0.25, 0.45)
-    rows = [["."] * n for _ in range(3)]
-    for c in range(n):
-        rows[1 + round(math.sin(c * k + ph))][c] = "w"
-    return ["".join(r) for r in rows]
+def streak_path(n, d, rng):
+    """바람줄이 지나갈 길: 1px 걸음마다 (x, y) n 개, (0, 0) 에서 d(±1) 쪽으로. 방향각이 천천히 출렁여 물결지고,
+    STREAK_CURL 확률로 중간에 위로 한 바퀴 말림(방향각을 반지름에 맞춰 2π 돌림)."""
+    amp, k, ph = rng.uniform(0.12, 0.3), rng.uniform(0.01, 0.025), rng.uniform(0, math.tau)
+    loop = rng.uniform(0.3, 0.6) * n if rng.random() < STREAK_CURL else n
+    r = rng.uniform(*STREAK_R)
+    x = y = 0.0
+    pts = []
+    for s in range(n):
+        th = amp * math.sin(k * s + ph) - min(max(s - loop, 0.0), math.tau * r) / r
+        x, y = x + math.cos(th) * d, y + math.sin(th)
+        pts.append((x, y))
+    return pts
 
 
 def load_settings():
@@ -2664,33 +2672,54 @@ class Weather:
                                          a + u[3] * (255 - a) // 255))
 
     def blow(self, dt, now, k):
-        """바람줄: 바람이 셀수록 자주 생겨 바람 부는 쪽으로 흘러가며, 머리부터 그려지고 꼬리부터 지워짐. 옅은 흰
-        물결선이라 밑을 섞지 않고 덮어 찍음 — 가지·꽃·벌레가 그 뒤에 그려짐."""
-        px, stride, w, h, S, st = self.surface.pixels, self.stride, self.w, self.h, pet.SCALE, self.streaks
+        """바람줄: 바람이 셀수록 자주 1–3가닥 묶음으로 생김. 머리가 정해 둔 길(streak_path)을 따라 그려 나가고 꼬리는
+        사라짐 — 보이는 몫은 꼬리에서 머리까지 sin 으로 밝아졌다 옅어져 양 끝이 가늘게 빠지고, 길 처음과 끝에서도
+        옅어짐. 심은 1px 이고 소수 y 를 위아래 두 픽셀에 나눠 찍어 계단이 없음. 바로 밑은 구운 배경뿐이라(가지·꽃·
+        벌레는 뒤에 그림) 그 알파보다 옅은 픽셀은 안 찍음 — 덮어 찍으면 햇볕에 어두운 줄이 파임.
+        ponytail: 픽셀마다 파이썬 한 번. 가닥 7 × 보이는 200px 쯤이 1ms 안쪽, 더 늘리려면 행 단위로 묶어 찍기로"""
+        px, stride, w, h, st, bg = self.surface.pixels, self.stride, self.w, self.h, self.streaks, self.meadow["bg"]
         lo, hi = STREAK_RATE
         if len(st) < STREAK_N and random.random() < (lo + (hi - lo) * abs(k)) * w / 1000 * dt:
-            n, d = random.randint(*STREAK_LEN), 1 if k >= 0 else -1
-            rows = streak_art(n, random)
+            n, d = random.randint(*STREAK_PATH), 1 if k >= 0 else -1
+            path, tail = streak_path(n, d, random), int(n * random.uniform(*STREAK_TAIL))
             v = STREAK_V[0] + (STREAK_V[1] - STREAK_V[0]) * abs(k)
-            # [왼쪽 x, 위 y, px/초(부호가 쪽), 생긴 시각, 사는 초, 글자 판(머리가 앞), 보이는 열 → 조각]
-            st.append([random.uniform(0, max(1, w - n * S)), random.uniform(h * 0.1, h * 0.75), d * v, now,
-                       random.uniform(*STREAK_LIFE), rows if d > 0 else [r[::-1] for r in rows], {}])
+            x0 = random.uniform(-0.3 * n, w - 0.6 * n) if d > 0 else random.uniform(0.6 * n, w + 0.3 * n)
+            y0 = random.uniform(h * 0.08, h * 0.7)
+            ramp = [int(255 * math.sin(math.pi * (j + 0.5) / tail) ** 1.4) for j in range(tail)]
+            for g in range(random.choice((1, 1, 2, 2, 3))):
+                if len(st) >= STREAK_N:
+                    break
+                dy, pts = g * random.uniform(7, 14), []
+                for i, (x, y) in enumerate(path):  # (윗 픽셀 바이트 자리, 아랫 픽셀 몫 0–255, 길 끝 옅어짐 0–255)
+                    X, Y = int(x0 + x), y0 + y + dy
+                    yi = int(Y)
+                    ok = 0 <= X < w and 0 <= yi < h - 1
+                    pts.append((yi * stride + X * 4, int((Y - yi) * 255), int(255 * min(1, i / 30, (n - 1 - i) / 50)))
+                               if ok else None)
+                # [길 점들, 머리 자리(px), 빠르기, 꼬리 길이, 꼬리→머리 밝기, (길 처음 x, 끝 x)]
+                st.append([pts, -g * random.uniform(20, 50), v, tail, ramp, (x0 + path[0][0], x0 + path[-1][0])])
+        col = self.sprite_cache.get("streak_col")
+        if col is None:
+            r, g, b = STREAK_COLOR
+            col = self.sprite_cache["streak_col"] = [bytes((b * a // 255, g * a // 255, r * a // 255, a)) for a in range(256)]
+        top = STREAK_ALPHA
         for s in st[:]:
-            t = (now - s[3]) / s[4]
-            if t >= 1:
+            s[1] += s[2] * dt
+            pts, head, tail, ramp = s[0], int(s[1]), s[3], s[4]
+            if head - tail >= len(pts):
                 st.remove(s)
                 continue
-            s[0] += s[2] * dt
-            n = len(s[5][0])
-            a, b = int(n * max(0.0, 2 * t - 1)), int(n * min(1.0, 2 * t))  # 꼬리 · 머리 (오른쪽으로 갈 때 열)
-            if s[2] < 0:
-                a, b = n - b, n - a
-            if a >= b:
-                continue
-            segs = s[6].get((a, b))
-            if segs is None:
-                segs = s[6][a, b] = ghost(pet.segments([r[a:b] for r in s[5]], False, {"w": (255, 255, 255)}), STREAK_ALPHA)
-            pet.stamp(px, stride, int(s[0]) + a * S, int(s[1]), segs, w, h)
+            for i in range(max(0, head - tail), min(head, len(pts))):
+                p = pts[i]
+                if p is None:
+                    continue
+                o, f, e = p
+                a = ramp[i - head + tail] * e * top >> 16
+                a0, a1 = a * (255 - f) >> 8, a * f >> 8
+                if a0 > bg[o + 3]:
+                    px[o:o + 4] = col[a0]
+                if a1 > bg[o + stride + 3]:
+                    px[o + stride:o + stride + 4] = col[a1]
 
     def flutter(self, dt, now):
         """나비는 이리저리 팔랑이다 가끔 빈 앉을 자리(꽃송이 · 가지 윗면 · 잔가지 끝, 가까운 쪽)로 팔랑이며 가서 앉아
@@ -4519,9 +4548,17 @@ def check():
         assert [x for x, *_ in m.perch_xy[:len(fl)]] == [x + S / 2 + S for x, *_ in fl], "꽃은 모두 바람 쪽으로 누움"
         tip.add(max(br, key=lambda p: abs(p[0] - wall))[1])
         lv = max(lv, len(m.leaves))
-        sx += [s[2] for s in m.streaks]
+        sx += [s[5][1] - s[5][0] for s in m.streaks]  # 길 끝 x − 처음 x
     assert len(tip) >= 3, ("가지 끝 자리가 위아래로 흔들림", tip)
     assert lv and sx and all(v > 0 for v in sx), ("센 바람엔 잎이 날리고 바람줄이 바람 쪽으로", lv, len(sx))
+    for _ in range(2000):  # 바람줄만 그려 봄 — 넉넉히 보일 때까지
+        m.surface.fill(bg)
+        Weather.blow(m, 1 / 20, 10.0, 1.0)
+        lit = [i for i in range(0, len(px), 4) if px[i + 3] != bg[i + 3]]
+        if len(lit) > 50:
+            break
+    assert len(lit) > 50 and all(px[i + 3] > bg[i + 3] and px[i] >= px[i + 2] for i in lit), \
+        ("바람줄은 푸른 흰빛, 밑의 햇볕보다 옅은 픽셀은 안 찍음", len(lit))
     m.meadow["leaf"] = leaf
     m.frame(1 / 20, 10.0)
     assert m.leaves and all(any(al(px, min(mw - 1, max(0, int(f[0]) + dx)), min(mh - 1, int(f[1]) + dy)) == 255 for dx in range(9) for dy in range(6))
