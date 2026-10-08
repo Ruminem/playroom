@@ -2607,8 +2607,8 @@ class Weather:
             self.sprite_cache["meadow"] = {"bg": bg, "bg_c": (ctypes.c_char * len(bg)).from_buffer(bg), "rays": rays,
                                            "twig": twig, "leaf": leaf, "flowers": flowers}
         self.meadow = self.sprite_cache["meadow"]
-        # 앉을 자리는 garden 이 프레임마다 채움 — flutter 보다 먼저 불림. breeze 는 이번 프레임 바람 -1..1
-        self.perch_xy, self.motes, self.streaks, self.leaves, self.breeze = [], [], [], [], 0.0
+        # 앉을 자리는 garden 이 프레임마다 채움 — flutter 보다 먼저 불림. breeze 는 이번 프레임 바람 -1..1, sway 는 가지 위상
+        self.perch_xy, self.motes, self.streaks, self.leaves, self.breeze, self.sway = [], [], [], [], 0.0, 0.0
 
     def garden(self, dt, now):
         """바람(wind 를 -1..1 로)에 맞춰 뜰을 찍음. 바람줄(blow)은 가지 뒤. 가지: 벽은 그대로, 끝이 위아래로 흔들리고
@@ -2619,7 +2619,9 @@ class Weather:
         k = self.breeze = max(-1.0, min(1.0, self.wind(now) / WIND_FULL))
         self.blow(dt, now, k)
         tw, pad = self.meadow["twig"], BRANCH_SWAY * S
-        off = round(BRANCH_SWAY * (0.3 + 0.7 * abs(k)) * math.sin(now * (1.3 + 1.2 * abs(k)) + 0.6 * math.sin(now * 0.7)))
+        # 위상은 쌓음 — now × 주파수로 쓰면 바람이 바뀔 때 위상이 now 에 비례해 뛰어 가지가 프레임마다 떪
+        self.sway += (1.3 + 1.2 * abs(k)) * dt
+        off = round(BRANCH_SWAY * (0.3 + 0.7 * abs(k)) * math.sin(self.sway + 0.6 * math.sin(now * 0.7)))
         if off not in tw["bends"]:
             segs = pet.segments(bend(tw["rows"], off), not tw["left"], BRANCH_COLORS)
             tw["bends"][off] = segs, ghost(segs, BRANCH_FADE)
@@ -4567,6 +4569,11 @@ def check():
     m.wind = lambda now: -WIND_FULL
     m.frame(1 / 20, 10.0)
     assert [x for x, *_ in m.perch_xy[:len(fl)]] == [x + S / 2 - S for x, *_ in fl], "반대 바람엔 반대로"
+    m.wind, tips = lambda now: WIND_FULL * math.sin(now * 3), []  # 바람이 빨리 바뀌고 켠 지 오래(perf_counter 큼)
+    for i in range(60):
+        m.frame(1 / 60, 1e5 + i / 60)
+        tips.append(max(m.perch_xy[len(fl):], key=lambda p: abs(p[0] - wall))[1])
+    assert sum(a != b for a, b in zip(tips, tips[1:])) <= 8, ("가지는 1초에 몇 칸만 움직임 — 프레임마다 안 떪", tips)
     del m.wind
     m.motes, m.streaks, m.leaves = [], [], []  # 아래는 시각을 0 부터 다시 셈
     m.bugs = [m.new_bug() for _ in range(7)]
