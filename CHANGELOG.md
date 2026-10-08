@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.13 — 2026-10-09
+
+- weather: butterflies and dragonflies now play in a sunny garden. A soft glow spreads from a sun just above the top edge of the screen and a fan of warm rays bursts out of it, each ray made of finer strands that drop out one by one as it fades, with specks of dust glinting in them. The sun follows the real one by the clock — the left edge is east, so in the morning it sits low near the upper-left corner, at noon high above the middle and in the afternoon it moves to the upper right; it is faint and orange just after sunrise and before sunset and gone at night (worked out roughly for Seoul's latitude and the date). A leafy branch juts out from the left or right edge, flowers in six colours stand along the top of the taskbar, and butterflies and dragonflies land on free flowers and spots on the branch, one to a spot
+- weather: a breeze comes and goes in the garden — thin white wind lines trace wavy paths across the screen, the branch sways gently, flowers bend with the wind, flying butterflies and the dust drift, a strong gust blows butterflies off the flowers and leaves come off the branch. Move the mouse over the branch and it turns see-through (Windows only)
+- weather: piled-up hail is drawn as a heap of lumpy ice balls instead of a snow drift. A melting pile could flip upside down and crash after the window was hidden for a while; it now stops at zero
+- weather: a bird flying over the taskbar no longer bobs up and down with every step in the ground below; it glides over the highest point of its path. A startled bird now lands anywhere more than a third of the screen away instead of going back and forth between the two ends
+- weather: in the faucet, animals dog-paddle at the surface while the water is less than half full and swim underwater with a snorkel above that. Bubbles rise in the water, the stream stretches and breaks into drops as it falls and splashes white where it lands, and every 20–40 seconds something odd floats by — a rubber duck, a bottle with a letter, a boot that plops in and sinks — all sucked down the hole when the water drains
+
+**한국어**
+
+- weather: 나비·잠자리가 햇볕 드는 뜰에서 놂. 화면 위 가장자리 바로 너머의 해 둘레로 해무리가 은은히 번지고 따뜻한 빛줄기가 부챗살로 퍼져 내려옴. 줄기마다 가는 빛살 여러 가닥이 겹쳐 있어 옅어지며 한 가닥씩 빠지고, 그 속에 먼지가 반짝임. 해는 시계에 맞춰 실제 해를 따라감 — 왼쪽이 동쪽이라 아침엔 왼쪽 위 구석 가까이 낮게, 정오엔 가운데 위 높이, 오후엔 오른쪽 위로 옮겨 가고, 해 뜬 직후와 지기 직전엔 옅은 주황빛, 밤엔 없음(서울 위도와 날짜로 어림해 셈). 벽에서 잎 달린 가지가 뻗고, 작업 표시줄 위에 여섯 가지 색 꽃이 서며, 나비와 잠자리가 빈 꽃과 가지 자리에 하나씩 앉음
+- weather: 뜰에 바람이 불었다 잦아들었다 함 — 가는 흰 바람줄이 물결진 길로 화면을 지나가고, 가지가 살살 흔들리고, 꽃이 바람 쪽으로 눕고, 나는 나비와 먼지가 밀리고, 센 바람엔 꽃에 앉은 나비가 날려 가고 가지에서 잎이 떨어짐. 가지에 마우스를 올리면 반투명해짐(윈도우만)
+- weather: 쌓인 우박이 눈 더미 대신 찌그러진 얼음 알 더미로 그려짐. 창이 한동안 가려졌다 돌아오면 녹던 더미가 뒤집혀 꺼지던 것을 0 에서 멈추게 고침
+- weather: 작업 표시줄 위를 나는 새가 바닥 높이를 따라 들썩이지 않고 길에서 가장 높은 곳 위를 미끄러지듯 지나감. 놀란 새가 양 끝만 오가지 않고 화면 1/3 넘게 떨어진 아무 데나 앉음
+- weather: 수도꼭지에서 물이 반 아래면 동물이 수면에서 개헤엄치고 반 넘으면 스노클을 물고 물속을 헤엄침. 물속에 거품이 오르고, 물줄기는 떨어질수록 늘어나다 방울로 끊기며 닿는 자리에 흰 물보라를 냄. 20–40초마다 뜬금없는 물건이 뜸 — 고무 오리, 편지 든 병, 퐁당 떨어져 가라앉는 장화 — 물이 빠지면 다 구멍으로 빨려 들어감
+
 ## 0.2.12 — 2026-10-08
 
 - All tools: running a tool's `.bat` again used to just stop it. Now, if the tool's files changed since it started (after a `git pull`, say), the `.bat` stops the old one and starts the new code instead; if nothing changed it still stops it. A tool already running from before this update counts as changed, so the first `.bat` after updating swaps it in. The release `.exe` files work as before
