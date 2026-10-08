@@ -4760,14 +4760,19 @@ def check_faucet():
     w, h = 400, 300
     a = make(w, h)
     top, n = h + TAP_AMP, len(a.wave)
-    # 물결: 어떤 fps 에서도 안 터지고, 물은 생기거나 사라지지 않음
+    # 물결: 어떤 fps 에서도 안 터지고, 물은 생기거나 사라지지 않음. 물줄기가 누르는 동안은 ±TAP_AMP 로 자른 뒤 평균을
+    # 빼서 몇 px 넘음(씨앗 20개 도중 최댓값 41.5–44.8) — 터졌는지는 끝 한 장이 아니라 물줄기를 끈 뒤 잦아드는지로 봄
     for dt in (0.1, 1 / 30, 1 / 120):
         a.wave, a.wave_v, a.level, a.tap_state, a.jet = [0.0] * n, [0.0] * n, h / 2, "fill", [0.0, None]
         a.wave[n // 2] = TAP_AMP
         for i in range(int(20 / dt)):
             Weather.slosh(a, dt, i * dt)
-        assert all(abs(c) <= TAP_AMP + 1 for c in a.wave), ("물결이 터지면 안 됨", dt, max(map(abs, a.wave)))
+            assert max(map(abs, a.wave)) <= TAP_AMP * 1.25, ("물결이 터지면 안 됨", dt, max(map(abs, a.wave)))
         assert abs(sum(a.wave)) / n < 1e-6, ("평균 수면은 그대로", dt)
+        a.tap_state = "full"
+        for i in range(int(30 / min(dt, TAP_STEPS * TAP_DT))):  # 30초 어치 걸음 — 긴 dt 는 걸음이 잘려 덜 감
+            Weather.slosh(a, dt, i * dt)
+        assert max(map(abs, a.wave)) < 1, ("물줄기를 끄면 잦아듦 — 터졌으면 안 잦아듦", dt, max(map(abs, a.wave)))
     # 누르지 않으면 퍼졌다 잦아듦
     a.wave, a.wave_v, a.tap_state = [0.0] * n, [0.0] * n, "full"
     a.wave[n // 2] = 30.0
@@ -4782,7 +4787,8 @@ def check_faucet():
     for i in range(60 * 10):
         Weather.slosh(a, 1 / 60, i / 60)
         far.append(sum(a.wave[3 * n // 4:]) / (n - 3 * n // 4))
-    assert abs(sum(far) / len(far)) < 3, ("먼 쪽 수면은 제자리", sum(far) / len(far))
+    # 눌린 물이 갈 데가 있어야 해서 먼 쪽은 조금 뜸(씨앗 20개 2.4–4.1). TAP_BACK 이 없으면 16–22 로 기욺
+    assert abs(sum(far) / len(far)) < 8, ("먼 쪽 수면은 제자리", sum(far) / len(far))
     # 한 바퀴: 차고 · 머물고 · 금 가고 · 빠지고 · 메우고 다시
     a.amount = 100
     a.reset()
@@ -4815,13 +4821,11 @@ def check_faucet():
     assert after == [None, None], ("가득 차면 꼭지를 잠가 금이 갈 땐 물줄기 꼬리까지 다 떨어짐", after)
     # 꼭지가 바닥이 화면 밑변인 자리(작업 표시줄 틈)에 오면 빈 화면 밑변에 꽂히는 물줄기의 거품이 화면 밖으로 나가
     # 프로그램이 죽었음 — 한 바퀴 돌아 꼭지 자리를 새로 고른 뒤에 꺼지던 것
-    keep = random.getstate()  # 아래 시험 몇은 씨앗을 타서(다른 씨앗이면 8 중 6 실패) 뽑는 차례를 안 흐트러뜨림
     z = make(w, h)
     z.base = z.goal = [0] * w
     z.tap_x = w // 2
     for i in range(120):
         z.frame(1 / 60, i / 60)
-    random.setstate(keep)
     # 차는 빠르기는 양에 비례, 0% 면 잠김
     for amount in (10, 0):
         a.amount, a.level, a.tap_state, a.tap_since, a.jet = amount, 50.0, "fill", 0.0, [None if amount else 0.0, None]
