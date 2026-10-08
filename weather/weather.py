@@ -3493,6 +3493,11 @@ class Weather:
                 g = p.ground = want
                 p.leap = None
             else:
+                if p.state == "fly":  # 발밑 대신 날아가는 길 전체를 보고 — 틀 단을 지날 때마다 들썩이지 않게
+                    floor = lambda c, d: max(v + f for v, f in zip(self.pile.h[c:d], self.base[c:d]))
+                    i, j = sorted((int(p.start), int(p.land)))
+                    k = int(p.land) + (a - int(p.x))  # 앉을 자리의 발 열
+                    want = p.glide(floor(i, j + p.W), floor(k, k + b - a))  # 길 열 수만큼(화면 폭까지) 한 번
                 g = p.follow(want, dt, now)  # 틀 단은 뛰어 오르내림
             if p.held:  # 그림 윗줄이 커서에서 집은 자리만큼 위. 바닥 밑으로도 화면 위로도 안 나감
                 up = min(max(self.h - g - tall - (cy - p.held[1]), 0), max(0, self.h - g - tall))
@@ -4117,6 +4122,27 @@ def check():
     gf.pets, gf.base = {"rabbit": rab}, [0] * 200
     Weather.set_base(gf, [0] * 100 + [48] * 100)
     assert not rab.under, "틈에 선 동물은 안 묻힘"
+    # 새는 날 때 길 전체를 넘는 높이로 — 틀 단을 지날 때 발밑 따라 들썩이지(한 프레임 CLIMB/60 ≈ 7px) 않음
+    bird = pet.Bird(600, random.Random(3))
+    ff = big(pets={"bird": bird}, pile=Pile(600), base=[0] * 200 + [48] * 200 + [0] * 200, pet_sprites=pet.sprites(),
+             kind="none", flies=[], bangs=[], bolt=None, bolt_seen=None, w=600, stride=2400,
+             surface=types.SimpleNamespace(pixels=bytearray(600 * 200 * 4)))
+    ff.react = lambda now: None
+    for x0, t0 in ((20.0, 0.0), (300.0, 10.0)):  # 틈 → 틀 넘어 건너편 틈 · 틀 위에서 떠 틈으로
+        bird.x, bird.ground = x0, None
+        Weather.walk_pet(ff, 1 / 60, t0)
+        bird.fly(t0, True)
+        ys, g0 = [], bird.ground
+        for i in range(1, 60 * 5):
+            Weather.walk_pet(ff, 1 / 60, t0 + i / 60)
+            a, b = bird.feet()
+            ys.append(bird.ground + bird.alt)
+            assert ys[-1] >= max(ff.base[max(a, 0):b]) - 1, ("틀을 뚫고 날지 않음", x0, bird.x, ys[-1])
+            if bird.state != "fly":
+                break
+        steps = [abs(q - p) for p, q in zip([g0, *ys], ys)]
+        assert bird.state == "stand" and ys[-1] == 0 and not 200 <= bird.land < 400, ("틈에 내려앉음", x0, bird.land)
+        assert max(ys) > 48 + pet.FLY_ALT * 0.9 and max(steps) < 5, ("틀 위를 매끄럽게 넘음", x0, max(ys), max(steps))
     assert floor_heights(5, 100, 0, 48, None) == [48] * 5, "틀을 모르면 작업 표시줄 윗변 전체가 바닥"
     assert floor_heights(10, 100, 10, 48, [(12, 52, 15), (16, 57, 30), (11, 20, 13), (0, 100, 20)]) == \
         [0, 0, 48, 48, 48, 0, 43, 43, 43, 43], "틀마다 그 윗변 높이, 띠 위의 창·높이 0 인 것은 안 셈"

@@ -728,7 +728,7 @@ class Bird(Pet):
     """Cat 과 같은 겉모습. 상태: hop(콩콩) · peck(쪼기) · stand(두리번) · fly(화면 안 다른 자리로 날아가 앉음).
     비 오면 덜 날아다니고, 반딧불이가 머리 위로 내려오면 쪼려 함."""
     W, H = BIRD_W, BIRD_H
-    LEAP, NO_LEAP = {"up": (0.3, 8), "down": (0.4, 4)}, ("fly",)  # 날갯짓하며 사뿐히. 나는 중엔 그냥 높이만 따라감
+    LEAP, NO_LEAP = {"up": (0.3, 8), "down": (0.4, 4)}, ("fly",)  # 날갯짓하며 사뿐히. 나는 중엔 glide 높이를 따라감
     DIVER, SWIM_V, PEEK = "bird", 45, 4
     PADDLE, FLOAT = ("bird_stand", "bird_air"), 0.3  # 오리처럼 얕게 떠서 물속 발만 저음
     FALL = (600, 180)  # 놓이면 날갯짓하며 천천히 내려앉음
@@ -755,8 +755,16 @@ class Bird(Pet):
             if abs(self.land - self.x) < 120:  # 너무 가까우면 넓은 쪽으로 120px 밀어 냄
                 self.land = self.x + (120 if self.x < room / 2 else -120)
                 self.land = min(max(self.land, 0), room)
-        self.start, self.right = self.x, self.land >= self.x
+        self.start, self.right, self.g0 = self.x, self.land >= self.x, self.ground or 0.0
         self.go("fly", now)
+
+    def glide(self, path, land):
+        """나는 동안의 발밑 높이(weather 가 follow 에 넘김). path: 날아가는 길에서 가장 높은 바닥, land: 앉을 자리 바닥.
+        뜬 자리에서 앉을 자리 바닥으로 고르게 옮겨 가다가 높이 뜬 만큼(alt/FLY_ALT) path 쪽으로 — 다 뜨면 길 위를
+        평평하게 지나 틀 단마다 들썩이지 않음. 뜨고 내리는 80·160px 안에 단이 있으면 그 단을 지날 때만 조금 들썩임."""
+        total = abs(self.land - self.start) or 1.0
+        g = self.g0 + (land - self.g0) * (1 - abs(self.land - self.x) / total)
+        return g + (max(path, g) - g) * self.alt / FLY_ALT
 
     def startle(self, now):
         """번개·우박. 땅에 있으면 멀리 날아감."""
