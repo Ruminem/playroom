@@ -186,6 +186,12 @@ def rule_name(rule):
     return rule.get("name") or rule.get("title") or rule.get("cls")
 
 
+def buried(zorder, me, hwnds):
+    """hwnds 중 하나라도 zorder(앞이 위)에서 me 보다 위에 있는지."""
+    top = {h: i for i, h in enumerate(zorder)}
+    return me in top and any(top.get(h, len(top)) < top[me] for h in hwnds)
+
+
 def plan_moves(zorder, ranked, attached=None):
     """ranked(앞이 위)가 zorder(앞이 위)에서 그 순서가 되게 할 (창, 바로 위에 둘 창) 목록.
     틀린 창을 윗 순위 창 바로 밑으로 내리기만 하므로 목록 밖 창보다 위로 올라가는 일은 없다.
@@ -324,6 +330,10 @@ class Layers:
         for h, above in plan_moves(z, order, companions(z, order, click_through, inside)):
             user32.SetWindowPos(h, above, 0, 0, 0, 0, SWP_KEEP)
         self.unpin({w["hwnd"] for w in ranked})
+        if self.win:  # 순서 정하기 창은 방금 올린 창들에 안 덮이게 — 메뉴 같은 목록 밖 창까지 덮지는 않음
+            me = int(self.win.wm_frame(), 16)
+            if buried(all_windows(), me, order):
+                user32.SetWindowPos(me, HWND_TOPMOST, 0, 0, 0, 0, SWP_KEEP)
 
     def unpin(self, keep):
         for h in self.pinned - keep:
@@ -339,6 +349,7 @@ class Layers:
             self.refresh()
             return
         self.win = w = tk.Toplevel(self.root)
+        w.attributes("-topmost", True)
         w.title("창 순서 — layers")
         w.iconbitmap(str(ICON_FILE))
         w.protocol("WM_DELETE_WINDOW", self.close_window)
@@ -501,6 +512,8 @@ def check():
         z.insert(z.index(above) + 1, h)
     assert z == ["pcw", "pip", "hud", "sys", "wt", "glow", "weather"], z
     assert plan_moves(["b", "a", "g"], ["a", "b"], {"a": ["g"]}) == [("b", "g")], "윗 창과 그 짝 창 사이를 안 가름"
+    assert buried(["hud", "me", "menu"], "me", ["hud"]) and not buried(["menu", "me", "hud"], "me", ["hud", "gone"])
+    assert not buried(["hud"], "me", ["hud"]), "순서 창이 닫혔으면 안 건드림"
     # 순서 맞추기가 터져도 다음 차례는 걸리고 오류는 파일로
     global ERROR_LOG
     real, ERROR_LOG = ERROR_LOG, Path(tempfile.mkdtemp()) / "layers-error.txt"

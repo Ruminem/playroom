@@ -6,7 +6,7 @@ Decides which always-on-top window goes in front. The overlays in this playroom 
 
 ## Use
 
-Double-click [layers.bat](layers.bat) to start or stop it. If its files changed since it started (after a `git pull`, say), the `.bat` swaps in the new code instead of stopping it. A stacked-squares icon sits in the notification area; **Arrange…** opens a window with two lists:
+Double-click [layers.bat](layers.bat) to start or stop it. If its files changed since it started (after a `git pull`, say), the `.bat` swaps in the new code instead of stopping it. A stacked-squares icon sits in the notification area; **Arrange…** opens a window, kept on top, above even the windows it orders, with two lists:
 
 - **Order** — windows higher in the list stay in front. Move with Up / Down (or Alt+↑ / Alt+↓), drop with Remove (or Delete). A green dot means the window is open right now, grey means it is not
 - **Open windows** — everything visible that is not in the order yet (an orange dot = already always-on-top). Double-click, press Enter or press Add to put it at the bottom of the order
@@ -40,7 +40,7 @@ Twice a second it walks the window list. Measured on one PC: 0.03 s of CPU over 
 
 ### 쓰는 법
 
-[layers.bat](layers.bat) 을 더블클릭하면 켜지고, 다시 누르면 꺼짐. 켠 뒤로 파일이 바뀌었으면(`git pull` 등) 끄는 대신 새 코드로 갈아 끼움. 알림 영역에 사각형이 겹친 아이콘이 뜨고, **순서 정하기…** 를 누르면 목록 둘이 있는 창이 열림.
+[layers.bat](layers.bat) 을 더블클릭하면 켜지고, 다시 누르면 꺼짐. 켠 뒤로 파일이 바뀌었으면(`git pull` 등) 끄는 대신 새 코드로 갈아 끼움. 알림 영역에 사각형이 겹친 아이콘이 뜨고, **순서 정하기…** 를 누르면 목록 둘이 있는 창이 열림. 이 창은 순서를 맞추는 창들보다도 늘 위에 뜸.
 
 - **순서** — 목록에서 위에 있을수록 앞에 뜸. 위로·아래로(또는 Alt+↑ / Alt+↓)로 옮기고 빼기(또는 Delete)로 뺌. 초록 점은 지금 떠 있는 창, 회색 점은 안 떠 있는 창
 - **지금 열린 창** — 보이는 창 중 아직 순서에 없는 것(주황 점은 원래 맨 위). 두 번 누르거나 Enter 나 추가를 누르면 순서 맨 아래에 들어감
