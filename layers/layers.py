@@ -159,6 +159,17 @@ def all_windows():
     return out
 
 
+def click_through(h):
+    ex = user32.GetWindowLongW(h, -20)
+    return ex & 0x80020 == 0x80020  # WS_EX_LAYERED | WS_EX_TRANSPARENT
+
+
+def inside(c, h):
+    a, b = wintypes.RECT(), wintypes.RECT()
+    return (user32.GetWindowRect(c, ctypes.byref(a)) and user32.GetWindowRect(h, ctypes.byref(b))
+            and b.left <= a.left and a.right <= b.right and b.top <= a.top and a.bottom <= b.bottom)
+
+
 def matches(rule, win):
     return all(rule.get(k) in (None, win.get(k)) for k in ("exe", "cls", "title", "app"))
 
@@ -175,18 +186,41 @@ def rule_name(rule):
     return rule.get("name") or rule.get("title") or rule.get("cls")
 
 
-def plan_moves(zorder, ranked):
+def plan_moves(zorder, ranked, attached=None):
     """ranked(앞이 위)가 zorder(앞이 위)에서 그 순서가 되게 할 (창, 바로 위에 둘 창) 목록.
     틀린 창을 윗 순위 창 바로 밑으로 내리기만 하므로 목록 밖 창보다 위로 올라가는 일은 없다.
+    내린 창에 딸린 짝 창(attached, companions() 참고)은 그 밑으로 같이 내림.
     ranked 를 읽은 뒤 zorder 를 읽기 전에 닫힌 창은 건너뜀."""
-    z, moves = list(zorder), []
+    z, moves, attached = list(zorder), [], attached or {}
     ranked = [h for h in ranked if h in z]
     for above, h in zip(ranked, ranked[1:]):
         if z.index(h) < z.index(above):
-            z.remove(h)
-            z.insert(z.index(above) + 1, h)
-            moves.append((h, above))
+            for c in attached.get(above, ()):  # 윗 순위 창과 그 짝 창 사이를 가르지 않게 짝 창 밑에 둠
+                if c in z and z.index(c) == z.index(above) + 1:
+                    above = c
+            for c in [h] + [c for c in attached.get(h, ()) if c in z]:
+                z.remove(c)
+                z.insert(z.index(above) + 1, c)
+                moves.append((c, above))
+                above = c
     return moves
+
+
+def companions(zorder, ranked, overlay, inside):
+    """ranked 창마다 zorder 에서 바로 밑에 이어 붙은 짝 창들. overlay(c) 는 클릭이 통과하는 창인지, inside(c, h) 는
+    c 가 h 의 사각형 안에 드는지. 창 뒤에 효과를 깔아 두는 모드(Acrylic Color Glows 등)의 창이 여기 걸림 — 주인만
+    내리면 짝 창이 다른 창들 위에 남아, 그 모드가 다시 맞출 때까지(2초) 모든 창을 덮음."""
+    out = {}
+    for h in ranked:
+        if h not in zorder:
+            continue
+        tail, i = [], zorder.index(h) + 1
+        while i < len(zorder) and zorder[i] not in ranked and overlay(zorder[i]) and inside(zorder[i], h):
+            tail.append(zorder[i])
+            i += 1
+        if tail:
+            out[h] = tail
+    return out
 
 
 def load_rules():
@@ -286,7 +320,8 @@ class Layers:
         if bar and order:  # 작업 표시줄은 누르면 앞으로 오므로 늘 목록 맨 아래로 — 그래야 sysmon 이 그 위에 보임
             order.append(bar)
         # 관리자 권한 창은 SetWindowPos 가 막혀 그냥 실패함. 다음 차례에 또 시도할 뿐
-        for h, above in plan_moves(all_windows(), order):
+        z = all_windows()
+        for h, above in plan_moves(z, order, companions(z, order, click_through, inside)):
             user32.SetWindowPos(h, above, 0, 0, 0, 0, SWP_KEEP)
         self.unpin({w["hwnd"] for w in ranked})
 
@@ -457,6 +492,15 @@ def check():
         z.insert(z.index(above) + 1, h)
     assert [h for h in z if h in ranked] == ranked and z[0] == "x", "목록 밖 창보다 위로 안 올라감"
     assert plan_moves(["c", "a"], ["a", "b", "c"]) == [("c", "a")], "그 사이 닫힌 창(b)은 건너뜀"
+    # 2026-10-10 실측: WT 를 누르면 WT 와 그 밑 글로우 창이 맨 위로 옴 → WT 만 내리면 글로우가 모든 창을 덮음
+    z, ranked = ["pcw", "wt", "glow", "pip", "hud", "sys", "weather"], ["pip", "hud", "sys", "wt"]
+    attached = companions(z, ranked, lambda c: c in ("glow", "weather"), lambda c, h: c == "glow")
+    assert attached == {"wt": ["glow"]}, "화면을 다 덮는 오버레이(weather)는 짝 창이 아님"
+    for h, above in plan_moves(z, ranked, attached):
+        z.remove(h)
+        z.insert(z.index(above) + 1, h)
+    assert z == ["pcw", "pip", "hud", "sys", "wt", "glow", "weather"], z
+    assert plan_moves(["b", "a", "g"], ["a", "b"], {"a": ["g"]}) == [("b", "g")], "윗 창과 그 짝 창 사이를 안 가름"
     # 순서 맞추기가 터져도 다음 차례는 걸리고 오류는 파일로
     global ERROR_LOG
     real, ERROR_LOG = ERROR_LOG, Path(tempfile.mkdtemp()) / "layers-error.txt"
