@@ -36,19 +36,25 @@ def on_top(name):
 
 
 def running_pid(pid_file):
-    """PID 파일의 프로세스가 아직 살아 있으면 그 pid (cursor-playground 의 cat.py 와 같은 방식)."""
+    """PID 파일의 프로세스가 아직 살아 있으면 그 pid (cursor-playground 의 cat.py 와 같은 방식).
+    재부팅 뒤 남은 파일의 pid 를 다른 프로세스가 다시 받았으면 None — 그 프로세스는 파일을 적은 뒤에 시작했으므로
+    가려짐. 안 가리면 그냥 실행은 떠 있는 줄 알고 안 뜨고, 토글·끄기는 남의 프로세스를 죽임(2026-10-10 HUD·layers)."""
     try:
         pid = int(pid_file.read_text())
+        written = pid_file.stat().st_mtime
     except (OSError, ValueError):
         return None
     k32 = ctypes.windll.kernel32
     handle = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
     if not handle:
         return None
-    code = ctypes.c_ulong()
+    code, times = ctypes.c_ulong(), (ctypes.c_ulonglong * 4)()  # 시작 · 끝 · 커널 · 사용자 (FILETIME)
     alive = k32.GetExitCodeProcess(handle, ctypes.byref(code)) and code.value == 259  # STILL_ACTIVE
+    got = k32.GetProcessTimes(handle, *(ctypes.byref(times, 8 * i) for i in range(4)))
     k32.CloseHandle(handle)
-    return pid if alive else None
+    started = times[0] / 1e7 - 11644473600  # 1601 년부터 100ns → 유닉스 초
+    # 1초 여유는 파일 시각이 거칠게 찍히는 몫. 도구는 뜨고 나서 파일을 적으므로 제 것이면 늘 started < written
+    return pid if alive and (not got or started <= written + 1) else None
 
 
 def stop(pid_file, tray_class):

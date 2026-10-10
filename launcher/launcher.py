@@ -404,6 +404,15 @@ def check_takeover(tmp):
         src.write_text("%d %s" % (p.pid, "0" * 40))
         assert not overlay.already_running(pid, "PlayroomNoSuchTray", me, True), "코드가 바뀌었으면 토글이어도 이어서 뜸"
         assert p.wait(5) is not None, "옛 코드로 떠 있던 것은 끔"
+        # 재부팅 뒤: 어제 적힌 파일의 pid 를 오늘 뜬 남의 프로세스가 받음 → 없는 것으로 보고 그걸 안 죽임
+        p = child()
+        src.write_text("%d %s" % (p.pid, overlay.fingerprint(me)))
+        assert overlay.running_pid(pid) == p.pid, "뜬 뒤에 적은 파일은 제 것"
+        yesterday = pid.stat().st_mtime - 86400
+        os.utime(pid, (yesterday, yesterday))
+        assert overlay.running_pid(pid) is None, "파일을 적은 뒤에 뜬 프로세스는 남의 것"
+        assert not overlay.already_running(pid, "PlayroomNoSuchTray", me, True), "남의 pid 면 토글이어도 그냥 뜸"
+        assert not overlay.stop(pid, "PlayroomNoSuchTray") and p.poll() is None, "남의 프로세스는 안 죽임"
     finally:
         p.kill()
     overlay.claim(pid, me)
