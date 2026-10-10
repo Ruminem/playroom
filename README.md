@@ -21,7 +21,7 @@ The Windows tools come as standalone `.exe` files on the [Releases](https://gith
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE). The `.exe` files also carry the Python runtime and the libraries listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 
@@ -48,4 +48,4 @@ Apache-2.0. See [LICENSE](LICENSE).
 
 ### 라이선스
 
-Apache-2.0. [LICENSE](LICENSE) 참고.
+Apache-2.0. [LICENSE](LICENSE) 참고. `.exe` 에는 Python 런타임과 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 에 적은 라이브러리도 같이 실림.
