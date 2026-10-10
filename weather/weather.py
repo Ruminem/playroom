@@ -4664,7 +4664,8 @@ def check():
     x, y, _ = br[0]
     cur[0] = (int(x), int(y))
     m.frame(1 / 60, 0.0)
-    assert al(px, int(x), int(y)) == BRANCH_FADE, "커서가 가지에 올라오면 반투명"
+    # 맥 Surface 는 커서를 못 읽어 frame 이 커서를 화면 밖으로 침 — 거기선 안 바뀌는 게 맞음
+    assert al(px, int(x), int(y)) == (255 if MAC else BRANCH_FADE), "커서가 가지에 올라오면 반투명 (맥은 그대로)"
     cur[0] = (-1, -1)
     m.frame(1 / 60, 0.0)
     assert al(px, int(x), int(y)) == 255, "커서가 나가면 원래대로"
