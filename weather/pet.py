@@ -13,8 +13,9 @@ SCALE = 3  # 그림 한 칸 = 화면 px
 
 COLORS = {"k": (38, 43, 68), "o": (247, 118, 34), "l": (254, 174, 52), "w": (255, 255, 255),
           "p": (232, 183, 150), "e": (24, 20, 37), "z": (192, 203, 220),
-          "b": (150, 98, 58), "c": (236, 218, 186), "y": (250, 186, 60),  # b·c·y 는 새
-          "d": (196, 128, 72), "a": (122, 76, 44),  # 강아지 털·귀
+          "b": (190, 170, 232), "c": (250, 244, 252), "y": (250, 186, 60),  # b·c·y·v 는 새 (라벤더)
+          "v": (140, 118, 198),  # 새 날개
+          "d": (250, 248, 244), "a": (232, 196, 170),  # 강아지 털·귀 (말티즈)
           "h": (255, 212, 222), "g": (62, 68, 94),  # 토끼 분홍 · 펭귄 등
           "r": (228, 59, 68),  # 머리 위 ♥
           "q": (255, 146, 160),  # 새·강아지 볼 홍조
@@ -93,8 +94,8 @@ BIRD = ("....kkkk....",
         ".kbbbbbbbbk.",
         ".kbbbbbbebky",
         "kkbbbbbbeqk.",
-        "kbbaaabcccck",
-        ".kbaaabcccck",
+        "kbbvvvbcccck",
+        ".kbvvvbcccck",
         "..kbbbcccck.",
         "...kkkkkkk..",
         ".....y.y....")
@@ -106,12 +107,12 @@ BIRD_ART = {"bird_stand": BIRD, "bird_air": NO_LEGS,
                           "....kkkk....",
                           "..kkbbbbkk..",
                           "kkbbbbbbbbk.",
-                          "kbaaabbbbbbk",
-                          ".kbaaabbqebk",
+                          "kbvvvbbbbbbk",
+                          ".kbvvvbbqebk",
                           "..kkkkkkkkky",
                           ".....y.y...."),
-            "bird_fly1": put(NO_LEGS, ("kk..", "kak.", "kaak", ".kak"), 1, 1),  # 날개 위
-            "bird_fly2": put(NO_LEGS, ("kaak", ".kak", "..kk"), 2, 6)}          # 날개 아래
+            "bird_fly1": put(NO_LEGS, ("kk..", "kvk.", "kvvk", ".kvk"), 1, 1),  # 날개 위
+            "bird_fly2": put(NO_LEGS, ("kvvk", ".kvk", "..kk"), 2, 6)}          # 날개 아래
 BIRD_W, BIRD_H = len(BIRD[0]) * SCALE, len(BIRD) * SCALE
 BIRD_FOOT = (5 * SCALE, 8 * SCALE)
 
