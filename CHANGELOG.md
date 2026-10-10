@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.14 — 2026-10-10
+
+- all tools: after a reboot a tool could fail to start silently, or stopping it could kill an unrelated program, when Windows had handed yesterday's process number to something else. A tool now only counts as running if that process started before it wrote its PID file
+- usage-hud: no longer overlaps sysmon for about half a second when a full-screen app ends and the HUD reappears before sysmon
+- layers: when it lowers a window, it now lowers the click-through glow window that some Windhawk mods lay right under it too, so the glow no longer covers every window for a second or two
+- layers: the **Arrange…** window stays on top, above even the windows it orders
+- weather: the bird, dog and rabbit are redrawn to be cuter — rounder bodies, bigger eyes, rosy cheeks and shorter legs — and recoloured: a lavender bird, a white Maltese-style dog and a pink rabbit
+
+**한국어**
+
+- 모든 도구: 재부팅 뒤 어제 프로세스 번호를 윈도우가 다른 프로그램에 다시 주면, 도구가 조용히 안 뜨거나 끌 때 상관없는 프로그램을 죽일 수 있었음. 이제 그 프로세스가 PID 파일을 쓰기 전에 시작된 것일 때만 떠 있는 것으로 봄
+- usage-hud: 전체 화면 앱이 끝나고 HUD 가 sysmon 보다 먼저 나타날 때 0.5초쯤 sysmon 과 겹치던 것을 고침
+- layers: 창을 내릴 때, 몇몇 Windhawk 모드가 그 창 바로 밑에 깔아 두는 클릭 통과 글로우 창도 같이 내림. 글로우가 1–2초 동안 모든 창을 덮던 것이 없어짐
+- layers: **순서 정하기…** 창이 순서를 맞추는 창들보다도 늘 위에 뜸
+- weather: 새·강아지·토끼를 더 귀엽게 다시 그림 — 둥근 몸, 큰 눈, 볼 홍조, 짧은 다리. 색도 바꿈: 라벤더 새, 흰 말티즈 강아지, 분홍 토끼
+
 ## 0.2.13 — 2026-10-09
 
 - weather: butterflies and dragonflies now play in a sunny garden. A soft glow spreads from a sun just above the top edge of the screen and a fan of warm rays bursts out of it, each ray made of finer strands that drop out one by one as it fades, with specks of dust glinting in them. The sun follows the real one by the clock — the left edge is east, so in the morning it sits low near the upper-left corner, at noon high above the middle and in the afternoon it moves to the upper right; it is faint and orange just after sunrise and before sunset and gone at night (worked out roughly for Seoul's latitude and the date). A leafy branch juts out from the left or right edge, flowers in six colours stand along the top of the taskbar, and butterflies and dragonflies land on free flowers and spots on the branch, one to a spot
