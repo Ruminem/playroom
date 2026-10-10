@@ -17,6 +17,7 @@ COLORS = {"k": (38, 43, 68), "o": (247, 118, 34), "l": (254, 174, 52), "w": (255
           "d": (196, 128, 72), "a": (122, 76, 44),  # 강아지 털·귀
           "h": (214, 214, 226), "g": (62, 68, 94),  # 토끼 회색 · 펭귄 등
           "r": (228, 59, 68),  # 머리 위 ♥
+          "q": (255, 146, 160),  # 새·강아지·토끼 볼 홍조
           "m": (176, 228, 248), "s": (206, 212, 224), "f": (40, 120, 230)}  # 어항 잠수 장비: 마스크 유리·호흡기·오리발
 
 # 머리 위에 잠깐 뜨는 표시. 반응마다 하나
@@ -86,85 +87,85 @@ W, H = ART_W * SCALE, ART_H * SCALE  # 화면 px
 FOOT = (4 * SCALE, 18 * SCALE)       # 발이 닿는 가로 구간 (오른쪽을 볼 때, 그림 왼쪽 끝 기준 px)
 
 # 새 (참새). 오른쪽을 봄, 발이 맨 아랫줄
-BIRD = ("............",
-        "......kkk...",
-        ".....kbbbk..",
-        ".....kbebky.",
-        "kk..kbbbbk..",
-        "kbkkbbbccck.",
-        ".kbbbbbccck.",
-        "..kbbbbcck..",
-        "...kkkkkk...",
+BIRD = ("....kkkk....",
+        "..kkbbbbkk..",
+        ".kbbbbbbbbk.",
+        ".kbbbbbbebky",
+        "kkbbbbbbeqk.",
+        "kbbaaabcccck",
+        ".kbaaabcccck",
+        "..kbbbcccck.",
+        "...kkkkkkk..",
         ".....y.y....")
 NO_LEGS = BIRD[:-1] + ("............",)
 BIRD_ART = {"bird_stand": BIRD, "bird_air": NO_LEGS,
             "bird_peck": ("............",
                           "............",
                           "............",
-                          "kk..........",
-                          "kbk..kkkk...",
-                          ".kbkkbbbbk..",
-                          "..kbbbbbbbk.",
-                          "..kbbbccbebk",
-                          "...kkkkkkkky",
+                          "....kkkk....",
+                          "..kkbbbbkk..",
+                          "kkbbbbbbbbk.",
+                          "kbaaabbbbbbk",
+                          ".kbaaabbqebk",
+                          "..kkkkkkkkky",
                           ".....y.y...."),
-            "bird_fly1": put(NO_LEGS, ("kk...", "kbk..", ".kbk.", "..kbk"), 1, 0),  # 날개 위
-            "bird_fly2": put(NO_LEGS, ("kbbk", ".kbk", "..kk"), 3, 7)}             # 날개 아래
+            "bird_fly1": put(NO_LEGS, ("kk..", "kak.", "kaak", ".kak"), 1, 1),  # 날개 위
+            "bird_fly2": put(NO_LEGS, ("kaak", ".kak", "..kk"), 2, 6)}          # 날개 아래
 BIRD_W, BIRD_H = len(BIRD[0]) * SCALE, len(BIRD) * SCALE
 BIRD_FOOT = (5 * SCALE, 8 * SCALE)
 
 # 강아지. 꼬리 자리(왼쪽 위)를 비워 두고 꼬리를 덮어 흔듦
 DOG_HEAD = ("...........kkkkk....",
-            "..........kdddddk...",
-            ".........kaaddedk...",
-            ".........kaaddddkkk.",
-            ".........kaadddwwwek",
-            ".........kaadddwwwk.",
-            ".....kkkkkaaddddkk..")
+            "..........kdddddkk..",
+            ".........kadddddddk.",
+            ".........kaadddeddk.",
+            ".........kaadddewwek",
+            ".........kaaddqdwwk.",
+            ".....kkkkkkddddddk..")
 DOG_BODY = ("....kddddddddddddk..",
-            "....kdddddddddddddk.",
+            "....kddddddddddddk..",
             "....kddwwwwwwwwddk..")
-DOG_LEGS = {"stand": ("....kdk.kdk.kdk.kdk.",
-                      "....kdk.kdk.kdk.kdk.",
-                      "....kkk.kkk.kkk.kkk."),
-            "walk1": ("....kdk.kdk.kdk.kdk.",
-                      "...kdk..kdk..kdk.kdk",
-                      "...kkk..kkk..kkk.kkk"),
-            "walk2": ("....kdk.kdk.kdk.kdk.",
-                      ".....kdkdk...kdkdk..",
-                      ".....kkkkk...kkkkk..")}
+DOG_LEGS = {"stand": ("....kdkkdk..kdkkdk..",
+                      "....kwkkwk..kwkkwk..",
+                      "....kkkkkk..kkkkkk.."),
+            "walk1": ("....kdkkdk..kdkkdk..",
+                      "...kwk.kwk.kwk.kwk..",
+                      "...kkk.kkk.kkk.kkk.."),
+            "walk2": ("....kdkkdk..kdkkdk..",
+                      ".....kwwk....kwwk...",
+                      ".....kkkk....kkkk...")}
 TAIL_UP, TAIL_WAG = (".k..", "kdk.", "kdk.", ".kdk"), ("....", "kk..", "kddk", ".kdk")
-DOG_ART = {"dog_" + name: put(DOG_HEAD + DOG_BODY + legs, TAIL_UP, 1, 2) for name, legs in DOG_LEGS.items()}
-DOG_ART["dog_wag"] = put(DOG_HEAD + DOG_BODY + DOG_LEGS["stand"], TAIL_WAG, 1, 2)
-DOG_ART["dog_sit"] = DOG_HEAD[:6] + (".........kaaddddkk..",
-                                     "........kddddddk....",
-                                     ".......kdddddwwk....",
-                                     ".......kddddwwwk....",
-                                     "..kk...kddddwwwk....",
-                                     "..kdkkkkddddkdk.....",
-                                     "...kkkkkkkkkkkk.....")
-DOG_ART["dog_sleep"] = ("....................",) * 7 + (".............kddddk.",
-                                                          "....kkkkkkkkkaddkdkk",
-                                                          "...kdddddddddaaddwwk",
-                                                          "..kddddddddddaadwwwk",
-                                                          ".kkdddwwwwwwdddddkk.",
+DOG_ART = {"dog_" + name: put(DOG_HEAD + DOG_BODY + legs, TAIL_UP, 1, 4) for name, legs in DOG_LEGS.items()}
+DOG_ART["dog_wag"] = put(DOG_HEAD + DOG_BODY + DOG_LEGS["stand"], TAIL_WAG, 1, 4)
+DOG_ART["dog_sit"] = DOG_HEAD[:6] + ("........kkdddddddk..",
+                                     "........kdddddwwk...",
+                                     ".......kddddddwwk...",
+                                     "..kk...kddddddwwk...",
+                                     "..kdk..kddddddwwk...",
+                                     "...kdkkkddddkwkwk...",
+                                     "....kkkkkkkkkkkkk...")
+DOG_ART["dog_sleep"] = ("....................",) * 7 + ("............kkkkk...",
+                                                          "....kkkkkkkkaddddk..",
+                                                          "...kddddddkaadkkdk..",
+                                                          "..kdddddddkaadqdwwk.",
+                                                          ".kkddwwwwwwdddddwek.",
                                                           "..kkkkkkkkkkkkkkkk..")
 
 # 토끼
 RABBIT = ("........kk.kk.",
           ".......kpk.kpk",
           ".......kpk.kpk",
-          ".......kpkkkpk",
           "......khhhhhhk",
-          "......khhhhehk",
-          "...kkkkhhhhhhp",
+          ".....khhhhhhhk",
+          ".....khhhhhehk",
+          ".....khhhhhehp",
+          "...kkkkhhhqhk.",
           "..khhhhhhhhhk.",
           ".kwhhhhhhhhhk.",
-          "kwwhhhhhhhhk..",
-          ".khhhhhhhhhk..",
-          "..khhhwhhhkk..",
-          "..khhk.khhhk..",
-          "..kkkk.kkkkkk.")
+          "kwwhhhhhhhhhk.",
+          ".kwhhhhhhhhk..",
+          "..khhhhhhwhk..",
+          "..kkkkkkkkkk..")
 RABBIT_ART = {"rab_stand": RABBIT,
               "rab_sniff": put(RABBIT, ("w",), 13, 6),  # 코 씰룩
               "rab_jump": RABBIT[:11] + ("kkhhhhhhhhk...",
