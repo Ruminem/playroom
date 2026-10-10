@@ -681,6 +681,8 @@ def check():
         surf.move(-1000 + x + 1, -1000 + y)
         assert not surf.hovered(), "커서가 창 왼쪽 밖"
         assert surf.fade(True) and not surf.fade(True) and surf.fade(False), "흐려짐은 바뀔 때만 True"
+        surf.show(False)
+        assert taskbar.window_left("PlayroomSysmonCheck") == taskbar.rect_of(surf.hwnd)[0], "숨은 sysmon 자리도 HUD 가 앎"
         surf.close()
         assert tint["io"] == {"red", "white"} and tint["main"] == {"orange"}, ("칸마다 제 줄 색", tint)
         assert ctypes.sizeof(PdhItem) == 24, "PDH_FMT_COUNTERVALUE_ITEM_W 는 이름 포인터 + 8 맞춤 값 16"

@@ -53,9 +53,11 @@ def spot():
 
 
 def window_left(class_name):
-    """그 클래스의 창이 보이면 왼쪽 끝 x, 아니면 None. 옆 오버레이 왼쪽에 붙을 때 씀."""
+    """그 클래스의 창이 있으면 왼쪽 끝 x, 없으면 None. 옆 오버레이 왼쪽에 붙을 때 씀.
+    숨은 창도 셈 — sysmon 은 전체 화면 동안만 숨는데, 끝나고 HUD 가 sysmon 보다 먼저 나타나면 sysmon 자리에
+    붙었다가 다음 틱에 비켜서 1초쯤 겹쳤음(2026-10-10 3시간에 20번)."""
     h = user32.FindWindowW(class_name, None)
-    if not h or not user32.IsWindowVisible(h):
+    if not h:
         return None
     r = wintypes.RECT()
     user32.GetWindowRect(h, ctypes.byref(r))
