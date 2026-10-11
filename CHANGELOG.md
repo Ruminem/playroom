@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.16 — 2026-10-11
+
+- layers: weather, usage-hud and sysmon no longer flicker in and out of "always on top" every second or so when an ordered program (such as yt-pip with two windows open) has a window that won't stay on top. Windows below it in the order are no longer slotted under that window
+
+**한국어**
+
+- layers: 순서 목록의 프로그램(창 둘을 띄운 yt-pip 등)에 맨 위로 안 올라가는 창이 있으면 weather·usage-hud·sysmon 의 '항상 위' 가 1초 남짓마다 켜졌다 꺼졌다 했음. 이제 그 창 밑에 목록의 다음 창들을 끼우지 않음
+
 ## 0.2.15 — 2026-10-11
 
 - weather: works on more than one monitor. With two or more, the settings panel gets a **Monitors** row to turn the weather on or off per monitor and pick a mode. **Each** (the default) runs separate weather on every monitor — kind, amount, aquarium sliders and animals are set per monitor, and **Same weather** keeps them all alike. **Joined** strings the monitors into one wide scene in the order you set (left to right by default), bottoms lined up, so snow piles along one floor and animals walk from one monitor to the next. Plugging monitors in or out, rearranging them or changing resolution is picked up within two seconds. Existing settings start as before, on the primary monitor only. Two monitors cost about twice the CPU of one
