@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.20 — 2026-10-11
+
+- weather: the rain sound also stops while a full-screen app is up on any monitor, so it doesn't play over the video, and comes back when full screen ends
+
+**한국어**
+
+- weather: 어느 모니터든 전체 화면 앱이 떠 있는 동안은 영상 소리와 안 겹치게 빗소리도 멈추고, 전체 화면이 끝나면 다시 남
+
 ## 0.2.19 — 2026-10-11
 
 - weather: no longer shows over full-screen apps. While a video (YouTube full screen and the like), game or slideshow fills a monitor, the weather and animals on that monitor are hidden, and they come back when full screen ends. It still stays on top of ordinary windows, and other monitors carry on as before
