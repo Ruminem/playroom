@@ -174,11 +174,15 @@ def matches(rule, win):
     return all(rule.get(k) in (None, win.get(k)) for k in ("exe", "cls", "title", "app"))
 
 
-def rule_for(win):
+def rule_for(win, wins):
     """창 목록에서 넣은 창의 규칙. 앱 ID 가 있으면 제목 대신 그걸로 알아봄 — PWA 제목은 영상·알림 수마다 바뀜.
-    일반 크롬 창도 프로필 ID 가 붙어 있어 그 프로필 창 전부가 맞지만, 탭마다 바뀌는 제목으로는 어차피 못 붙잡음."""
+    일반 크롬 창도 프로필 ID 가 붙어 있어 그 프로필 창 전부가 맞지만, 탭마다 바뀌는 제목으로는 어차피 못 붙잡음.
+    앱 ID 가 없어도 같은 프로그램·클래스 창이 그것 하나뿐이면 제목을 뺌 — yt-pip 은 제목이 영상 제목이라 다음 영상에서
+    안 맞았음(2026-10-11). 탐색기처럼 여럿 떠 있을 때만 제목으로 가름. 그때 하나만 떠 있던 탐색기는 모든 폴더 창에 맞음."""
     if win.get("app"):
         return {"name": win["title"], "exe": win["exe"], "cls": win["cls"], "app": win["app"]}
+    if not any(w is not win and w["exe"] == win["exe"] and w["cls"] == win["cls"] for w in wins):
+        return {"name": win["title"], "exe": win["exe"], "cls": win["cls"]}
     return {"exe": win["exe"], "cls": win["cls"], "title": win["title"]}
 
 
@@ -493,7 +497,7 @@ class Layers:
         i = self.selected(self.open_box)
         if i is not None:
             w = self.candidates[i]
-            self.rules.append(rule_for(w))
+            self.rules.append(rule_for(w, windows()))
             self.changed(len(self.rules) - 1)
 
     def run(self):
@@ -542,10 +546,14 @@ def check():
     assert matches(DEFAULT_RULES[0], w) and not matches(DEFAULT_RULES[1], w)
     assert not matches({"exe": "python.exe", "cls": "TkTopLevel"}, w)
     pwa = {"exe": "chrome.exe", "cls": "Chrome_WidgetWin_1", "title": "YouTube - (161) YouTube", "app": "Chrome._crx_x"}
-    rule = rule_for(pwa)
+    rule = rule_for(pwa, [pwa])
     assert matches(rule, dict(pwa, title="YouTube - 고양이 - YouTube")), "PWA 는 제목이 바뀌어도 맞음"
     assert not matches(rule, dict(pwa, app="Chrome.UserData")), "같은 크롬이라도 다른 앱이면 안 맞음"
-    assert not matches(rule, dict(w, app=None)) and matches(rule_for(dict(w, app=None)), dict(w, app=None))
+    assert not matches(rule, dict(w, app=None)) and matches(rule_for(dict(w, app=None), []), dict(w, app=None))
+    pip = {"exe": "yt-pip.exe", "cls": "WinForms", "title": "고양이 - YouTube", "app": None}
+    assert matches(rule_for(pip, [pip]), dict(pip, title="강아지 - YouTube")), "하나뿐인 프로그램은 제목이 바뀌어도 맞음"
+    a, b = (dict(pip, exe="explorer.exe", title=t) for t in ("layers", "weather"))
+    assert not matches(rule_for(a, [a, b]), b), "같은 종류가 여럿이면 제목으로 가름"
     assert windows(), "보이는 창이 하나는 있어야 함"
     print("자체 점검 통과")
 
