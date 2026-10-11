@@ -101,15 +101,15 @@ BIRD = ("....kkkk....",
         ".....y.y....")
 NO_LEGS = BIRD[:-1] + ("............",)
 BIRD_ART = {"bird_stand": BIRD, "bird_air": NO_LEGS,
-            "bird_peck": ("............",
-                          "............",
-                          "............",
-                          "....kkkk....",
-                          "..kkbbbbkk..",
-                          "kkbbbbbbbbk.",
-                          "kbvvvbbbbbbk",
-                          ".kbvvvbbqebk",
-                          "..kkkkkkkkky",
+            "bird_peck": (".k..kkkk....",  # 몸째 45° 앞으로 숙임 — 꼬리가 들리고 부리가 바닥을 봄. 위를 눌러 납작하게
+                          ".kkkbbbbkk..",  # 그렸더니 짓눌린 것처럼 보였음(2026-10-11)
+                          "..kbbbbbbbk.",
+                          ".kbvbbbbbbk.",
+                          ".kvvvbbbbbbk",
+                          ".kbvvbbbbebk",
+                          ".kbbccbbbebk",
+                          "..kccccbbqky",
+                          "...kkkkkkkky",
                           ".....y.y...."),
             "bird_fly1": put(NO_LEGS, ("kk..", "kvk.", "kvvk", ".kvk"), 1, 1),  # 날개 위
             "bird_fly2": put(NO_LEGS, ("kvvk", ".kvk", "..kk"), 2, 6)}          # 날개 아래
