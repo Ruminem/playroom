@@ -334,7 +334,9 @@ class Layers:
         if lift:  # 방금 올린 창은 자리가 바뀌었으니 다시 읽음
             wins = windows()
             ranked = self.ranked(wins)
-        order = [w["hwnd"] for w in ranked]
+        # 올려도 맨 위가 안 된 창은 순서에서 뺌 — 맨 위 창을 그 밑에 끼우면 Windows 가 맨 위 표시를 떼고, 다음 차례에
+        # 다시 올려 1.3초마다 깜빡였음(2026-10-11, yt-pip 창 둘 중 맨 위가 아닌 것 밑의 weather·HUD·sysmon)
+        order = [w["hwnd"] for w in ranked if w["topmost"]]
         bar = user32.FindWindowW("Shell_TrayWnd", None)
         if bar and order:  # 작업 표시줄은 누르면 앞으로 오므로 늘 목록 맨 아래로 — 그래야 sysmon 이 그 위에 보임
             order.append(bar)
@@ -530,8 +532,39 @@ def check():
     win = lambda h, top: {"hwnd": h, "topmost": top}
     assert sunk([win("pip", 1), win("claude", 0), win("weather", 1), win("hud", 1), win("code", 0)]) == {"weather", "hud"}
     assert sunk([win("pip", 1), win("weather", 1), win("claude", 0)]) == set(), "맨 위 창들이 다 위에 있으면 안 건드림"
+    # 맨 위가 안 되는 목록 창(pip2) 밑에 weather 를 끼우지 않음. 가짜 Windows: 맨 위 아닌 창 뒤에 넣으면 맨 위 표시가 떨어짐
+    global user32, windows, all_windows, ERROR_LOG
+    z, top, lifted = ["pip", "pip2", "weather", "claude"], {"pip": 1, "pip2": 0, "weather": 0, "claude": 0}, []
+
+    def set_pos(h, after, *_):
+        if after is HWND_TOPMOST:
+            lifted.append(h)
+            if h == "pip2":  # 올려도 안 올라가는 창
+                return
+            z.remove(h)
+            z.insert(0, h)
+            top[h] = 1
+        elif after is HWND_NOTOPMOST:
+            top[h] = 0
+        else:
+            z.remove(h)
+            z.insert(z.index(after) + 1, h)
+            top[h] = top[after]
+    real = user32, windows, all_windows
+    user32 = types.SimpleNamespace(SetWindowPos=set_pos, FindWindowW=lambda *a: 0, GetWindowLongW=lambda *a: 0,
+                                   GetWindowRect=lambda *a: 0, IsWindow=lambda h: 1)
+    windows, all_windows = lambda: [win(h, top[h]) for h in z], lambda: list(z)
+    rules = ["pip", "pip2", "weather"]  # 규칙 순서 — pip 둘은 한 규칙
+    me = types.SimpleNamespace(pinned=set(), win=None, ranked=lambda ws: sorted(
+        (w for w in ws if w["hwnd"] in rules), key=lambda w: rules.index(w["hwnd"])))
+    me.unpin = lambda keep: Layers.unpin(me, keep)
+    try:
+        Layers.restack(me)
+        Layers.restack(me)
+    finally:
+        user32, windows, all_windows = real
+    assert top["weather"] and lifted.count("weather") == 1, ("맨 위가 안 된 창 밑에 끼워 맨 위가 떨어짐", z, top, lifted)
     # 순서 맞추기가 터져도 다음 차례는 걸리고 오류는 파일로
-    global ERROR_LOG
     real, ERROR_LOG = ERROR_LOG, Path(tempfile.mkdtemp()) / "layers-error.txt"
     later = []
     me = types.SimpleNamespace(restack=lambda: 1 / 0, enforce=None,
