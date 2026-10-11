@@ -1065,7 +1065,7 @@ def canvas(pieces):
 
 
 def board_floor(pieces, full, frames_of):
-    """판 바닥 = 조각마다 floor_heights 를 이은 것. full 은 전체 화면 앱이 뜬 모니터 (왼, 위, 오른, 아래) 나 None — 그
+    """판 바닥 = 조각마다 floor_heights 를 이은 것. full 은 전체 화면 앱이 뜬 모니터 (왼, 위, 오른, 아래) 들 — 그
     모니터 조각만 틀이 없는 것으로 봄(작업 표시줄이 가려짐). frames_of(조각) 은 그 모니터 작업 표시줄의 틀이나 None."""
     out = []
     for p in pieces:
@@ -1073,9 +1073,9 @@ def board_floor(pieces, full, frames_of):
     return out
 
 
-def on_monitor(p, mon):
-    """조각 p 가 모니터 mon (왼, 위, 오른, 아래) 에 있으면 True. mon 이 None 이면 False."""
-    return mon is not None and mon[0] <= p.left < mon[2] and mon[1] <= p.top < mon[3]
+def on_monitor(p, mons):
+    """조각 p 가 모니터들 mons [(왼, 위, 오른, 아래)] 중 하나에 있으면 True."""
+    return any(m[0] <= p.left < m[2] and m[1] <= p.top < m[3] for m in mons)
 
 
 def bar_frames(p):
@@ -2006,7 +2006,7 @@ class Weather:
         self.last = self.last_settle = self.last_topmost = time.perf_counter()
         # 전체 화면 앱이 뜬 모니터 (watch_frames 가 적음) · 그래서 숨긴 조각 번호들. 맨 위라도 영상·게임은 안 덮음 —
         # 맨 위 표시만 떼면 layers 가 다시 올려서(restack 은 목록 안 창을 표시와 상관없이 올림) 아예 숨김
-        self.full, self.hidden = None, ()
+        self.full, self.hidden = (), ()
         self.reset()
         self.surface.show(self.visible)
         if not MAC:
@@ -2022,7 +2022,7 @@ class Weather:
         자리도 그대로 알려 줌. 전체 화면은 싸게 알 수 있어 FULLSCREEN_EVERY 마다 보고, 바뀌면 바로 다시 냄."""
         full, last = None, -math.inf
         while not self.closed:
-            fs = self.full = taskbar.fullscreen_monitor()
+            fs = self.full = taskbar.fullscreen_monitors()
             if self.rise and (fs != full or time.monotonic() - last >= FRAMES_EVERY):
                 full, last = fs, time.monotonic()
                 self.next_base = board_floor(self.pieces, fs, bar_frames)
@@ -5597,15 +5597,15 @@ def check():
     a.reset()
     if not MAC:  # 전체 화면이면 틀을 안 읽고 바닥 0, 바뀌면 FRAMES_EVERY 를 안 기다리고 바로 다시 냄
         mon = (0, 0, aw, ah)
-        states, got, a.pieces = iter([None, None, mon, mon, None]), [], [Piece("m", 0, 0, aw, ah, rise, True)]
+        states, got, a.pieces = iter([(), (), (mon,), (mon,), ()]), [], [Piece("m", 0, 0, aw, ah, rise, True)]
 
         def nap(_):
             got.append(a.next_base)
             a.next_base = None
             if len(got) == 5:
                 raise StopIteration
-        real = taskbar.fullscreen_monitor, taskbar.bar_on, taskbar.frames, time.sleep
-        taskbar.fullscreen_monitor = lambda: next(states)
+        real = taskbar.fullscreen_monitors, taskbar.bar_on, taskbar.frames, time.sleep
+        taskbar.fullscreen_monitors = lambda: next(states)
         taskbar.bar_on = lambda rect: 7 if rect == mon else None  # 그 모니터의 작업 표시줄 창
         taskbar.frames, time.sleep = lambda bar: [(100, ah - rise, 400)] if bar == 7 else [], nap
         try:
@@ -5613,27 +5613,28 @@ def check():
         except StopIteration:
             pass
         finally:
-            taskbar.fullscreen_monitor, taskbar.bar_on, taskbar.frames, time.sleep = real
+            taskbar.fullscreen_monitors, taskbar.bar_on, taskbar.frames, time.sleep = real
         assert got == [up, None, [0] * aw, None, up], ("전체 화면을 오가면 바로 바닥을 다시 냄", got)
         two = [Piece("l", -300, 0, 300, 200, 0, False), Piece("r", 0, 0, 200, 220, 20, True)]  # 왼쪽은 작업 표시줄 없음
         full = lambda p: [(10, 200, 50)] if p.id == "r" else None
-        assert board_floor(two, None, full) == [0] * 300 + [0] * 10 + [20] * 40 + [0] * 150, "조각마다 제 작업 표시줄 틀"
-        assert board_floor(two, (0, 0, 200, 220), full) == [0] * 500, "전체 화면 앱이 뜬 모니터 조각만 틀이 없음"
-        assert board_floor(two, (-300, 0, 0, 200), full) == board_floor(two, None, full), "다른 모니터가 전체 화면이면 그대로"
-        assert board_floor(two, None, lambda p: None) == [0] * 300 + [20] * 200, "틀을 못 읽으면 띠 윗변 전체"
+        assert board_floor(two, (), full) == [0] * 300 + [0] * 10 + [20] * 40 + [0] * 150, "조각마다 제 작업 표시줄 틀"
+        assert board_floor(two, ((0, 0, 200, 220),), full) == [0] * 500, "전체 화면 앱이 뜬 모니터 조각만 틀이 없음"
+        assert board_floor(two, ((-300, 0, 0, 200), (0, 0, 200, 220)), lambda p: [(0, 200, 50)]) == [0] * 500, "둘 다 전체 화면"
+        assert board_floor(two, ((-300, 0, 0, 200),), full) == board_floor(two, (), full), "다른 모니터가 전체 화면이면 그대로"
+        assert board_floor(two, (), lambda p: None) == [0] * 300 + [20] * 200, "틀을 못 읽으면 띠 윗변 전체"
         shown = []
         a.surface.show = lambda on, hide=(): shown.append((on, hide))
         try:
-            a.full = (-300, 0, 0, 200)  # 다른 모니터가 전체 화면이면 그대로 그림
+            a.full = ((-300, 0, 0, 200),)  # 다른 모니터가 전체 화면이면 그대로 그림
             a.hidden = ()
             assert not a.cover() and shown == [], ("다른 모니터 전체 화면은 안 숨김", shown)
-            a.full = mon
+            a.full = ((-300, 0, 0, 200), mon)  # 앞 창이 다른 모니터에 있어도 영상이 뜬 모니터는 숨김
             assert a.cover() and shown == [(a.visible, (0,))], ("전체 화면 모니터 조각은 숨기고 안 그림", shown)
             assert a.cover() and len(shown) == 1, "바뀔 때만 ShowWindow"
-            a.full = None
+            a.full = ()
             assert not a.cover() and shown[-1] == (a.visible, ()), ("전체 화면이 풀리면 다시 보임", shown)
         finally:
-            a.full, a.hidden = None, ()
+            a.full, a.hidden = (), ()
     assert parse_amount("many") == 100 and parse_amount(0) == 0 and parse_amount(35) == 35
     assert all(parse_amount(a) is None for a in (101, -1, True, "x", [1], None, 2.5))
     assert amount_arg("normal") == 50 and amount_arg("7") == 7
@@ -6140,7 +6141,7 @@ def check_sound():
         pl.set(v)
     pl.close()
     assert played == [50, 30, None, 70, None], ("같은 값은 다시 안 틀고, 끄면 멈춤", played)
-    sw = types.SimpleNamespace(boards=[types.SimpleNamespace(kind="snow", full=None), types.SimpleNamespace(kind="rain", full=None)],
+    sw = types.SimpleNamespace(boards=[types.SimpleNamespace(kind="snow", full=()), types.SimpleNamespace(kind="rain", full=())],
                                visible=True, sound=False, volume=VOLUME, commands=queue.Queue(), save=lambda: None,
                                rain_player=pl)
     sw.handle, sw.hear = lambda cid: App.handle(sw, cid), lambda: App.hear(sw)
@@ -6148,11 +6149,11 @@ def check_sound():
     for cid in (SOUND, ("volume", 20), min(VOLUMES), SOUND):
         sw.commands.put(cid)
     assert not App.poll(sw) and played == [VOLUME, 20, 10, None], ("켜기·막대·메뉴 칸·끄기가 바로 들림 — 판 하나만 비여도", played)
-    sw.sound, sw.boards[0].full = True, (0, 0, 1, 1)  # 비 안 오는 판의 모니터에 전체 화면 앱
+    sw.sound, sw.boards[0].full = True, ((0, 0, 1, 1),)  # 비 안 오는 판의 모니터에 전체 화면 앱
     App.hear(sw)
-    sw.boards[0].full = None
+    sw.boards[0].full = ()
     App.hear(sw)
-    sw.boards[0].full = (0, 0, 1, 1)
+    sw.boards[0].full = ((5, 0, 9, 1), (0, 0, 1, 1))
     App.hear(sw)
     assert played == [VOLUME, 20, 10, None, 10, None], ("전체 화면 앱이 뜬 동안은 어느 모니터든 빗소리 멈춤", played)
     out = [float(i) for i in range(30)]

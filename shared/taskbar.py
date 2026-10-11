@@ -4,6 +4,7 @@
 자리 찾기, 전체 화면 앱 알아보기, GDI 회색조 글자를 알파로 바꿔 줄마다 색 입히기.
 """
 import ctypes
+import os
 import sys
 import time
 from ctypes import wintypes
@@ -39,11 +40,42 @@ def fullscreen_app():
     return state.value in (2, 3, 4)  # QUNS_BUSY · RUNNING_D3D_FULL_SCREEN · PRESENTATION_MODE
 
 
-def fullscreen_monitor():
-    """전체 화면 앱이 떠 있으면 그 앱(앞 창)이 걸친 모니터 (왼, 위, 오른, 아래), 아니면 None.
-    ponytail: QUNS 가 주 모니터 밖에서 뜬 전체 화면 앱도 알려 주는지는 못 봄(모니터 하나인 PC 에서 짬) — 안 알려 주면
-    그 모니터 바닥만 작업 표시줄 높이에 남음. 보이면 앞 창이 모니터를 꽉 채우는지로 직접 보기로"""
-    return overlay.monitor_of(user32.GetForegroundWindow()) if fullscreen_app() else None
+def fullscreen_monitors():
+    """전체 화면 창이 뜬 모니터들 (왼, 위, 오른, 아래) 의 튜플, 없으면 (). 앞 창만 보면 다른 모니터를 누르는 순간
+    영상이 뜬 모니터를 놓쳐서(2026-10-11 듀얼 모니터) 창을 다 훑음 — 창 408개에 0.55ms.
+    전체 화면 창 = 보이고 · 안 접히고 · 안 가려지고(cloaked) · 클릭이 통과하지 않고 · 제목 표시줄이 없이 모니터를 꽉
+    덮는 창. 제목 표시줄을 보는 것은 작업 표시줄 없는 모니터에서 최대화한 보통 창도 꽉 덮기 때문. 바탕 화면과 이
+    프로세스 창(weather 자신)은 뺌.
+    ponytail: 다른 창에 가려진 전체 화면 창도 셈 — 영상 위로 창을 끌어다 놓아도 그 모니터는 숨은 채임"""
+    mons, found, me, cls = [m[1] for m in overlay.monitors()], set(), os.getpid(), ctypes.create_unicode_buffer(16)
+
+    def one(h, _):
+        r, pid, cloaked = wintypes.RECT(), wintypes.DWORD(), ctypes.c_int()
+        if (not user32.IsWindowVisible(h) or user32.IsIconic(h)
+                or user32.GetWindowLongW(h, -16) & 0x00C00000 == 0x00C00000  # WS_CAPTION
+                or user32.GetWindowLongW(h, -20) & 0x20):  # WS_EX_TRANSPARENT
+            return 1
+        user32.GetWindowRect(h, ctypes.byref(r))
+        hit = [m for m in mons if r.left <= m[0] and r.top <= m[1] and r.right >= m[2] and r.bottom >= m[3]]
+        if not hit:
+            return 1
+        user32.GetWindowThreadProcessId(h, ctypes.byref(pid))
+        user32.GetClassNameW(h, cls, 16)
+        ctypes.windll.dwmapi.DwmGetWindowAttribute(h, 14, ctypes.byref(cloaked), 4)  # DWMWA_CLOAKED
+        if pid.value != me and cls.value not in ("Progman", "WorkerW") and not cloaked.value:
+            found.update(hit)
+        return 1
+    user32.EnumWindows(_ENUM(one), 0)
+    return tuple(m for m in mons if m in found)
+
+
+_ENUM = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+user32.EnumWindows.argtypes = (_ENUM, wintypes.LPARAM)
+user32.IsIconic.argtypes = (wintypes.HWND,)
+user32.GetWindowLongW.restype = ctypes.c_long
+user32.GetWindowLongW.argtypes = (wintypes.HWND, ctypes.c_int)
+user32.GetWindowThreadProcessId.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.DWORD))
+user32.GetClassNameW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
 
 
 def bar_on(rect):
