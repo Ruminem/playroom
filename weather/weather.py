@@ -1069,9 +1069,13 @@ def board_floor(pieces, full, frames_of):
     모니터 조각만 틀이 없는 것으로 봄(작업 표시줄이 가려짐). frames_of(조각) 은 그 모니터 작업 표시줄의 틀이나 None."""
     out = []
     for p in pieces:
-        hit = full is not None and full[0] <= p.left < full[2] and full[1] <= p.top < full[3]
-        out += floor_heights(p.w, p.top + p.h, p.left, p.rise, [] if hit or not p.rise else frames_of(p))
+        out += floor_heights(p.w, p.top + p.h, p.left, p.rise, [] if on_monitor(p, full) or not p.rise else frames_of(p))
     return out
+
+
+def on_monitor(p, mon):
+    """조각 p 가 모니터 mon (왼, 위, 오른, 아래) 에 있으면 True. mon 이 None 이면 False."""
+    return mon is not None and mon[0] <= p.left < mon[2] and mon[1] <= p.top < mon[3]
 
 
 def bar_frames(p):
@@ -2000,9 +2004,12 @@ class Weather:
         self.bolt_seen, self.pet_startled = None, {}  # 이름 → 우박에 다시 놀랄 수 있는 시각
         self.bangs = []  # 이번 프레임에 터진 불꽃의 x — 동물들이 돌아봄
         self.last = self.last_settle = self.last_topmost = time.perf_counter()
+        # 전체 화면 앱이 뜬 모니터 (watch_frames 가 적음) · 그래서 숨긴 조각 번호들. 맨 위라도 영상·게임은 안 덮음 —
+        # 맨 위 표시만 떼면 layers 가 다시 올려서(restack 은 목록 안 창을 표시와 상관없이 올림) 아예 숨김
+        self.full, self.hidden = None, ()
         self.reset()
         self.surface.show(self.visible)
-        if self.rise:
+        if not MAC:
             threading.Thread(target=self.watch_frames, daemon=True).start()
 
     def close(self):
@@ -2015,8 +2022,8 @@ class Weather:
         자리도 그대로 알려 줌. 전체 화면은 싸게 알 수 있어 FULLSCREEN_EVERY 마다 보고, 바뀌면 바로 다시 냄."""
         full, last = None, -math.inf
         while not self.closed:
-            fs = taskbar.fullscreen_monitor()
-            if fs != full or time.monotonic() - last >= FRAMES_EVERY:
+            fs = self.full = taskbar.fullscreen_monitor()
+            if self.rise and (fs != full or time.monotonic() - last >= FRAMES_EVERY):
                 full, last = fs, time.monotonic()
                 self.next_base = board_floor(self.pieces, fs, bar_frames)
             time.sleep(FULLSCREEN_EVERY)
@@ -2077,7 +2084,7 @@ class Weather:
             return
         elif cid == SHOW:
             self.visible = not self.visible
-            self.surface.show(self.visible)
+            self.surface.show(self.visible, self.hidden)
             self.press(False)
             return
         else:
@@ -4138,6 +4145,14 @@ class Weather:
             self.surface.topmost()
             self.last_topmost = now
 
+    def cover(self):
+        """전체 화면 앱이 뜬 모니터의 조각을 숨기고, 풀리면 다시 보임. 조각이 다 숨었으면 True."""
+        hide = tuple(i for i, p in enumerate(self.pieces) if on_monitor(p, self.full))
+        if hide != self.hidden:
+            self.hidden = hide
+            self.surface.show(self.visible, hide)
+        return len(hide) == len(self.pieces)
+
     def step(self):
         """한 프레임 진행. 숨겨져 있으면 안 그리고 False."""
         now = time.perf_counter()
@@ -4145,6 +4160,8 @@ class Weather:
         self.last = now
         if not MAC:
             self.aim()  # 집기를 껐고 비눗방울 날이 아니면 커서도 안 읽음
+            if self.cover():  # 다 가렸으면 숨겼을 때처럼 쉼
+                return False
         if not self.visible:
             return False
         if self.kind == "none" and not self.pets:  # 그릴 게 없으면 한 번 지우고 숨겼을 때처럼 쉼(180fps 에서 29% 를 쓰던 자리)
@@ -5601,6 +5618,19 @@ def check():
         assert board_floor(two, (0, 0, 200, 220), full) == [0] * 500, "전체 화면 앱이 뜬 모니터 조각만 틀이 없음"
         assert board_floor(two, (-300, 0, 0, 200), full) == board_floor(two, None, full), "다른 모니터가 전체 화면이면 그대로"
         assert board_floor(two, None, lambda p: None) == [0] * 300 + [20] * 200, "틀을 못 읽으면 띠 윗변 전체"
+        shown = []
+        a.surface.show = lambda on, hide=(): shown.append((on, hide))
+        try:
+            a.full = (-300, 0, 0, 200)  # 다른 모니터가 전체 화면이면 그대로 그림
+            a.hidden = ()
+            assert not a.cover() and shown == [], ("다른 모니터 전체 화면은 안 숨김", shown)
+            a.full = mon
+            assert a.cover() and shown == [(a.visible, (0,))], ("전체 화면 모니터 조각은 숨기고 안 그림", shown)
+            assert a.cover() and len(shown) == 1, "바뀔 때만 ShowWindow"
+            a.full = None
+            assert not a.cover() and shown[-1] == (a.visible, ()), ("전체 화면이 풀리면 다시 보임", shown)
+        finally:
+            a.full, a.hidden = None, ()
     assert parse_amount("many") == 100 and parse_amount(0) == 0 and parse_amount(35) == 35
     assert all(parse_amount(a) is None for a in (101, -1, True, "x", [1], None, 2.5))
     assert amount_arg("normal") == 50 and amount_arg("7") == 7

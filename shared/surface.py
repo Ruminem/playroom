@@ -158,9 +158,10 @@ class Surface:
         self._panes[0][1:] = [wintypes.POINT(left, top), wintypes.POINT(sx, sy),
                               wintypes.SIZE(width, self.h - sy if height is None else height)]
 
-    def show(self, on):
-        for p in self._panes:
-            user32.ShowWindow(p[0], 4 if on else 0)  # SW_SHOWNOACTIVATE · SW_HIDE
+    def show(self, on, hide=()):
+        """hide 는 on 이어도 숨길 창 조각 번호들(전체 화면 앱이 뜬 모니터의 조각)."""
+        for i, p in enumerate(self._panes):
+            user32.ShowWindow(p[0], 4 if on and i not in hide else 0)  # SW_SHOWNOACTIVATE · SW_HIDE
 
     def topmost(self, on=True):
         """다른 맨 위 창(PIP 등)이 앞을 가져가도 다시 올라옴. layers 가 떠 있으면 그쪽에 맡김.

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.19 — 2026-10-11
+
+- weather: no longer shows over full-screen apps. While a video (YouTube full screen and the like), game or slideshow fills a monitor, the weather and animals on that monitor are hidden, and they come back when full screen ends. It still stays on top of ordinary windows, and other monitors carry on as before
+- weather: the penguin is redrawn as a chubby baby — a rounder, wider body, a bigger black head, short flippers and a round bottom, and a thicker belly slide with its feet kicked back
+
+**한국어**
+
+- weather: 이제 전체 화면 앱 위로 안 뜸. 영상(유튜브 전체 화면 등)·게임·발표가 모니터를 채운 동안은 그 모니터의 날씨와 동물을 숨기고, 전체 화면이 끝나면 다시 보임. 보통 창들 위에는 그대로 맨 위이고, 다른 모니터는 하던 대로 그림
+- weather: 펭귄을 통통한 아기로 다시 그림. 더 둥글고 넓은 몸, 커진 검은 머리, 짧은 날개, 둥근 엉덩이, 발을 뒤로 뻗은 한 줄 두꺼운 배 미끄럼
+
 ## 0.2.18 — 2026-10-11
 
 - weather: the dog and rabbit are redrawn so they read as a dog and a rabbit. The dog has a big round head, long floppy ears and a snout sticking out with a black nose (before, with no snout, it looked like a goat or a cat standing). The rabbit crouches low with long ears laid back, a white cotton tail and big hind feet (before, it looked like a pig), and when it stops it twitches an ear instead of its nose

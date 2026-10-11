@@ -183,30 +183,32 @@ RABBIT_ART = {"rab_stand": RABBIT,
                                         "kwwkkkkkkk..k.",
                                         ".kk...........")}
 
-# 펭귄. 서 있는 그림은 양옆 한 칸씩 띄워 배 깔고 미끄러지는 그림과 폭을 맞춤
-PENGUIN = ("....kkkk....",
-           "...kggggk...",
-           "..kgggwegk..",
-           "..kgggggkoo.",
-           "..kggwwwk...",
-           ".kggwwwwwk..",
-           ".kgwwwwwwk..",
-           "kggwwwwwwwk.",
-           "kggwwwwwwwk.",
-           "kgkwwwwwwwk.",
-           ".kkwwwwwwwk.",
-           "..kwwwwwwk..",
-           "..kgwwwwgk..",
-           "...kggggk...")
-PENGUIN_FEET = {"stand": ("...kokkok...", "..kookkook.."),
-                "walk1": ("...kokkk....", "..kookk....."),
-                "walk2": ("....kkkok...", ".....kkook..")}
-PENG_ART = {"peng_" + name: tuple("." + r + "." for r in PENGUIN + feet) for name, feet in PENGUIN_FEET.items()}
-PENG_ART["peng_slide"] = ("..............",) * 11 + ("...kkkkkkkk...",
-                                                      ".kkggggggwegk.",
-                                                      "kgwwwwwwwwggko",
-                                                      ".kwwwwwwwwwkk.",
-                                                      "kokkkkkkkkkk..")
+# 펭귄. 통통한 아기 — 몸을 폭 가득 넓히고 검은 머리를 키우고, 짧은 날개와 둥근 엉덩이(z 는 엉덩이 그늘).
+# 발은 몸보다 좁은 그대로 둠. 미끄럼도 한 줄 두껍고 발을 뒤로 뻗음
+PENGUIN = (".....kkkkk....",
+           "....kgggggk...",
+           "...kggggwegk..",
+           "...kgggggggkoo",
+           "..kggggwwwwk..",
+           ".kgggwwwwwwwk.",
+           "kggggwwwwwwwwk",
+           "kgggwwwwwwwwwk",
+           "kgggwwwwwwwwwk",
+           "kggkwwwwwwwwwk",
+           "kgkzwwwwwwwwwk",
+           ".kkzwwwwwwwwwk",
+           "..kzzwwwwwwwk.",
+           "...kkwwwwwkk..")
+PENGUIN_FEET = {"stand": ("....kokkok....", "...kookkook..."),
+                "walk1": ("....kokkk.....", "...kookk......"),
+                "walk2": (".....kkkok....", "......kkook...")}
+PENG_ART = {"peng_" + name: PENGUIN + feet for name, feet in PENGUIN_FEET.items()}
+PENG_ART["peng_slide"] = ("..............",) * 10 + ("....kkkkkkk...",
+                                                      "..kkgggggggkk.",
+                                                      ".kggggggggwegk",
+                                                      "kgwwwwwwwwwgko",
+                                                      "okwwwwwwwwwzk.",
+                                                      "ookkkkkkkkkk..")
 
 
 def canvas(w, h, *parts):

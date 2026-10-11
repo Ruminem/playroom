@@ -95,7 +95,7 @@ class Surface:
         drain(p)
         self._use(1 - self.back)
 
-    def show(self, on):
+    def show(self, on, hide=()):  # hide: 윈도우만 씀(전체 화면 모니터 조각)
         if on:
             send(self.win, "orderFrontRegardless", restype=None)
         else:
