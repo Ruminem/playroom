@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.21 — 2026-10-11
+
+- usage-hud: once a limit is all but used up, the bar no longer sticks at a red `!0M`; it shows in red the time left until the limit resets, which matches what the Claude app shows
+
+**한국어**
+
+- usage-hud: 한도를 거의 다 쓴 뒤에는 막대 옆이 빨간 `!0M` 으로 박혀 있지 않고, 한도가 다시 차는 재설정까지 남은 시간을 빨갛게 보임 — Claude 앱이 보여 주는 시간과 맞음
+
 ## 0.2.20 — 2026-10-11
 
 - weather: the rain sound also stops while a full-screen app is up on any monitor, so it doesn't play over the video, and comes back when full screen ends
