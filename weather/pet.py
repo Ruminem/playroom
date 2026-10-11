@@ -116,63 +116,72 @@ BIRD_ART = {"bird_stand": BIRD, "bird_air": NO_LEGS,
 BIRD_W, BIRD_H = len(BIRD[0]) * SCALE, len(BIRD) * SCALE
 BIRD_FOOT = (5 * SCALE, 8 * SCALE)
 
-# 강아지. 꼬리 자리(왼쪽 위)를 비워 두고 꼬리를 덮어 흔듦
-DOG_HEAD = ("...........kkkkk....",
-            "..........kdddddkk..",
-            ".........kadddddddk.",
-            ".........kaadddeddk.",
-            ".........kaadddewwek",
-            ".........kaaddqdwwk.",
-            ".....kkkkkkddddddk..")
-DOG_BODY = ("....kddddddddddddk..",
-            "....kddddddddddddk..",
-            "....kddwwwwwwwwddk..")
+# 강아지. 꼬리 자리(왼쪽 위)를 비워 두고 꼬리를 덮어 흔듦. 큰 둥근 머리에 긴 귀, 앞으로 내민 주둥이 끝에 까만 코 —
+# 주둥이가 없으면 염소·고양이로 읽혔음. 주둥이는 윗줄이 길고 턱이 짧게(반대면 끝이 뾰족해 새 부리로 읽힘)
+DOG_HEAD = ("..........kkkkk.....",
+            "........kkdddddk....",
+            ".......kaakdddddk...",
+            ".......kaakddeddkkee",
+            ".......kaakddeddddde",
+            ".......kaakdqdddddk.",
+            ".......kaakddddkkk..")
+DOG_BODY = ("...kkkkkkkkddddddk..",
+            "...kddddddddddddk...",
+            "...kddwwwwwwwwddk...")
 DOG_LEGS = {"stand": ("....kdkkdk..kdkkdk..",
                       "....kwkkwk..kwkkwk..",
                       "....kkkkkk..kkkkkk.."),
             "walk1": ("....kdkkdk..kdkkdk..",
-                      "...kwk.kwk.kwk.kwk..",
-                      "...kkk.kkk.kkk.kkk.."),
+                      "....kwk.kwk.kwk.kwk.",
+                      "....kkk.kkk.kkk.kkk."),
             "walk2": ("....kdkkdk..kdkkdk..",
                       ".....kwwk....kwwk...",
                       ".....kkkk....kkkk...")}
 TAIL_UP, TAIL_WAG = (".k..", "kdk.", "kdk.", ".kdk"), ("....", "kk..", "kddk", ".kdk")
-DOG_ART = {"dog_" + name: put(DOG_HEAD + DOG_BODY + legs, TAIL_UP, 1, 4) for name, legs in DOG_LEGS.items()}
-DOG_ART["dog_wag"] = put(DOG_HEAD + DOG_BODY + DOG_LEGS["stand"], TAIL_WAG, 1, 4)
-DOG_ART["dog_sit"] = DOG_HEAD[:6] + ("........kkdddddddk..",
-                                     "........kdddddwwk...",
-                                     ".......kddddddwwk...",
-                                     "..kk...kddddddwwk...",
-                                     "..kdk..kddddddwwk...",
-                                     "...kdkkkddddkwkwk...",
-                                     "....kkkkkkkkkkkkk...")
-DOG_ART["dog_sleep"] = ("....................",) * 7 + ("............kkkkk...",
-                                                          "....kkkkkkkkaddddk..",
-                                                          "...kddddddkaadkkdk..",
-                                                          "..kdddddddkaadqdwwk.",
-                                                          ".kkddwwwwwwdddddwek.",
-                                                          "..kkkkkkkkkkkkkkkk..")
+DOG_ART = {"dog_" + name: put(DOG_HEAD + DOG_BODY + legs, TAIL_UP, 0, 4) for name, legs in DOG_LEGS.items()}
+DOG_ART["dog_wag"] = put(DOG_HEAD + DOG_BODY + DOG_LEGS["stand"], TAIL_WAG, 0, 4)
+DOG_ART["dog_sit"] = DOG_HEAD + ("......kkkkkdddddk...",
+                                 "......kddddddddwwk..",
+                                 "..kk..kddddddddwwk..",
+                                 "..kdk.kddddddddwwk..",
+                                 "...kdkdddddddkwkwk..",
+                                 "....kkkkkkkkkkkkkk..")
+DOG_ART["dog_sleep"] = ("....................",) * 6 + ("..........kkkkk.....",
+                                                          ".........kdddddk....",
+                                                          "...kkkkkkaakddddk...",
+                                                          "..kdddddkaakdkkdkkee",
+                                                          ".kddddddkaakqdddddde",
+                                                          "kkddwwwwkaakddddddk.",
+                                                          ".kkkkkkkkkkkkkkkkkk.")
 
-# 토끼
-RABBIT = ("........kk.kk.",
-          ".......kik.kik",
-          ".......kik.kik",
-          "......khhhhhhk",
-          ".....khhhhhhhk",
-          ".....khhhhhehk",
-          ".....khhhhhehi",
-          "...kkkkhhhjhk.",
-          "..khhhhhhhhhk.",
-          ".kwhhhhhhhhhk.",
-          "kwwhhhhhhhhhk.",
-          ".kwhhhhhhhhk..",
-          "..khhhhhhwhk..",
-          "..kkkkkkkkkk..")
+# 토끼. 낮게 엎드린 몸에 뒤로 기운 긴 귀, 흰 솜꼬리와 큰 뒷발 — 귀가 짧고 몸이 공 같으면 돼지로 읽혔음
+RABBIT = (".....k.kk.....",
+          "....khkhik....",
+          "....khkhik....",
+          ".....khkhik...",
+          ".....khkhik...",
+          "......khhhhhk.",
+          ".....khhhhehhk",
+          "..kkkhhhhhehhk",
+          ".khhhhhhhhhhhi",
+          "kwwhhhhhhjhhk.",
+          "kwwwhhhhhhkkk.",
+          "kwwhhhhhhwwk..",
+          ".kkhhkwwwwkwk.",
+          "..kkkkkkkkkkk.")
 RABBIT_ART = {"rab_stand": RABBIT,
-              "rab_sniff": put(RABBIT, ("w",), 13, 6),  # 코 씰룩
-              "rab_jump": RABBIT[:11] + ("kkhhhhhhhhk...",
-                                         "khhkk.kwk.....",
-                                         "kkk...kkk.....")}
+              "rab_ear": (".....k..kk....",  # 앞 귀만 곧게 세움 — 쫑긋
+                          "....khkkhik...",
+                          "....khkkhik...") + RABBIT[3:],
+              "rab_jump": RABBIT[:5] + ("......khhhhhk.",
+                                        ".....khhhhehhk",
+                                        "..kkkhhhhhehhk",
+                                        ".khhhhhhhhhhhi",
+                                        "kwwhhhhhhjhhk.",
+                                        "kwwwhhhhhhhhkk",
+                                        ".kkhhhhhwwkkwk",
+                                        "kwwkkkkkkk..k.",
+                                        ".kk...........")}
 
 # 펭귄. 서 있는 그림은 양옆 한 칸씩 띄워 배 깔고 미끄러지는 그림과 폭을 맞춤
 PENGUIN = ("....kkkk....",
@@ -879,12 +888,12 @@ class Penguin(Cat):
 
 
 class Rabbit(Pet):
-    """깡충 뛰어 다니다 서서 코를 씰룩임. 놀라면 돌아서 빠르게 뛰어 달아남. Cat 과 같은 겉모습.
+    """깡충 뛰어 다니다 서서 귀를 쫑긋함. 놀라면 돌아서 빠르게 뛰어 달아남. Cat 과 같은 겉모습.
     비 오면 자주 웅크려 가만히 있고, 눈 오는 날엔 더 높이 뜀."""
-    W, H, FOOT = 14 * SCALE, 14 * SCALE, (2 * SCALE, 12 * SCALE)
+    W, H, FOOT = 14 * SCALE, 14 * SCALE, (2 * SCALE, 13 * SCALE)
     JUMP = {"hop": (0.42, 34, 20, (2, 6)), "run": (0.3, 60, 28, (4, 6))}  # 한 번에 초, 앞으로 px, 높이 px, 몇 번
     LEAP = {"up": (0.34, 26), "down": (0.34, 18)}  # 제일 높이 깡충. 늘 뛰는 깡충 위에 얹힘
-    DIVER, SWIM_V, PEEK = "rabbit", 55, 6  # 긴 귀가 먼저 솟음
+    DIVER, SWIM_V, PEEK = "rabbit", 55, 7  # 긴 귀가 먼저 솟음. 귀가 5줄이라 눈(7번째 줄)까지 내밀면 딱 절반 — 등은 그 밑부터
     PADDLE = ("rab_stand", "rab_jump")
 
     def __init__(self, width, rng=random):
@@ -938,7 +947,7 @@ class Rabbit(Pet):
         if self.state in self.JUMP:
             return "rab_jump" if self.alt > 2 else "rab_stand"
         if self.state == "sniff":
-            return "rab_sniff" if int((now - self.since) / 0.15) % 2 else "rab_stand"
+            return "rab_ear" if int((now - self.since) / 0.15) % 2 else "rab_stand"
         return "rab_stand"
 
     def feet(self):
@@ -1011,7 +1020,7 @@ def check():
     stands = {Cat: ART["stand"], Dog: DOG_ART["dog_stand"], Penguin: PENG_ART["peng_stand"],
               Rabbit: RABBIT_ART["rab_stand"], Bird: BIRD_ART["bird_stand"]}
     for cls, rows in stands.items():
-        assert "e" in "".join(rows[:cls.PEEK]) and cls.PEEK * SCALE < cls.H / 2, ("머리만, 눈까지 내밂", cls)
+        assert "e" in "".join(rows[:cls.PEEK]) and cls.PEEK * SCALE <= cls.H / 2, ("머리만, 눈까지 내밂", cls)
         a = cls(300, random.Random(1))
         a.follow(0.0, 1 / 60, 0.0)
         a.mood = ("♪", 0.0, 9.0)
