@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.22 — 2026-10-11
+
+- weather: with two or more monitors, a full-screen video no longer comes back over the weather when you click a window on the other monitor. Every monitor with a full-screen app is found, not just the one you last clicked, so only those monitors are hidden while the others carry on, and the rain sound stays off as long as any of them is full screen
+- weather: the sparrow now pecks by tipping its whole body forward about 45°, tail up and beak to the ground, instead of looking squashed flat from above
+
+**한국어**
+
+- weather: 모니터가 둘 이상일 때 다른 모니터의 창을 눌러도 전체 화면 영상 위로 weather 가 다시 뜨지 않음. 마지막으로 누른 모니터만이 아니라 전체 화면 앱이 뜬 모니터를 다 찾아서 그 모니터만 숨기고 나머지는 그대로 두며, 그중 하나라도 전체 화면이면 빗소리도 꺼진 채로 있음
+- weather: 참새가 위에서 납작하게 눌린 모양 대신 몸째 앞으로 45°쯤 숙여 꼬리를 들고 부리를 바닥에 대며 쪼음
+
 ## 0.2.21 — 2026-10-11
 
 - usage-hud: once a limit is all but used up, the bar no longer sticks at a red `!0M`; it shows in red the time left until the limit resets, which matches what the Claude app shows
