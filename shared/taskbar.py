@@ -39,6 +39,28 @@ def fullscreen_app():
     return state.value in (2, 3, 4)  # QUNS_BUSY · RUNNING_D3D_FULL_SCREEN · PRESENTATION_MODE
 
 
+def fullscreen_monitor():
+    """전체 화면 앱이 떠 있으면 그 앱(앞 창)이 걸친 모니터 (왼, 위, 오른, 아래), 아니면 None.
+    ponytail: QUNS 가 주 모니터 밖에서 뜬 전체 화면 앱도 알려 주는지는 못 봄(모니터 하나인 PC 에서 짬) — 안 알려 주면
+    그 모니터 바닥만 작업 표시줄 높이에 남음. 보이면 앞 창이 모니터를 꽉 채우는지로 직접 보기로"""
+    return overlay.monitor_of(user32.GetForegroundWindow()) if fullscreen_app() else None
+
+
+def bar_on(rect):
+    """그 모니터 (왼, 위, 오른, 아래) 에 가운데가 있는 작업 표시줄 창 — 주 모니터는 Shell_TrayWnd, 다른 모니터는
+    Shell_SecondaryTrayWnd('모든 디스플레이에 표시' 를 켰을 때만 있음). 없으면 None."""
+    for cls in ("Shell_TrayWnd", "Shell_SecondaryTrayWnd"):
+        h = None
+        while True:
+            h = user32.FindWindowExW(None, h, cls, None)
+            if not h:
+                break
+            l, t, r, b = rect_of(h)
+            if rect[0] <= (l + r) // 2 < rect[2] and rect[1] <= (t + b) // 2 < rect[3]:
+                return h
+    return None
+
+
 def spot():
     """(알림 영역 왼쪽 끝 x, 작업 표시줄 위 y, 높이). 못 찾으면 None.
     ponytail: 아래쪽 작업 표시줄만 셈. 자동 숨기기·세로 작업 표시줄은 안 따짐"""
@@ -116,12 +138,13 @@ def ui_items(hwnd):
     return out
 
 
-def frames():
+def frames(bar=None):
     """작업 표시줄에서 눈에 보이는 틀 [(왼, 위, 오른)] — 앱 단추 묶음, 알림 영역 단추들, 그 위에 얹힌 usage-hud ·
     sysmon 창. 작업 표시줄 테마(FrostyGlass 등)가 바탕을 투명하게 두고 이것들만 알약으로 띄우면 그 모양이 됨.
-    단추 묶음을 못 찾으면 None — 그때는 모양을 모르니 작업 표시줄 윗변 전체를 바닥으로 봄.
-    ponytail: 기본 작업 표시줄이면 단추 묶음이 전체 폭이라 윗변 전체와 같다고 보고 따로 안 가림(직접 못 봄)"""
-    bar = user32.FindWindowW("Shell_TrayWnd", None)
+    단추 묶음을 못 찾으면 None — 그때는 모양을 모르니 작업 표시줄 윗변 전체를 바닥으로 봄. bar 를 안 주면 주 모니터 것.
+    ponytail: 기본 작업 표시줄이면 단추 묶음이 전체 폭이라 윗변 전체와 같다고 보고 따로 안 가림(직접 못 봄).
+    보조 작업 표시줄(bar_on)도 단추 묶음 이름이 같은지는 못 봄 — 다르면 None 이라 윗변 전체가 바닥"""
+    bar = bar or user32.FindWindowW("Shell_TrayWnd", None)
     if not bar:
         return None
     try:

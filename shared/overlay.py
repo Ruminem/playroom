@@ -157,6 +157,47 @@ def work_area():
     return tuple(rect)
 
 
+class _MonitorInfo(ctypes.Structure):  # MONITORINFOEXW
+    _fields_ = [("cbSize", ctypes.c_ulong), ("rcMonitor", ctypes.c_long * 4), ("rcWork", ctypes.c_long * 4),
+                ("dwFlags", ctypes.c_ulong), ("szDevice", ctypes.c_wchar * 32)]
+
+
+class _DisplayDevice(ctypes.Structure):  # DISPLAY_DEVICEW
+    _fields_ = [("cb", ctypes.c_ulong), ("DeviceName", ctypes.c_wchar * 32), ("DeviceString", ctypes.c_wchar * 128),
+                ("StateFlags", ctypes.c_ulong), ("DeviceID", ctypes.c_wchar * 128), ("DeviceKey", ctypes.c_wchar * 128)]
+
+
+_MONITOR_PROC = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+
+
+def monitors():
+    """켜진 모니터들 [(id, (왼, 위, 오른, 아래) 모니터, 같은 꼴의 작업 영역, 주 모니터인지)], 왼쪽부터. 한 번 1ms 아래.
+    id 는 EDID 로 만든 장치 경로(제조사·모델·포트)라 꽂는 순서가 바뀌어도 같음 — 다른 포트로 옮기면 새 모니터로 봄.
+    경로를 못 읽으면 \\\\.\\DISPLAYn. 하나도 못 읽으면(화면 잠김 직후 등) work_area() 로 주 모니터 하나."""
+    u, out = ctypes.windll.user32, []
+
+    def one(h, _dc, _rect, _arg):
+        mi = _MonitorInfo(cbSize=ctypes.sizeof(_MonitorInfo))
+        if u.GetMonitorInfoW(ctypes.c_void_p(h), ctypes.byref(mi)):
+            dd = _DisplayDevice(cb=ctypes.sizeof(_DisplayDevice))
+            got = u.EnumDisplayDevicesW(mi.szDevice, 0, ctypes.byref(dd), 1)  # EDD_GET_DEVICE_INTERFACE_NAME
+            out.append(((got and dd.DeviceID) or mi.szDevice, tuple(mi.rcMonitor), tuple(mi.rcWork), bool(mi.dwFlags & 1)))
+        return 1
+    u.EnumDisplayMonitors(None, None, _MONITOR_PROC(one), 0)
+    if not out:
+        wa = work_area()
+        out = [("main", wa, wa, True)]
+    return sorted(out, key=lambda m: (m[1][0], m[1][1]))
+
+
+def monitor_of(hwnd):
+    """그 창이 가장 많이 걸친 모니터 (왼, 위, 오른, 아래)."""
+    u, mi = ctypes.windll.user32, _MonitorInfo(cbSize=ctypes.sizeof(_MonitorInfo))
+    u.MonitorFromWindow.restype = ctypes.c_void_p  # HMONITOR — 기본 int 면 64비트에서 잘릴 수 있음
+    u.GetMonitorInfoW(ctypes.c_void_p(u.MonitorFromWindow(ctypes.c_void_p(hwnd), 2)), ctypes.byref(mi))  # DEFAULTTONEAREST
+    return tuple(mi.rcMonitor)
+
+
 def click_through(root):
     """tk 창을 클릭 통과·작업 표시줄에 안 뜸·포커스 안 뺏음으로. 다시 보일 때마다 다시 부른다."""
     user32 = ctypes.windll.user32

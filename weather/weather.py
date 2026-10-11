@@ -7,8 +7,8 @@
   python weather.py --kind rain --amount 80   양은 0–100% (예전 few·normal·many 도 받음)
   python weather.py --check     자체 점검
 
-작업 영역(작업 표시줄 뺀 주 모니터)과 그 아래 작업 표시줄까지 덮는 픽셀 알파 창(shared/surface.py)에 기본 60fps 로
-그린다(메뉴에서 30–180). 바닥은 작업 표시줄에 보이는 틀(단추 묶음·알림 영역·HUD·sysmon, taskbar.frames)의 윗변이고
+켠 모니터마다 작업 영역과 그 아래 작업 표시줄까지 덮는 픽셀 알파 창(shared/surface.py)에 기본 60fps 로 그린다
+(메뉴에서 30–120). 모니터는 각자 판을 따로 돌리거나(기본, 켠 것 없으면 주 모니터 하나) 이어서 넓은 판 하나로 그린다(App). 바닥은 작업 표시줄에 보이는 틀(단추 묶음·알림 영역·HUD·sysmon, taskbar.frames)의 윗변이고
 그 사이 틈은 화면 맨 아래. 눈은 원근 세 층으로 바람에 흔들리며 내리고 그 바닥 위에 쌓였다 천천히 녹는다.
 비는 세 겹 깊이의 빗줄기가 돌풍에 기울며 내리고 바닥에서 튀며, 뇌우는 거기에 번개와 빗발의 물결을 더한다.
 반딧불이는 화면 아래쪽을 떠다니며 깜빡인다. 어항은 화면을 옅은 물빛으로 덮고 빛줄기·거품·물고기·모래·해초를 그린다. 고양이(pet.py)를 켜면 바닥이나 쌓인 더미 위를 돌아다닌다.
@@ -18,6 +18,7 @@
 """
 import argparse
 import array
+import collections
 import colorsys
 import ctypes
 import itertools
@@ -102,6 +103,8 @@ MELT_PER_SEC = 0.0045  # 높이에 비례해 녹는 비율. 넣는 양 ÷ 이 �
 SETTLE_SEC = 0.25
 FRAMES_EVERY = 3   # 작업 표시줄 틀을 다시 읽는 간격 초. 한 번 55ms(UI 자동화)라 다른 스레드에서
 FULLSCREEN_EVERY = 0.25  # 전체 화면 앱이 떴는지 보는 간격 초. 한 번 0.1ms
+MONITORS_EVERY = 2  # 모니터를 꽂거나 빼거나 배치·작업 표시줄이 바뀌었는지 보는 간격 초. 한 번 1ms 아래
+REBUILD = "rebuild"  # 모니터가 바뀌어 판을 다시 만들라는 명령 (watch_monitors → 그리는 스레드)
 SINK_G, SINK_CRUMBLE = 900, 0.12  # 틀이 사라져 바닥이 내려앉는 가속 px/초² · 4px 묶음마다 늦게 떨어지는 최대 초
 SINK_WATER_G, SINK_WATER_V = 600, 70  # 어항은 물속이라 덜 가속하고 이 px/초(종단 속도)를 안 넘음 — 모래가 천천히 가라앉음
 
@@ -628,8 +631,9 @@ FISH_MAX = 20
 TANK = {"fish": ("물고기", FISH_N, FISH_MAX, "마리"), "bubbles": ("거품", 50, 100, "%"), "rays": ("빛줄기", 50, 100, "%")}
 
 
-def count(amount):
-    return round(FULL * amount / 100)
+def count(amount, scale=1.0):
+    """양 % → 띄울 수. scale 은 판 넓이가 가장 큰 모니터 하나의 몇 배인지 — 이은 판은 넓은 만큼 많이."""
+    return round(FULL * amount / 100 * scale)
 
 
 def parse_tank(key, v):
@@ -1016,6 +1020,83 @@ def floor_heights(w, bottom, left, rise, frames):
     return base
 
 
+# 판의 한 조각 = 모니터 하나에서 날씨가 보이는 자리(화면 좌표). rise 는 밑의 작업 표시줄 띠 높이, main 은 주 모니터인지
+Piece = collections.namedtuple("Piece", "id left top w h rise main")
+
+
+def piece(mon):
+    """overlay.monitors() 한 줄 → 조각. 작업 영역인데 작업 표시줄이 바로 아래 있으면 모니터 밑변까지 덮음 — 바탕이
+    투명한 작업 표시줄이면 틀(알약) 사이로는 화면 맨 아래까지 떨어지게. 바닥은 열마다 base(밑변에서 위로 px), 틀을 읽기
+    전엔 띠 윗변 전체. 모니터를 꽉 채우면 윈도우가 전체 화면 앱으로 봐서(QUNS_BUSY) 알림이 막히고 HUD·sysmon 이 숨음 —
+    위 1px 을 비움."""
+    mid, (ml, mt, mr, mb), (l, t, r, b), main = mon
+    t += (l, t, r) == (ml, mt, mr)
+    return Piece(mid, l, t, r - l, mb - t, mb - b, main)
+
+
+def live_on(mons, cfg):
+    """켠 모니터 중 지금 있는 것(왼쪽부터). 다 빠졌으면 주 모니터 하나 — 설정의 on 은 안 고침(다시 꽂으면 돌아옴)."""
+    ids = [m[0] for m in mons]
+    return [i for i in ids if i in cfg["on"]] or [next((m[0] for m in mons if m[3]), ids[0])]
+
+
+def ordered(mons, cfg):
+    """이어서 모드에서 잇는 순서: 저장된 순서 중 지금 있는 것, 그 뒤에 순서에 없는 모니터를 왼쪽부터."""
+    ids = [m[0] for m in mons]
+    first = [i for i in dict.fromkeys(cfg["order"]) if i in ids]
+    return first + [i for i in ids if i not in first]
+
+
+def layout(mons, cfg):
+    """모니터들과 모니터 설정 → 판마다 조각 목록. 각자면 켠 모니터마다 판 하나(왼쪽부터), 이어서면 켠 모니터를 잇는
+    순서대로 이은 판 하나. 모니터는 많아야 몇 개라 목록을 그냥 훑음."""
+    on, by_id = live_on(mons, cfg), {m[0]: m for m in mons}
+    if cfg["mode"] == "join":
+        return [[piece(by_id[i]) for i in ordered(mons, cfg) if i in on]]
+    return [[piece(by_id[i])] for i in on]
+
+
+def canvas(pieces):
+    """조각들을 가로로 이은 판 (폭, 높이, 판에서 조각마다 (왼쪽 x, 위 y)). 밑변을 맞춤 — 바닥·작업 표시줄 띠가 한 줄이고,
+    낮은 모니터 조각 위의 띠는 화면에 안 보임."""
+    h = max(p.h for p in pieces)
+    xs = list(itertools.accumulate((p.w for p in pieces), initial=0))
+    return xs[-1], h, [(x, h - p.h) for x, p in zip(xs, pieces)]
+
+
+def board_floor(pieces, full, frames_of):
+    """판 바닥 = 조각마다 floor_heights 를 이은 것. full 은 전체 화면 앱이 뜬 모니터 (왼, 위, 오른, 아래) 나 None — 그
+    모니터 조각만 틀이 없는 것으로 봄(작업 표시줄이 가려짐). frames_of(조각) 은 그 모니터 작업 표시줄의 틀이나 None."""
+    out = []
+    for p in pieces:
+        hit = full is not None and full[0] <= p.left < full[2] and full[1] <= p.top < full[3]
+        out += floor_heights(p.w, p.top + p.h, p.left, p.rise, [] if hit or not p.rise else frames_of(p))
+    return out
+
+
+def bar_frames(p):
+    """조각 p 의 모니터에 있는 작업 표시줄 틀. 작업 표시줄이 없거나 못 읽으면 None(띠 윗변 전체가 바닥)."""
+    bar = taskbar.bar_on((p.left, p.top, p.left + p.w, p.top + p.h))
+    return taskbar.frames(bar) if bar else None
+
+
+def monitor_label(i, mons):
+    """설정 창의 모니터 한 줄: `1 · 왼쪽 · 2560×1440 · 주`. ponytail: 자리는 왼쪽부터의 순서로만 — 위아래로 쌓은
+    모니터도 왼쪽·오른쪽으로 부름"""
+    mid, (l, t, r, b), _, main = mons[i]
+    where = "왼쪽" if i == 0 else "오른쪽" if i == len(mons) - 1 else "가운데"
+    return " · ".join(["%d" % (i + 1), where, "%d×%d" % (r - l, b - t)] + ["주"] * main)
+
+
+def mon_line(arg):
+    """설정 창이 보낸 `mon …` 줄의 나머지 → ("mon", 낱말, 값…), 모르는 줄이면 None. 번호는 왼쪽부터 몇째 모니터."""
+    m = arg.split()
+    ok = (len(m) == 2 and (m[0] == "mode" and m[1] in ("each", "join") or m[0] == "sync" and m[1] in ("0", "1")
+                           or m[0] in ("up", "focus") and m[1].isdecimal())
+          or len(m) == 3 and m[0] == "on" and m[1].isdecimal() and m[2] in ("0", "1"))
+    return ("mon", m[0], *(int(v) if v.isdecimal() else v for v in m[1:])) if ok else None
+
+
 def crumble(w):
     """열마다 바닥이 늦게 떨어지는 초. 4px 묶음끼리 같아서 한 덩이씩 무너짐 — 열마다 따로면 지글거림."""
     return [d for d in (random.uniform(0, SINK_CRUMBLE) for _ in range(w // 4 + 1)) for _ in range(4)][:w]
@@ -1280,7 +1361,7 @@ def soap_balls(r, hues):
     return out
 
 
-def aurora_field(w, rows, rng):
+def aurora_field(w, rows, rng, unit=None):
     """오로라 무늬: rows 행의 행마다 premultiplied BGRA 픽셀 바이트(폭 w, 끝이 처음과 이어짐). 커튼 AURORA_RIBBONS 겹이
     겹쳐 있고, 커튼마다 아랫단이 큰 굽이와 잔 굽이를 섞어 구불거림. 아랫단 둘레는 옅은 초록 빛무리, 밑은 가는 분홍
     술로 빠르게 사라지고, 위로는 무작위 자리 · 굵기 · 세기의 빛살 수백 줄이 제 높이만큼 뻗음. 아랫단이 가파르게 접힌
@@ -1288,9 +1369,12 @@ def aurora_field(w, rows, rng):
     픽셀마다 셈함: 열의 세로 모양은 커튼마다 미리 셈한 본(아랫단에서 잰 높이 → 색 · 세기)을 그 열의 아랫단 깊이만큼
     밀어 잘라 쓰고, 본은 픽셀 하나에 32비트 칸 넷(B·G·R·A)을 담은 큰 정수라 밀기 · 곱하기 · 더하기가 C 에서 한 번에
     됨 — 파이썬으로 픽셀마다 셈하면 2560×860 에 몇 초. 알파 칸은 커튼마다 세기 × 가장 센 색 채널을 더한 것이라 늘
-    색 칸 이상. 넘친 칸은 255 에 멈춰 밝은 곳이 하얗게 바램."""
-    def noise(ks, n, amp):  # 폭에 정수 번 도는 사인 n 개, 진폭이 1/k 로 줄어 굽이가 자연스러움
-        ws = [(k, rng.uniform(0, math.tau), amp * rng.uniform(0.5, 1) / k) for k in rng.sample(ks, n)]
+    색 칸 이상. 넘친 칸은 255 에 멈춰 밝은 곳이 하얗게 바램. unit 은 굽이 크기를 맞출 폭 — 모니터를 이은 판이면 한
+    모니터 폭이라 넓은 판에서도 굽이가 안 늘어남."""
+    m = w / (unit or w)
+
+    def noise(ks, n, amp):  # 폭(unit)에 정수 번 도는 사인 n 개, 진폭이 1/k 로 줄어 굽이가 자연스러움
+        ws = [(round(k * m), rng.uniform(0, math.tau), amp * rng.uniform(0.5, 1) / k) for k in rng.sample(ks, n)]
         return [sum(a * math.sin(math.tau * k * x / w + p) for k, p, a in ws) for x in range(w)]
 
     def color(d):  # 아랫단에서 잰 높이 → 색 0–1
@@ -1456,11 +1540,14 @@ def pane_drop(r):
     return shade((n, rows))
 
 
-def fog_field(w, rows, rng):
+def fog_field(w, rows, rng, unit=None):
     """안개 무늬: rows 행의 행마다 알파 0–255 바이트(폭 w, 끝이 처음과 이어짐). FOG_KNOT 행마다 사인 넷을 겹친 가로
-    무늬(폭에 정수 번 돌아 이어짐)를 뽑고, 그 사이 행은 FOG_MIX 단계로 섞어 단계마다 한 번만 셈."""
-    def line():  # 옅은 바탕(0.3) 위에 화면 폭의 1/2–1/9 크기 뭉치가 짙게
-        waves = [(k, rng.uniform(0, math.tau), k ** -0.6) for k in rng.sample(range(2, 10), 4)]
+    무늬(폭에 정수 번 돌아 이어짐)를 뽑고, 그 사이 행은 FOG_MIX 단계로 섞어 단계마다 한 번만 셈. unit 은 뭉치 크기를
+    맞출 폭(aurora_field 와 같음)."""
+    m = w / (unit or w)
+
+    def line():  # 옅은 바탕(0.3) 위에 화면 폭(unit)의 1/2–1/9 크기 뭉치가 짙게
+        waves = [(round(k * m), rng.uniform(0, math.tau), k ** -0.6) for k in rng.sample(range(2, 10), 4)]
         tot = sum(a for _, _, a in waves)
         return [0.3 + 0.7 * min(1.0, max(0.0, 0.5 + 0.9 * sum(a * math.sin(math.tau * k * x / w + p)
                                                               for k, p, a in waves) / tot)) ** 1.3 for x in range(w)]
@@ -1640,7 +1727,7 @@ def sun_rays(rng):
     return {"fan": fan, "cache": {}}
 
 
-def sun_bake(bg, w, h, sky, sun):
+def sun_bake(bg, w, h, sky, sun, cx=None):
     """햇볕을 화면 크기 premultiplied 버퍼 bg 에 덮어 구움(sun_at 의 값으로) → 화면에 걸친 빛줄기 [(해 x, 해 y, 각, 반폭 각,
     닿는 행 수)]. 해는 화면 가운데에서 빛이 오는 쪽으로 SUN_DIST 만큼(늘 위 가장자리 너머) — 아침엔 왼쪽 위 구석 가까이 낮게,
     정오엔 가운데 위 높이. 둘레에 해무리(가우시안 — 가로 단면 하나를 행마다 세기 표로 줄여 씀)를 깔고, 그 위에 부채 줄기를
@@ -1653,7 +1740,8 @@ def sun_bake(bg, w, h, sky, sun):
     sl, k, warm = sun
     stride, out, cache = w * 4, [], sky["cache"]
     v = 1 / math.hypot(sl, 1)
-    sx, sy = w / 2 - sl * v * h * SUN_DIST, min(-h * 0.06, h * 0.45 - v * h * SUN_DIST)  # 해는 늘 위 가장자리 밖
+    # 해는 늘 위 가장자리 밖. cx 는 해를 걸 가운데 x — 모니터를 이은 판이면 기준 조각 가운데
+    sx, sy = (w / 2 if cx is None else cx) - sl * v * h * SUN_DIST, min(-h * 0.06, h * 0.45 - v * h * SUN_DIST)
     col = [c + (q - c) * warm for c, q in zip(SUN_COLOR, SUN_LOW)]
     tabs = [bytes(int(a * c / 255) for a in range(256)) for c in col[::-1]]
 
@@ -1822,13 +1910,8 @@ def streak_path(n, d, rng):
     return pts
 
 
-def load_settings():
-    try:
-        data = json.loads(SETTINGS.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    if not isinstance(data, dict):
-        return {}
+def board_settings(data):
+    """판 하나의 설정(종류·양·동물·어항 막대) 중 맞는 것만."""
     ok = {}
     if data.get("kind") in KIND_NAMES:
         ok["kind"] = data["kind"]
@@ -1838,12 +1921,30 @@ def load_settings():
     p = ["cat"] if p is True else [] if p is False else [p] if isinstance(p, str) else p
     if isinstance(p, list):
         ok["pet"] = [a for a in PET_CLASS if a in p]  # 모르는 이름·겹친 이름은 버림
-    fps = 120 if data.get("fps") == 180 else data.get("fps")  # 0.2.6 까지 있던 180
-    if fps in FPS_IDS.values():
-        ok["fps"] = fps
     for k in TANK:
         if parse_tank(k, data.get(k)) is not None:
             ok[k] = data[k]
+    return ok
+
+
+def load_settings():
+    try:
+        data = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    ok = board_settings(data)
+    fps = 120 if data.get("fps") == 180 else data.get("fps")  # 0.2.6 까지 있던 180
+    if fps in FPS_IDS.values():
+        ok["fps"] = fps
+    m = data.get("monitors")
+    if isinstance(m, dict) and m.get("mode") in ("each", "join"):  # 모드를 모르면 통째로, 나머지는 이상한 칸만 버림
+        ids = lambda v: [i for i in v if isinstance(i, str)] if isinstance(v, list) else []
+        each = m.get("each") if isinstance(m.get("each"), dict) else {}
+        ok["monitors"] = {"mode": m["mode"], "on": ids(m.get("on")), "order": ids(m.get("order")),
+                          "sync": m.get("sync") is True,
+                          "each": {i: board_settings(s) for i, s in each.items() if isinstance(s, dict)}}
     if isinstance(data.get("drag"), bool):
         ok["drag"] = data["drag"]
     if isinstance(data.get("sound"), bool):
@@ -1854,25 +1955,32 @@ def load_settings():
 
 
 class Weather:
-    def __init__(self, kind, amount, animals=(), fps=FPS, tank=None, drag=False, sound=False, volume=VOLUME):
-        self.kind, self.amount, self.visible, self.fps = kind, amount, True, fps
-        self.sound, self.volume, self.rain_player = sound, volume, rain_sound.Player()  # 빗소리 켰나 · 크기 % · 트는 것
+    """판 하나 — 모니터 조각들(각자 모드면 하나)을 가로로 이은 버퍼에 날씨를 그림. 트레이·설정 창·빗소리·저장은 App."""
+    # 검사는 __new__ 로 판을 만들고 쓰는 것만 채움 — 모니터 하나짜리 판의 값
+    scale, span, sun_x, tall, edges, closed = 1.0, None, None, None, None, False
+
+    def __init__(self, pieces, kind, amount, animals=(), tank=None, drag=False, visible=True):
+        self.kind, self.amount, self.visible, self.pieces = kind, amount, visible, pieces
         self.tank = {k: (tank or {}).get(k, TANK[k][1]) for k in TANK}  # 어항 막대. 어항이 아닐 때 바꿔도 남겨 둠
         self.drag, self.catching = drag and not MAC, False  # 동물 집기를 켰나 · 지금 창이 클릭을 받나
-        # ponytail: 시작할 때의 주 모니터 작업 영역에 고정. 해상도·작업 표시줄이 바뀌면 다시 켜야 함
-        l, t, r, b = overlay.work_area()
-        spot = None if MAC else taskbar.spot()
-        # 작업 표시줄이 바로 아래 있으면 그 밑변까지 덮음 — 바탕이 투명한 작업 표시줄이면 틀(알약) 사이로는
-        # 화면 맨 아래까지 떨어지게. 바닥은 열마다 self.base(밑변에서 위로 px), 틀을 읽기 전엔 띠 윗변 전체
-        self.rise = spot[2] if spot and spot[1] == b else 0
-        # 모니터를 꽉 채우면 윈도우가 전체 화면 앱으로 봐서(QUNS_BUSY) 알림이 막히고 HUD·sysmon 이 숨음 — 위 1px 을 비움
-        t += 1 if self.rise and t == 0 else 0
-        self.w, self.h, self.left, self.top = r - l, b - t + self.rise, l, t
-        self.base, self.next_base = [self.rise] * self.w, None
+        self.w, self.h, at = canvas(pieces)
+        # 기준 조각 = 제일 높은 것(같으면 주 모니터). 화면 폭에 비례하던 크기(빛줄기·가지·무늬 굽이)는 이 폭에, 해는
+        # 이 조각 가운데에 맞춤 — 이은 판이 넓다고 다 늘어나지 않게. 수는 넓이만큼(scale) 늘림
+        r = max(range(len(pieces)), key=lambda i: (pieces[i].h, pieces[i].main))
+        self.span, self.sun_x = pieces[r].w, at[r][0] + pieces[r].w / 2
+        areas = [p.w * p.h for p in pieces]
+        self.scale = sum(areas) / max(areas)
+        self.tall = [(x, p.w) for p, (x, y) in zip(pieces, at) if not y]  # 위가 안 잘린 조각 (판 x, 폭) — 꼭지를 매달 자리
+        self.edges = (at[0][1], at[-1][1])  # 양 끝 조각이 판 위에서 잘린 px — 벽에서 뻗는 가지 높이
+        self.rise = max(p.rise for p in pieces)
+        # 바닥은 열마다 self.base(밑변에서 위로 px), 틀을 읽기 전엔 조각마다 작업 표시줄 띠 윗변 전체
+        self.base, self.next_base = [p.rise for p in pieces for _ in range(p.w)], None
         # 바닥이 가려는 모양 · 내려앉는 중이면 (시작 모양, 시각) · 열마다 늦게 떨어지는 초(모래가 무너지듯)
         self.goal, self.fall, self.crumble = self.base, None, crumble(self.w)
         self.strip_h = PILE_STRIP + self.rise
-        self.surface = Surface(l, t, self.w, self.h, SURFACE_CLASS, **({} if MAC else {"on_mouse": self.press}))
+        panes = [(p.left, p.top, x, y, p.w, p.h) for p, (x, y) in zip(pieces, at)] if len(pieces) > 1 else None
+        self.surface = Surface(pieces[0].left, pieces[0].top, self.w, self.h, SURFACE_CLASS,
+                               **({} if MAC else {"on_mouse": self.press, "panes": panes}))
         self.on_top = MAC or overlay.on_top("weather")  # 런처의 '항상 위'. 맥은 런처가 없음
         if not self.on_top:
             self.surface.topmost(False)
@@ -1891,34 +1999,26 @@ class Weather:
         self.pets = {a: PET_CLASS[a](self.w) for a in PET_CLASS if a in (animals or ())}
         self.bolt_seen, self.pet_startled = None, {}  # 이름 → 우박에 다시 놀랄 수 있는 시각
         self.bangs = []  # 이번 프레임에 터진 불꽃의 x — 동물들이 돌아봄
-        self.commands = queue.Queue()  # 트레이 스레드 → 그리는 스레드
-        write_ico(ICON_FILE, ICON, ICON_COLORS)
-        self.panel = None  # 숨긴 채 띄워 둔 설정 창 프로세스
-        # 맥은 메뉴 막대를 누르면 메뉴가 뜨는 게 기본이라 메뉴만. 윈도우는 오른쪽 클릭도 같은 설정 창 — 메뉴와 창이
-        # 따로 있으면 한쪽에만 생기는 것(빗소리를 비·뇌우에서만 보이기 등)이 갈라졌음
-        if MAC:
-            self.tray = Tray(TRAY_CLASS, ICON_FILE, "날씨", self.menu, self.commands.put)
-        else:
-            self.tray = Tray(TRAY_CLASS, ICON_FILE, "날씨", None, self.commands.put, on_left=lambda: self.commands.put(PANEL))
-            self.start_panel()
         self.last = self.last_settle = self.last_topmost = time.perf_counter()
         self.reset()
-        self.hear()
-        self.surface.show(True)
+        self.surface.show(self.visible)
         if self.rise:
             threading.Thread(target=self.watch_frames, daemon=True).start()
 
+    def close(self):
+        self.closed = True  # watch_frames 가 다음 바퀴에 끝남
+        self.surface.close()
+
     def watch_frames(self):
         """작업 표시줄 틀을 FRAMES_EVERY 초마다 읽어 그리는 스레드에 넘김 — 앱을 열고 닫으면 단추 묶음 폭이 바뀜.
-        전체 화면 앱(F11 등)이 작업 표시줄을 가리면 틀이 없는 것으로 봄 — UI 자동화는 가려진 단추 자리도 그대로
-        알려 줌. 전체 화면은 싸게 알 수 있어 FULLSCREEN_EVERY 마다 보고, 바뀌면 바로 다시 냄."""
+        전체 화면 앱(F11 등)이 작업 표시줄을 가리면 그 모니터 조각은 틀이 없는 것으로 봄 — UI 자동화는 가려진 단추
+        자리도 그대로 알려 줌. 전체 화면은 싸게 알 수 있어 FULLSCREEN_EVERY 마다 보고, 바뀌면 바로 다시 냄."""
         full, last = None, -math.inf
-        while True:
-            fs = taskbar.fullscreen_app()
+        while not self.closed:
+            fs = taskbar.fullscreen_monitor()
             if fs != full or time.monotonic() - last >= FRAMES_EVERY:
                 full, last = fs, time.monotonic()
-                self.next_base = floor_heights(self.w, self.top + self.h, self.left, self.rise,
-                                               [] if fs else taskbar.frames())
+                self.next_base = board_floor(self.pieces, fs, bar_frames)
             time.sleep(FULLSCREEN_EVERY)
 
     def set_base(self, base):
@@ -1951,135 +2051,38 @@ class Weather:
         self.set_base(base)
         return True
 
-    # ── 트레이 ──
-    def menu(self):
-        return [*((label, cid, key == self.kind) for cid, (key, label) in KINDS.items()),
-                None,
-                ("양", [("%d%%" % p, cid, p == self.amount) for cid, p in AMOUNTS.items()]),
-                ("부드러움", [("%dfps" % n, cid, n == self.fps) for cid, n in FPS_IDS.items()]),
-                None,
-                ("동물", [*((PET_NAMES[a], cid, a in self.pets) for cid, a in PETS.items()),
-                          *(() if MAC else (None, ("집어서 옮기기", DRAG, self.drag)))]),
-                ("빗소리", [("비·뇌우에 켜기", SOUND, self.sound), None,
-                          *(("%d%%" % p, cid, p == self.volume) for cid, p in VOLUMES.items())]),
-                ("보이기", SHOW, self.visible),
-                ("로그인 시 실행" if MAC else "Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)),
-                None,
-                ("끝내기", EXIT, False)]
-
     def handle(self, cid):
+        """이 판에 온 명령 — 종류·양·어항 막대·동물·집기·보이기. 저장·소리·설정 창은 App 이 함."""
         if isinstance(cid, tuple):  # 설정 창의 막대 값 — 양이나 어항 막대. 끄는 동안에도 0.1초마다 옴
             key, value = cid
-            if key == "volume":
-                self.volume = value
-                self.save()
-                return
             if key not in TANK:
                 self.amount = value
             else:
                 self.tank[key] = value
             if key not in TANK or self.kind == "aquarium":  # 어항이 아니면 어항 막대는 남기기만. 어항을 고를 때 씀
                 self.retune()
-            self.save()
             return
-        elif cid == PANEL:
-            self.open_panel()
-            return
-        elif cid in KINDS:
+        if cid in KINDS:
             self.kind = KINDS[cid][0]
         elif cid in AMOUNTS:
             self.amount = AMOUNTS[cid]
-        elif cid in (SOUND, *VOLUMES):  # 소리는 poll 이 handle 다음에 hear 로 맞춤
-            if cid == SOUND:
-                self.sound = not self.sound
-            else:
-                self.volume = VOLUMES[cid]
-            self.save()
-            return
-        elif cid in FPS_IDS:  # 움직임은 시간으로 셈해 빠르기는 그대로, 다시 깔 필요 없음
-            self.fps = FPS_IDS[cid]
-            self.save()
-            return
         elif cid in PETS:  # 켜고 끄기
             on = set(self.pets) ^ {PETS[cid]}
             self.pets = {k: self.pets.get(k) or PET_CLASS[k](self.w) for k in PET_CLASS if k in on}
             self.full_clear = True  # 끈 동물이 있던 자리까지 지움
-            self.save()
             return
         elif cid == DRAG:
             self.drag = not self.drag and not MAC
             self.press(False)  # 끄면 들고 있던 동물을 놓음. 클릭 통과는 다음 프레임 aim 이 되돌림
-            self.save()
             return
         elif cid == SHOW:
             self.visible = not self.visible
             self.surface.show(self.visible)
             self.press(False)
             return
-        elif cid == AUTOSTART:
-            startup.toggle(RUN_NAME, __file__)
-            return
-        elif cid == EXIT:
-            self.tray.close()  # 트레이가 닫히면 None 이 와서 poll 이 끝냄
+        else:
             return
         self.reset()
-        self.save()
-
-    def save(self):
-        try:
-            SETTINGS.parent.mkdir(parents=True, exist_ok=True)
-            SETTINGS.write_text(json.dumps({"kind": self.kind, "amount": self.amount, "pet": list(self.pets),
-                                            "fps": self.fps, **self.tank, "drag": self.drag,
-                                            "sound": self.sound, "volume": self.volume}), encoding="utf-8")
-        except OSError:
-            pass  # 못 남겨도 지금 화면은 바뀌었으니 넘어감
-
-    def start_panel(self):
-        """그리는 루프가 tk 가 아니라서 설정 창은 따로 띄우고, 누른 것을 한 줄씩 받아 메뉴 명령처럼 처리함.
-        켤 때 숨긴 채 띄워 둠 — 누를 때마다 새로 띄우면 파이썬·tk 를 띄우느라 0.35–0.57초 걸렸음. 대신 54MB 를 늘 씀"""
-        me = [] if getattr(sys, "frozen", False) else [str(Path(__file__).resolve())]  # 릴리스 exe 는 스크립트 없이 자기 자신
-        self.panel = subprocess.Popen([sys.executable, *me, "--panel"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                      text=True, encoding="utf-8")
-        threading.Thread(target=self.read_panel, args=(self.panel,), daemon=True).start()
-
-    def open_panel(self):
-        """띄워 둔 설정 창에 지금 상태를 한 줄로 보내 보이게 함. 꺼져 있으면(끝내기 직전 등) 새로 띄움."""
-        if not self.panel or self.panel.poll() is not None:
-            self.start_panel()
-        state = {"kind": self.kind, "amount": self.amount, "pet": list(self.pets), "show": self.visible,
-                 "auto": startup.is_on(RUN_NAME, __file__), "fps": self.fps, "tank": self.tank, "drag": self.drag,
-                 "sound": self.sound, "volume": self.volume}
-        ctypes.windll.user32.AllowSetForegroundWindow(-1)  # 방금 트레이를 누른 건 이 프로세스라 앞으로 올릴 권한을 넘김
-        try:
-            self.panel.stdin.write(json.dumps(state) + "\n")
-            self.panel.stdin.flush()
-        except OSError:
-            self.panel = None  # 막 꺼진 참 — 다음에 누르면 새로 띄움
-
-    def read_panel(self, proc):
-        for line in proc.stdout:
-            word, _, arg = line.partition(" ")
-            if arg.strip().isdigit() and (parse_amount(int(arg)) is not None if word in ("amount", "volume") else
-                                          word in TANK and parse_tank(word, int(arg)) is not None):
-                self.commands.put((word, int(arg)))
-            elif word.strip().isdigit() and int(word) in (*KINDS, *FPS_IDS, *PETS, DRAG, SOUND, SHOW, AUTOSTART, EXIT):
-                self.commands.put(int(word))
-
-    def poll(self):
-        """트레이에서 온 명령을 처리. None 이면 트레이가 닫힌 것. 끝내야 하면 True."""
-        try:
-            while True:
-                cid = self.commands.get_nowait()
-                if cid is None:
-                    return True
-                self.handle(cid)
-                self.hear()
-        except queue.Empty:
-            return False
-
-    def hear(self):
-        """빗소리를 지금 종류·보이기·설정에 맞춤. 같으면 아무것도 안 함 — 명령마다 불러도 됨."""
-        self.rain_player.set(hearing(self.kind, self.visible, self.sound, self.volume))
 
     # ── 눈 ──
     def new_flake(self, li, top, layers=SNOW_LAYERS):
@@ -2399,7 +2402,7 @@ class Weather:
         return self.sprite_cache["fireworks"]
 
     def launch(self, now):
-        rate = FW_RATE * self.amount / 100
+        rate = FW_RATE * self.amount / 100 * self.scale
         if rate <= 0:
             self.next_launch = math.inf
             return
@@ -2555,7 +2558,7 @@ class Weather:
         바깥이라 늘 아래쪽으로 남. 차차 밝아져 수명 70% 에서 가장 밝고 빨리 꺼짐, 불덩이는 85% 에서 한 번 번쩍. 꼬리는
         떨어지기 시작한 점 뒤로는 안 늘어남."""
         w, h = self.w, self.h
-        if random.random() < METEOR_RATE * self.amount / 50 * dt:
+        if random.random() < METEOR_RATE * self.amount / 50 * self.scale * dt:
             rad, t = (random.uniform(-0.5 * w, 1.5 * w), -random.uniform(0.3, 1.0) * h), now
             for _ in range(random.randint(*METEOR_BURST) if random.random() < METEOR_SHOWER else 1):
                 self.meteor_due.append((t, rad))
@@ -2681,9 +2684,10 @@ class Weather:
         if "meadow" not in self.sprite_cache:
             rng = random.Random(random.random())  # 전역 random 을 따름 — 검사(random.seed)에서 같은 뜰
             bg, rays = bytearray(w * h * 4), sun_rays(rng)
-            rows, mid, spots = branch_art(int(w * rng.uniform(*BRANCH_LEN)) // S, rng)
+            rows, mid, spots = branch_art(int((self.span or w) * rng.uniform(*BRANCH_LEN)) // S, rng)
             left, bw = rng.random() < 0.5, len(rows[0]) * S
-            bx, by = 0 if left else w - bw, int(h * rng.uniform(*BRANCH_Y)) - mid * S
+            y0 = (self.edges or (0, 0))[0 if left else 1]  # 벽 쪽 조각이 판 위에서 잘린 만큼 내려 그 조각 안에
+            bx, by = 0 if left else w - bw, y0 + int((h - y0) * rng.uniform(*BRANCH_Y)) - mid * S
             # 앉을 자리: (화면 x, 벽에서 몇째 열, 칸 y). 휜 판은 끝의 휨 칸 → (조각, 흐린 조각) 으로 처음 쓸 때 만듦
             twig = {"rows": rows, "left": left, "x": bx, "y": by, "w": bw, "h": len(rows) * S, "bends": {},
                     "spots": [(bx + (x if left else len(rows[0]) - 1 - x) * S + S / 2, x, y) for x, y in spots]}
@@ -2707,7 +2711,7 @@ class Weather:
         md = self.meadow
         sun = sun_at(*self.clock())
         if sun != md["sun"]:
-            md["sun"], md["rays"] = sun, sun_bake(md["bg"], self.w, self.h, md["sun_rays"], sun)
+            md["sun"], md["rays"] = sun, sun_bake(md["bg"], self.w, self.h, md["sun_rays"], sun, self.sun_x)
 
     def garden(self, dt, now):
         """바람(wind 를 -1..1 로)에 맞춰 뜰을 찍음. 바람줄(blow)은 가지 뒤. 가지: 벽은 그대로, 끝이 위아래로 흔들리고
@@ -2918,7 +2922,7 @@ class Weather:
         (작업 표시줄 위)에 닿으면 사라짐. 맺힌 방울이 pane_cap 을 넘으면 오래된 것부터 초당 PANE_DRY 개 남짓씩 마름.
         새 방울은 splats 에서 PANE_SPLAT_T 동안 퍼졌다 오므라든 뒤 맺힘."""
         px, stride, w, h, panes, sprites = self.surface.pixels, self.stride, self.w, self.h, self.panes, self.pane_sprites
-        self.pane_due += PANE_RATE * self.amount / 50 * dt
+        self.pane_due += PANE_RATE * self.amount / 50 * self.scale * dt
         quiet = self.pane_due > 3  # 처음 반쯤 채울 때 · 숨겼다 돌아옴 — 한꺼번에 부딪히지 않고 그냥 맺힘
         while self.pane_due >= 1:
             self.pane_due -= 1
@@ -2992,7 +2996,7 @@ class Weather:
                 self.shower_len = self.shower_left = random.uniform(*PANE_SHOWER_LEN)
                 self.shower_in = random.uniform(*PANE_SHOWER_EVERY)
         slant, floor = SLANTS[PANE_SHOWER_SLANT], h - self.rise - 20
-        self.streak_due += PANE_SHOWER_RAIN * self.amount / 50 * f * dt
+        self.streak_due += PANE_SHOWER_RAIN * self.amount / 50 * self.scale * f * dt
         while self.streak_due >= 1:
             self.streak_due -= 1
             li = 1 + (random.random() < 0.4)  # 가운데 · 가까운 층
@@ -3060,7 +3064,7 @@ class Weather:
                 "jelly_size": size(JELLY_ART[0]),
                 "bubbles": [[[bubble(r, layer[3], fx / 4, fy / 4) for fy in range(4) for fx in range(4)]
                              for r in layer[1]] for layer in BUBBLE_LAYERS],
-                "rays": [ray_shape(max(8, int(w * f)), int(h * RAY_REACH), rng) for f in RAY_WIDTHS],
+                "rays": [ray_shape(max(8, int((self.span or w) * f)), int(h * RAY_REACH), rng) for f in RAY_WIDTHS],
                 # [종류][꼬리][오른쪽] — thin 은 한 칸 건너 하나씩 뺀 반쪽 폭: 돌아서는 동안 옆모습이 좁아 보임
                 "fish": [[sides(rows) for rows in pair] for pair in frames],
                 "fish_thin": [[sides([r[::2] for r in rows]) for rows in pair] for pair in frames],
@@ -3079,8 +3083,9 @@ class Weather:
         cw = aq["crab_size"][0]
         # 게 [x, 1 오른쪽 · -1 왼쪽, 지금 짓이 끝나는 시각, 걷는 중, 화면 y] · 해파리 [x, y, 오르내리는 px/초, 다음에
         # 오므릴 시각, 오므린 시각, 위상, 가려는 높이] · 상자 [열리는 시각, 다음 거품 시각]. 시각은 첫 프레임에 정함
-        self.crab = [[random.uniform(0, max(0, w - cw)), random.choice((1, -1)), None, False, None] for _ in range(CRAB_N)]
-        self.jelly = [self.new_jelly() for _ in range(JELLY_N)]
+        self.crab = [[random.uniform(0, max(0, w - cw)), random.choice((1, -1)), None, False, None]
+                     for _ in range(round(CRAB_N * self.scale))]
+        self.jelly = [self.new_jelly() for _ in range(round(JELLY_N * self.scale))]
         self.chest = None
 
     def floor_at(self, x, width):
@@ -3403,7 +3408,8 @@ class Weather:
     def tap_cycle(self):
         """빈 화면에서 다시 시작 — 꼭지와 구멍 자리를 새로 고름. 구멍은 물줄기에서 화면 폭 1/4 넘게 떨어진 바닥."""
         w = self.w
-        self.tap_x = random.randrange(max(1, w - self.tap["size"][0]))
+        x0, pw = random.choice(self.tall or [(0, w)])  # 천장에 매다는 꼭지라 위가 안 잘린 조각에
+        self.tap_x = x0 + random.randrange(max(1, pw - self.tap["size"][0]))
         nx, r = self.tap_x + TAP_NOZZLE * pet.SCALE + 1, TAP_HOLE_R + 4
         spots = [x for x in range(r, w - r) if abs(x - nx) > w / 4]
         self.hole_x = random.choice(spots) if spots else w // 2
@@ -3776,10 +3782,10 @@ class Weather:
             self.settled_sprites = self.sprite_cache["settled"]
         elif kind == "fog":
             if "fog" not in self.sprite_cache:
-                self.sprite_cache["fog"] = fog_field(self.w, int(self.h * FOG_REACH), random)
+                self.sprite_cache["fog"] = fog_field(self.w, int(self.h * FOG_REACH), random, self.span)
         elif kind == "aurora":
             if "aurora" not in self.sprite_cache:
-                self.sprite_cache["aurora"] = aurora_field(self.w, int(self.h * AURORA_REACH), random)
+                self.sprite_cache["aurora"] = aurora_field(self.w, int(self.h * AURORA_REACH), random, self.span)
             self.shooting, self.meteor_due = [], []
         elif kind == "window":
             if "window" not in self.sprite_cache:
@@ -3791,7 +3797,7 @@ class Weather:
             self.rain_sprites = self.sprite_cache["window_rain"]
             self.splats, self.streaks, self.streak_due, self.pane_dry, self.shower_left = [], [], 0.0, 0.0, 0.0
             self.shower_in, self.shower_len = random.uniform(*PANE_SHOWER_EVERY) / 3, 1.0  # 첫 소나기는 일찍
-            self.pane_due = count(self.amount) * PANE_SHARE / 2  # 첫 프레임에 반쯤 맺힌 채로 시작
+            self.pane_due = count(self.amount, self.scale) * PANE_SHARE / 2  # 첫 프레임에 반쯤 맺힌 채로 시작
         elif kind == "bugs":
             self.bugs = []
             self.sow()
@@ -3825,7 +3831,7 @@ class Weather:
     def retune(self):
         """양·어항 막대에 수를 맞춤 — 다시 깔지 않아 쌓인 눈·모래와 떠 있던 것은 제자리, 모자라면 새로 띄우고 남으면
         버림. 설정 창이 막대를 끄는 동안 0.1초마다 부름. 불꽃놀이·뇌우 번개는 그릴 때 양을 바로 읽어 할 게 없음."""
-        n, kind, layer = count(self.amount), self.kind, lambda layers, k: [round(n * k * l[0]) for l in layers]
+        n, kind, layer = count(self.amount, self.scale), self.kind, lambda layers, k: [round(n * k * l[0]) for l in layers]
         if kind == "snow":
             self.flakes = refit(self.flakes, layer(SNOW_LAYERS, 1), lambda li: self.new_flake(li, False))
         elif kind in RAINY:
@@ -3850,16 +3856,16 @@ class Weather:
             self.stones = refit(self.stones, [round(n * HAIL_SHARE)], lambda _: self.new_stone(False), False)
         elif kind == "aquarium":
             self.water_tint()
-            n = count(self.tank["bubbles"])  # 막대 50% 가 예전 양 50% 의 거품 수
+            n = count(self.tank["bubbles"], self.scale)  # 막대 50% 가 예전 양 50% 의 거품 수
             self.flakes = refit(self.flakes, layer(BUBBLE_LAYERS, BUBBLE_SHARE), lambda li: self.new_bubble(li, False))
-            self.fish = refit(self.fish, [self.tank["fish"]], lambda _: self.new_fish(), False)
+            self.fish = refit(self.fish, [round(self.tank["fish"] * self.scale)], lambda _: self.new_fish(), False)
             if bool(self.school) != (self.tank["fish"] > 0):  # 떼는 물고기를 하나라도 고르면 하나
                 self.school = self.new_school() if self.tank["fish"] else None
-            rays = round(RAY_COUNT * self.tank["rays"] / 50)
+            rays = round(RAY_COUNT * self.tank["rays"] / 50 * self.scale)
             if len(self.rays_at) != rays:  # 고르게 벌려 놓으므로 수가 바뀌면 다시 놓음
                 h, w = self.h, self.w
                 reach = int(h * RAY_REACH)
-                edge = w * RAY_WIDTHS[-1] * (1 + RAY_SPREAD) / 2  # 제일 넓은 모양의 퍼진 아래 끝 반폭
+                edge = (self.span or w) * RAY_WIDTHS[-1] * (1 + RAY_SPREAD) / 2  # 제일 넓은 모양의 퍼진 아래 끝 반폭
                 lo, hi = edge, w - edge - (RAY_SLANT[1] + RAY_SWAY) * reach  # 퍼진 아래 끝까지 화면 안
                 # [위 끝 가운데 x, 모양, 위상, 빠르기, 기울기, 밑 밝기 범위 lo · hi] — 기울기는 x 를 따라 부채꼴로 벌어짐
                 xs = [] if hi <= lo else [lo + (i + random.uniform(0.15, 0.85)) * (hi - lo) / rays for i in range(rays)]
@@ -4151,6 +4157,246 @@ class Weather:
         self.frame(dt, now)
         return True
 
+
+
+class App:
+    """트레이·설정 창·빗소리·저장과 그리는 루프. 판(Weather)은 모니터 설정대로 하나 이상이고 다 이 스레드에서 차례로 그림.
+    ponytail: 판이 여럿이면 프레임마다 판 수만큼 그려 120fps 를 못 맞출 수 있음 → 그때 판마다 프로세스로"""
+
+    def __init__(self, kind, amount, saved):
+        self.fps, self.visible = saved.get("fps", FPS), True
+        self.drag = saved.get("drag", False) and not MAC
+        self.sound, self.volume, self.rain_player = saved.get("sound", False), saved.get("volume", VOLUME), rain_sound.Player()
+        # 판 설정의 기본: 이어서 모드의 판, 각자 모드에서 따로 정한 적 없는 모니터. 설정 창이 마지막으로 본 판 것
+        self.top = {"kind": kind, "amount": amount, "pet": saved.get("pet", []), **{k: saved[k] for k in TANK if k in saved}}
+        # 모니터 설정. 예전 설정 파일엔 없음 — 각자 모드에 켠 모니터가 없으면 주 모니터 하나라 예전과 같음
+        self.mon = saved.get("monitors") or {"mode": "each", "on": [], "order": [], "sync": False, "each": {}}
+        self.focus, self.boards = None, []  # 설정 창이 보고 고치는 모니터 id · 판들
+        self.commands = queue.Queue()  # 트레이·설정 창·모니터 감시 스레드 → 그리는 스레드
+        write_ico(ICON_FILE, ICON, ICON_COLORS)
+        self.panel = None  # 숨긴 채 띄워 둔 설정 창 프로세스
+        # 맥은 메뉴 막대를 누르면 메뉴가 뜨는 게 기본이라 메뉴만. 윈도우는 오른쪽 클릭도 같은 설정 창 — 메뉴와 창이
+        # 따로 있으면 한쪽에만 생기는 것(빗소리를 비·뇌우에서만 보이기 등)이 갈라졌음
+        if MAC:
+            self.tray = Tray(TRAY_CLASS, ICON_FILE, "날씨", self.menu, self.commands.put)
+        else:
+            self.tray = Tray(TRAY_CLASS, ICON_FILE, "날씨", None, self.commands.put, on_left=lambda: self.commands.put(PANEL))
+            self.start_panel()
+        self.build()
+        self.hear()
+        if not MAC:
+            threading.Thread(target=self.watch_monitors, args=(self.mons,), daemon=True).start()
+
+    # ── 판 ──
+    def build(self):
+        """모니터를 다시 읽어 판을 새로 만듦 — 켤 때, 모니터가 바뀌었을 때, 모드·켠 모니터·순서를 바꿨을 때. 날씨는
+        처음부터 다시 깔림(쌓인 눈 등). 부르기 전에 remember 로 지금 설정을 남김."""
+        for b in self.boards:
+            b.close()
+        self.mons, self.boards = overlay.monitors(), []
+        for pcs in layout(self.mons, self.mon):
+            s = {**self.top, **(self.mon["each"].get(pcs[0].id, {}) if self.mon["mode"] == "each" else {})}
+            self.boards.append(Weather(pcs, s["kind"], s["amount"], s["pet"], s, self.drag, self.visible))
+        if not any(p.id == self.focus for b in self.boards for p in b.pieces):
+            self.focus = self.boards[0].pieces[0].id
+
+    def focus_board(self):
+        return next(b for b in self.boards if any(p.id == self.focus for p in b.pieces))
+
+    def targets(self):
+        """종류·양·동물 명령을 받을 판 — 날씨 같이면 다, 아니면 설정 창이 보는 판."""
+        return self.boards if self.mon["sync"] else [self.focus_board()]
+
+    def remember(self):
+        """판들의 지금 설정을 남김 — top 은 설정 창이 보는 판 것, 각자 모드면 모니터마다도."""
+        def of(b):
+            return {"kind": b.kind, "amount": b.amount, "pet": list(b.pets), **b.tank}
+        self.top = of(self.focus_board())
+        if self.mon["mode"] == "each":
+            for b in self.boards:
+                self.mon["each"][b.pieces[0].id] = of(b)
+
+    def watch_monitors(self, seen):
+        """MONITORS_EVERY 초마다 모니터 목록을 봐서 바뀌면(꽂기·빼기·배치·해상도·작업 표시줄) 판을 다시 만들라고 함."""
+        while True:
+            time.sleep(MONITORS_EVERY)
+            now = overlay.monitors()
+            if now != seen:
+                seen = now
+                self.commands.put(REBUILD)
+
+    def monitor(self, word, *args):
+        """설정 창의 모니터 칸 한 줄(mon_line). 번호는 왼쪽부터 몇째 모니터."""
+        m, ids = self.mon, [x[0] for x in self.mons]
+        if word == "mode":
+            self.remember()
+            m["mode"] = args[0]
+            self.build()
+        elif word == "sync":
+            m["sync"] = bool(args[0])
+            src = self.focus_board()
+            for b in self.boards if m["sync"] else ():  # 켜면 설정 창이 보던 판의 날씨·동물을 다른 판에 그대로
+                if b is not src:
+                    b.kind, b.amount, b.tank = src.kind, src.amount, dict(src.tank)
+                    b.pets = {k: b.pets.get(k) or PET_CLASS[k](b.w) for k in PET_CLASS if k in src.pets}
+                    b.reset()
+        elif args[0] >= len(ids):  # 설정 창을 연 사이에 모니터가 빠짐
+            return
+        elif word == "focus":
+            if any(p.id == ids[args[0]] for b in self.boards for p in b.pieces):  # 끈 모니터는 판이 없음
+                self.focus = ids[args[0]]
+        elif word == "on":  # 지금 없는 모니터의 켬은 그대로 남김 — 다시 꽂으면 돌아옴
+            live, i = set(live_on(self.mons, m)), ids[args[0]]
+            live = live | {i} if args[1] else live - {i}
+            if not live:  # 하나는 켜 둠
+                return
+            self.remember()
+            m["on"] = [x for x in m["on"] if x not in ids] + [x for x in ids if x in live]
+            self.build()
+        elif word == "up":  # 잇는 순서에서 한 칸 왼쪽으로. 설정 창의 ↓ 는 다음 모니터의 up
+            order = ordered(self.mons, m)
+            k = order.index(ids[args[0]])
+            if k:
+                order[k - 1], order[k] = order[k], order[k - 1]
+            m["order"] = order + [x for x in m["order"] if x not in ids]
+            if m["mode"] == "join":
+                self.remember()
+                self.build()
+
+    def mon_state(self):
+        """설정 창 모니터 칸에 보낼 것. 번호는 왼쪽부터 몇째 모니터."""
+        ids, on = [x[0] for x in self.mons], live_on(self.mons, self.mon)
+        return {"mode": self.mon["mode"], "sync": self.mon["sync"], "focus": ids.index(self.focus),
+                "order": [ids.index(i) for i in ordered(self.mons, self.mon)],
+                "list": [{"label": monitor_label(i, self.mons), "on": x in on} for i, x in enumerate(ids)]}
+
+    # ── 트레이 ──
+    def menu(self):
+        b = self.focus_board()
+        return [*((label, cid, key == b.kind) for cid, (key, label) in KINDS.items()),
+                None,
+                ("양", [("%d%%" % p, cid, p == b.amount) for cid, p in AMOUNTS.items()]),
+                ("부드러움", [("%dfps" % n, cid, n == self.fps) for cid, n in FPS_IDS.items()]),
+                None,
+                ("동물", [*((PET_NAMES[a], cid, a in b.pets) for cid, a in PETS.items()),
+                          *(() if MAC else (None, ("집어서 옮기기", DRAG, self.drag)))]),
+                ("빗소리", [("비·뇌우에 켜기", SOUND, self.sound), None,
+                          *(("%d%%" % p, cid, p == self.volume) for cid, p in VOLUMES.items())]),
+                ("보이기", SHOW, self.visible),
+                ("로그인 시 실행" if MAC else "Windows 시작 시 실행", AUTOSTART, startup.is_on(RUN_NAME, __file__)),
+                None,
+                ("끝내기", EXIT, False)]
+
+    def handle(self, cid):
+        if cid == REBUILD:
+            self.remember()
+            self.build()
+            return
+        if isinstance(cid, tuple):  # 설정 창의 막대 값(끄는 동안에도 0.1초마다 옴)이나 모니터 칸
+            if cid[0] == "mon":
+                self.monitor(*cid[1:])
+                self.open_panel()  # 판·보는 판이 바뀌었으니 설정 창 값도 새로
+            elif cid[0] == "volume":
+                self.volume = cid[1]
+            else:
+                for b in self.targets():
+                    b.handle(cid)
+        elif cid == PANEL:
+            self.open_panel()
+            return
+        elif cid == AUTOSTART:
+            startup.toggle(RUN_NAME, __file__)
+            return
+        elif cid == EXIT:
+            self.tray.close()  # 트레이가 닫히면 None 이 와서 poll 이 끝냄
+            return
+        elif cid == SOUND:  # 소리는 poll 이 handle 다음에 hear 로 맞춤
+            self.sound = not self.sound
+        elif cid in VOLUMES:
+            self.volume = VOLUMES[cid]
+        elif cid in FPS_IDS:  # 움직임은 시간으로 셈해 빠르기는 그대로, 다시 깔 필요 없음
+            self.fps = FPS_IDS[cid]
+        elif cid in (DRAG, SHOW):  # 판마다 같은 값
+            if cid == DRAG:
+                self.drag = not self.drag and not MAC
+            else:
+                self.visible = not self.visible
+            for b in self.boards:
+                b.handle(cid)
+            if cid == SHOW:  # 보이기는 안 남김 — 켤 때는 늘 보임
+                return
+        elif cid in (*KINDS, *AMOUNTS, *PETS):
+            for b in self.targets():
+                b.handle(cid)
+        else:
+            return
+        self.save()
+
+    def save(self):
+        self.remember()
+        try:
+            SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+            SETTINGS.write_text(json.dumps({**self.top, "fps": self.fps, "drag": self.drag, "sound": self.sound,
+                                            "volume": self.volume, "monitors": self.mon}), encoding="utf-8")
+        except OSError:
+            pass  # 못 남겨도 지금 화면은 바뀌었으니 넘어감
+
+    def start_panel(self):
+        """그리는 루프가 tk 가 아니라서 설정 창은 따로 띄우고, 누른 것을 한 줄씩 받아 메뉴 명령처럼 처리함.
+        켤 때 숨긴 채 띄워 둠 — 누를 때마다 새로 띄우면 파이썬·tk 를 띄우느라 0.35–0.57초 걸렸음. 대신 54MB 를 늘 씀"""
+        me = [] if getattr(sys, "frozen", False) else [str(Path(__file__).resolve())]  # 릴리스 exe 는 스크립트 없이 자기 자신
+        self.panel = subprocess.Popen([sys.executable, *me, "--panel"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                      text=True, encoding="utf-8")
+        threading.Thread(target=self.read_panel, args=(self.panel,), daemon=True).start()
+
+    def open_panel(self):
+        """띄워 둔 설정 창에 지금 상태를 한 줄로 보내 보이게 함. 꺼져 있으면(끝내기 직전 등) 새로 띄움. 날씨 값은
+        설정 창이 보는 판 것."""
+        if not self.panel or self.panel.poll() is not None:
+            self.start_panel()
+        b = self.focus_board()
+        state = {"kind": b.kind, "amount": b.amount, "pet": list(b.pets), "show": self.visible,
+                 "auto": startup.is_on(RUN_NAME, __file__), "fps": self.fps, "tank": b.tank, "drag": self.drag,
+                 "sound": self.sound, "volume": self.volume, "mon": self.mon_state()}
+        ctypes.windll.user32.AllowSetForegroundWindow(-1)  # 방금 트레이를 누른 건 이 프로세스라 앞으로 올릴 권한을 넘김
+        try:
+            self.panel.stdin.write(json.dumps(state) + "\n")
+            self.panel.stdin.flush()
+        except OSError:
+            self.panel = None  # 막 꺼진 참 — 다음에 누르면 새로 띄움
+
+    def read_panel(self, proc):
+        for line in proc.stdout:
+            word, _, arg = line.partition(" ")
+            if word == "mon":
+                if mon_line(arg):
+                    self.commands.put(mon_line(arg))
+            elif arg.strip().isdigit() and (parse_amount(int(arg)) is not None if word in ("amount", "volume") else
+                                            word in TANK and parse_tank(word, int(arg)) is not None):
+                self.commands.put((word, int(arg)))
+            elif word.strip().isdigit() and int(word) in (*KINDS, *FPS_IDS, *PETS, DRAG, SOUND, SHOW, AUTOSTART, EXIT):
+                self.commands.put(int(word))
+
+    def poll(self):
+        """트레이에서 온 명령을 처리. None 이면 트레이가 닫힌 것. 끝내야 하면 True."""
+        try:
+            while True:
+                cid = self.commands.get_nowait()
+                if cid is None:
+                    return True
+                self.handle(cid)
+                self.hear()
+        except queue.Empty:
+            return False
+
+    def hear(self):
+        """빗소리를 판들의 종류·보이기·설정에 맞춤 — 한 판이라도 비가 오면. 같으면 아무것도 안 함, 명령마다 불러도 됨."""
+        kind = next((b.kind for b in self.boards if b.kind in SOUNDY), None)
+        self.rain_player.set(hearing(kind, self.visible, self.sound, self.volume))
+
+    def step(self):
+        return any([b.step() for b in self.boards])  # 판마다 다 그림 — any 가 첫 True 에서 멈추지 않게 목록으로
+
     def run(self):
         if MAC:  # 메뉴 막대 메뉴를 연 동안엔 아래 루프가 pump 에 묶이므로 런 루프 타이머가 대신 그림
             from cocoa import while_tracking
@@ -4158,7 +4404,7 @@ class Weather:
         nxt = time.perf_counter()
         while True:
             period = 1 / self.fps  # 메뉴에서 바꾸면 다음 프레임부터
-            self.surface.pump()
+            self.boards[0].surface.pump()  # 이 스레드의 창 메시지를 다 꺼냄 — 다른 판의 창 것도
             if self.poll():
                 break
             if not self.step():
@@ -4171,7 +4417,8 @@ class Weather:
                 nxt, delay = time.perf_counter(), 0
             time.sleep(max(0.0, delay))
         self.rain_player.close()
-        self.surface.close()
+        for b in self.boards:
+            b.close()
 
 
 def check():
@@ -4198,7 +4445,8 @@ def check():
     Weather.splash(fake, 25, 2)
     assert fake.crowns[-1][2] == 40 - 12 and fake.splashes[-1][1] == 28 - fake.droplet[0], "틀 위에 떨어지면 틀 윗변에서 튐"
     big = lambda **kw: types.SimpleNamespace(**{"surface": types.SimpleNamespace(pixels=bytearray(200 * 200 * 4)),
-                                                "stride": 800, "w": 200, "h": 200, "amount": 100, "base": [0] * 200, **kw})
+                                                "stride": 800, "w": 200, "h": 200, "amount": 100, "base": [0] * 200,
+                                                "scale": 1.0, "span": None, "sun_x": None, "tall": None, **kw})
     hf = big(pile=Pile(200), pets={"cat": pet.Cat(200, random.Random(2)), "rabbit": pet.Rabbit(200, random.Random(2))},
              pet_startled={}, chips=[])
     hf.hail_sprites, hf.chip = hail_set(800)
@@ -5328,22 +5576,31 @@ def check():
     a.kind = "snow"
     a.reset()
     if not MAC:  # 전체 화면이면 틀을 안 읽고 바닥 0, 바뀌면 FRAMES_EVERY 를 안 기다리고 바로 다시 냄
-        states, got, a.left, a.top = iter([False, False, True, True, False]), [], 0, 0
+        mon = (0, 0, aw, ah)
+        states, got, a.pieces = iter([None, None, mon, mon, None]), [], [Piece("m", 0, 0, aw, ah, rise, True)]
 
         def nap(_):
             got.append(a.next_base)
             a.next_base = None
             if len(got) == 5:
                 raise StopIteration
-        real = taskbar.fullscreen_app, taskbar.frames, time.sleep
-        taskbar.fullscreen_app, taskbar.frames, time.sleep = lambda: next(states), lambda: [(100, ah - rise, 400)], nap
+        real = taskbar.fullscreen_monitor, taskbar.bar_on, taskbar.frames, time.sleep
+        taskbar.fullscreen_monitor = lambda: next(states)
+        taskbar.bar_on = lambda rect: 7 if rect == mon else None  # 그 모니터의 작업 표시줄 창
+        taskbar.frames, time.sleep = lambda bar: [(100, ah - rise, 400)] if bar == 7 else [], nap
         try:
             Weather.watch_frames(a)
         except StopIteration:
             pass
         finally:
-            taskbar.fullscreen_app, taskbar.frames, time.sleep = real
+            taskbar.fullscreen_monitor, taskbar.bar_on, taskbar.frames, time.sleep = real
         assert got == [up, None, [0] * aw, None, up], ("전체 화면을 오가면 바로 바닥을 다시 냄", got)
+        two = [Piece("l", -300, 0, 300, 200, 0, False), Piece("r", 0, 0, 200, 220, 20, True)]  # 왼쪽은 작업 표시줄 없음
+        full = lambda p: [(10, 200, 50)] if p.id == "r" else None
+        assert board_floor(two, None, full) == [0] * 300 + [0] * 10 + [20] * 40 + [0] * 150, "조각마다 제 작업 표시줄 틀"
+        assert board_floor(two, (0, 0, 200, 220), full) == [0] * 500, "전체 화면 앱이 뜬 모니터 조각만 틀이 없음"
+        assert board_floor(two, (-300, 0, 0, 200), full) == board_floor(two, None, full), "다른 모니터가 전체 화면이면 그대로"
+        assert board_floor(two, None, lambda p: None) == [0] * 300 + [20] * 200, "틀을 못 읽으면 띠 윗변 전체"
     assert parse_amount("many") == 100 and parse_amount(0) == 0 and parse_amount(35) == 35
     assert all(parse_amount(a) is None for a in (101, -1, True, "x", [1], None, 2.5))
     assert amount_arg("normal") == 50 and amount_arg("7") == 7
@@ -5354,8 +5611,9 @@ def check():
     assert max(FPS_IDS.values()) == 120, "180 은 뺐음"
     assert list(PETS.values()) == list(PET_CLASS) == list(PET_NAMES)
     check_settings()
+    check_monitors()
     from types import SimpleNamespace
-    z = SimpleNamespace(pets={}, w=300, save=lambda: None)
+    z = SimpleNamespace(pets={}, w=300)
     Weather.handle(z, 24)
     dog = z.pets["dog"]
     Weather.handle(z, 22)
@@ -5363,10 +5621,14 @@ def check():
     Weather.handle(z, 24)
     assert list(z.pets) == ["cat"], "다시 누르면 꺼짐"
     q = SimpleNamespace(commands=queue.Queue())
-    Weather.read_panel(q, SimpleNamespace(stdout=["amount 30\n", "amount x\n", "amount 150\n", "fish 0\n", "rays 101\n",
-                                                        "fish %d\n" % (FISH_MAX + 1), "bubbles x\n", "fishy 3\n", "2\n",
-                                                        "42\n", "43\n", "23\n", "77\n", "27\n", "hi\n"]))
-    assert list(q.commands.queue) == [("amount", 30), ("fish", 0), 2, 42, 23, 27], "설정 창이 보낸 줄 중 아는 것만(43 은 뺀 180)"
+    App.read_panel(q, SimpleNamespace(stdout=["amount 30\n", "amount x\n", "amount 150\n", "fish 0\n", "rays 101\n",
+                                              "fish %d\n" % (FISH_MAX + 1), "bubbles x\n", "fishy 3\n", "2\n",
+                                              "42\n", "43\n", "23\n", "77\n", "27\n", "hi\n", "mon on 1 1\n", "mon mode join\n",
+                                              "mon mode x\n", "mon on 1\n", "mon up -1\n", "mon sync 2\n", "mon focus 0\n",
+                                              "mon\n"]))
+    assert list(q.commands.queue) == [("amount", 30), ("fish", 0), 2, 42, 23, 27, ("mon", "on", 1, 1),
+                                      ("mon", "mode", "join"), ("mon", "focus", 0)], \
+        "설정 창이 보낸 줄 중 아는 것만(43 은 뺀 180)"
     if not MAC:  # 트레이 아이콘 왼쪽·오른쪽 클릭 — 메뉴 없이 만들면(weather) 둘 다 설정 창, 메뉴가 있으면(다른 도구) 오른쪽은 메뉴
         import tray
         for menu, want in ((None, ["창", "창"]), (lambda: [], ["창", "메뉴"])):
@@ -5377,15 +5639,15 @@ def check():
             assert got == want, (want, got)
         assert tray.icon_rect("PlayroomNoSuchTray") is None, "트레이 창이 없으면 설정 창은 누른 자리 위로"
     hz = SimpleNamespace(kind="snow", amount=50, tank={k: TANK[k][1] for k in TANK}, done=[])
-    hz.reset, hz.retune, hz.save = [lambda w=w: hz.done.append(w) for w in ("reset", "retune", "save")]
+    hz.reset, hz.retune = [lambda w=w: hz.done.append(w) for w in ("reset", "retune")]
     Weather.handle(hz, ("fish", 0))
-    assert hz.tank["fish"] == 0 and hz.amount == 50 and hz.done == ["save"], "어항이 아니면 어항 막대는 남기기만"
+    assert hz.tank["fish"] == 0 and hz.amount == 50 and hz.done == [], "어항이 아니면 어항 막대는 남기기만"
     Weather.handle(hz, ("amount", 40))
-    assert hz.amount == 40 and hz.done == ["save", "retune", "save"], "양은 다시 깔지 않고 수만 — 쌓인 눈이 안 날아감"
+    assert hz.amount == 40 and hz.done == ["retune"], "양은 다시 깔지 않고 수만 — 쌓인 눈이 안 날아감"
     hz.kind, hz.done = "aquarium", []
     Weather.handle(hz, ("rays", 80))
     Weather.handle(hz, ("amount", 30))
-    assert hz.tank == {"fish": 0, "bubbles": 50, "rays": 80} and hz.amount == 30 and hz.done == ["retune", "save"] * 2, \
+    assert hz.tank == {"fish": 0, "bubbles": 50, "rays": 80} and hz.amount == 30 and hz.done == ["retune"] * 2, \
         "어항이면 수만 맞추고, 양은 양에"
 
     # 동물 집어 옮기기 (커서·단추는 흉내): 커서가 동물 위일 때만 클릭을 받고, 누르면 집어 커서를 따라가고, 떼면 떨어짐
@@ -5463,7 +5725,7 @@ def check():
                                          ReleaseCapture=lambda: calls.append("release"),
                                          DefWindowProcW=lambda *a: calls.append("default") or 0)
         try:
-            s = SimpleNamespace(hwnd=1, on_mouse=lambda down: calls.append(down))
+            s = SimpleNamespace(hwnd=1, _panes=[[1]], on_mouse=lambda down: calls.append(down))
             surface.Surface.catch(s, True)
             surface.Surface.catch(s, False)
             for m in (0x200, surface.WM_LBUTTONDOWN, surface.WM_LBUTTONUP, surface.WM_CAPTURECHANGED):
@@ -5472,6 +5734,10 @@ def check():
             surface.user32 = real
         assert calls == [("ex", surface.EX_STYLE & ~0x20), ("ex", surface.EX_STYLE), "default", "capture", True,
                          "release", False, False], ("받을 땐 클릭 통과 비트만 빼고, 누르면 붙잡고, 떼면 놓음", calls)
+        panes = [(0, 0, 0, 0, 100, 50), (100, 20, 100, 0, 80, 30)]  # 왼쪽 창은 버퍼 맨 위, 오른쪽 창은 20px 내려 놓음
+        for at, want in (((10, 10), (10, 10)), ((110, 25), (110, 5)), ((-5, 10), (-5, 10)), ((300, 25), (300, 5)),
+                         ((150, 5), (150, -15))):
+            assert surface.to_buffer(*at, panes) == want, (at, "든 창, 없으면 가장 가까운 창 기준", surface.to_buffer(*at, panes))
     check_sound()
     check_faucet()
     print("자체 점검 통과")
@@ -5752,10 +6018,22 @@ def check_settings():
         for saved, want in ((180, 120), (120, 120), (90, None)):
             SETTINGS.write_text(json.dumps({"fps": saved}), encoding="utf-8")
             assert load_settings().get("fps") == want, (saved, "0.2.6 까지의 180 은 120 으로, 모르는 값은 버림")
-        Weather.save(types.SimpleNamespace(kind="aquarium", amount=40, pets={"cat": None}, fps=60,
-                                           tank={"fish": 10, "bubbles": 0, "rays": 90}, drag=True, sound=True, volume=30))
+        mon = {"mode": "join", "on": ["\\\\.\\DISPLAY2", "\\\\.\\DISPLAY1"], "order": ["\\\\.\\DISPLAY2"], "sync": True,
+               "each": {"\\\\.\\DISPLAY1": {"kind": "snow", "amount": 20, "pet": [], "fish": 3, "bubbles": 50, "rays": 50}}}
+        App.save(types.SimpleNamespace(remember=lambda: None, fps=60, drag=True, sound=True, volume=30, mon=mon,
+                                       top={"kind": "aquarium", "amount": 40, "pet": ["cat"], "fish": 10, "bubbles": 0,
+                                            "rays": 90}))
         assert load_settings() == {"kind": "aquarium", "amount": 40, "pet": ["cat"], "fps": 60, "fish": 10, "bubbles": 0,
-                                   "rays": 90, "drag": True, "sound": True, "volume": 30}, "남긴 그대로 다시 읽힘"
+                                   "rays": 90, "drag": True, "sound": True, "volume": 30, "monitors": mon}, "남긴 그대로 다시 읽힘"
+        SETTINGS.write_text(json.dumps({"kind": "rain"}), encoding="utf-8")
+        assert "monitors" not in load_settings(), "예전 파일엔 모니터 칸이 없음 — App 이 각자·주 모니터 하나로 시작"
+        for saved, want in (({"mode": "x"}, None), ([], None), ({"mode": "each"}, {"mode": "each", "on": [], "order": [],
+                                                                                 "sync": False, "each": {}}),
+                            ({"mode": "each", "on": "a", "order": [1, "b"], "sync": 1, "each": {"a": {"kind": "x", "amount": 30},
+                                                                                              "b": 3}},
+                             {"mode": "each", "on": [], "order": ["b"], "sync": False, "each": {"a": {"amount": 30}}})):
+            SETTINGS.write_text(json.dumps({"monitors": saved}), encoding="utf-8")
+            assert load_settings().get("monitors") == want, (saved, "모드를 모르면 통째로, 나머지는 이상한 칸만 버림")
         for saved, want in ((True, True), (False, False), (1, None), ("yes", None)):
             SETTINGS.write_text(json.dumps({"drag": saved, "sound": saved}), encoding="utf-8")
             assert load_settings().get("drag") == load_settings().get("sound") == want, (saved, "집기·빗소리는 참·거짓만")
@@ -5765,6 +6043,52 @@ def check_settings():
     finally:
         shutil.rmtree(SETTINGS.parent, ignore_errors=True)
         SETTINGS = real
+
+
+def check_monitors():
+    """모니터 목록 → 판 조각: 1px 꼼수·작업 표시줄 띠·켠 모니터·잇는 순서·밑변 맞춤, 설정 창 모니터 칸."""
+    A = ("A", (0, 0, 1920, 1080), (0, 0, 1920, 1040), True)  # 작업 표시줄이 밑에
+    B = ("B", (1920, 0, 3840, 1080), (1920, 0, 3840, 1080), False)  # 작업 표시줄 없음
+    C = ("C", (-1280, 200, 0, 1224), (-1280, 240, 0, 1224), False)  # 작업 표시줄이 위에, 밑변이 더 높음
+    assert piece(A) == Piece("A", 0, 1, 1920, 1079, 40, True), "밑 작업 표시줄 띠까지 덮고 위 1px 은 비움"
+    assert piece(B) == Piece("B", 1920, 1, 1920, 1079, 0, False), "작업 표시줄이 없어도 위 1px"
+    assert piece(C) == Piece("C", -1280, 240, 1280, 984, 0, False), "위 작업 표시줄이면 모니터를 꽉 안 채워 1px 안 뺌"
+    each = lambda on, order=(): {"mode": "each", "on": on, "order": list(order), "sync": False, "each": {}}
+    join = lambda on, order=(): {**each(on, order), "mode": "join"}
+    mons = [C, A, B]
+    assert layout(mons, each([])) == [[piece(A)]], "예전 설정(켠 것 없음)은 주 모니터 하나 — 예전과 같음"
+    assert layout(mons, each(["B", "X", "C"])) == [[piece(C)], [piece(B)]], "켠 것만 왼쪽부터, 없는 것은 건너뜀"
+    assert layout(mons, each(["X"])) == layout(mons, join(["X"])) == [[piece(A)]], "켠 게 다 빠지면 주 모니터"
+    assert layout(mons, join(["A", "B", "C"])) == [[piece(C), piece(A), piece(B)]], "잇는 순서 기본은 실제 배치 왼쪽부터"
+    assert ordered(mons, join([], ["B", "X", "B", "A"])) == ["B", "A", "C"], "저장된 순서 중 있는 것, 그 뒤 나머지 왼쪽부터"
+    assert layout(mons, join(["A", "B"], ["B", "A"])) == [[piece(B), piece(A)]], "거꾸로 이으면 거꾸로"
+    assert canvas([piece(A), piece(B)]) == (3840, 1079, [(0, 0), (1920, 0)]), "같은 크기 둘"
+    assert canvas([piece(C), piece(A)]) == (3200, 1079, [(0, 95), (1280, 0)]), "밑변을 맞춤 — 낮은 조각은 그만큼 내려감"
+    assert monitor_label(0, mons) == "1 · 왼쪽 · 1280×1024" and monitor_label(1, mons) == "2 · 가운데 · 1920×1080 · 주"
+    assert monitor_label(2, mons) == "3 · 오른쪽 · 1920×1080"
+    # App.monitor·mon_state 는 창 없이: build 는 판 대신 조각만
+    app = types.SimpleNamespace(mons=mons, mon=each(["X", "A"], ["X"]), focus="A", log=[])
+    app.remember = lambda: app.log.append("remember")
+    app.build = lambda: setattr(app, "boards", [types.SimpleNamespace(pieces=p) for p in layout(app.mons, app.mon)])
+    app.build()
+    App.monitor(app, "on", 1, 0)
+    assert app.mon["on"] == ["X", "A"] and not app.log, "마지막 켠 모니터는 못 끔"
+    App.monitor(app, "on", 2, 1)
+    assert app.mon["on"] == ["X", "A", "B"] and len(app.boards) == 2, "없는 모니터의 켬은 남기고 켬"
+    App.monitor(app, "focus", 0)
+    assert app.focus == "A", "끈 모니터는 고칠 판이 없어 안 옮김"
+    App.monitor(app, "focus", 2)
+    App.monitor(app, "on", 7, 1)
+    assert app.focus == "B" and app.mon["on"] == ["X", "A", "B"], "설정 창을 연 사이 빠진 번호는 무시"
+    App.monitor(app, "up", 2)
+    assert app.mon["order"] == ["C", "B", "A", "X"] and len(app.boards) == 2, "각자 모드에선 순서만 남기고 판은 그대로"
+    App.monitor(app, "up", 0)
+    assert app.mon["order"] == ["C", "B", "A", "X"], "맨 왼쪽은 더 못 감"
+    App.monitor(app, "mode", "join")
+    assert [p.id for p in app.boards[0].pieces] == ["B", "A"] and app.log == ["remember"] * 2, "이으면 켠 것만 그 순서로"
+    assert App.mon_state(app) == {"mode": "join", "sync": False, "focus": 2, "order": [0, 2, 1], "list": [
+        {"label": "1 · 왼쪽 · 1280×1024", "on": False}, {"label": "2 · 가운데 · 1920×1080 · 주", "on": True},
+        {"label": "3 · 오른쪽 · 1920×1080", "on": True}]}
 
 
 def check_sound():
@@ -5783,13 +6107,14 @@ def check_sound():
         pl.set(v)
     pl.close()
     assert played == [50, 30, None, 70, None], ("같은 값은 다시 안 틀고, 끄면 멈춤", played)
-    sw = types.SimpleNamespace(kind="rain", visible=True, sound=False, volume=VOLUME, commands=queue.Queue(),
-                               save=lambda: None, rain_player=pl)
-    sw.handle, sw.hear = lambda cid: Weather.handle(sw, cid), lambda: Weather.hear(sw)
+    sw = types.SimpleNamespace(boards=[types.SimpleNamespace(kind="snow"), types.SimpleNamespace(kind="rain")],
+                               visible=True, sound=False, volume=VOLUME, commands=queue.Queue(), save=lambda: None,
+                               rain_player=pl)
+    sw.handle, sw.hear = lambda cid: App.handle(sw, cid), lambda: App.hear(sw)
     played.clear()
     for cid in (SOUND, ("volume", 20), min(VOLUMES), SOUND):
         sw.commands.put(cid)
-    assert not Weather.poll(sw) and played == [VOLUME, 20, 10, None], ("켜기·막대·메뉴 칸·끄기가 바로 들림", played)
+    assert not App.poll(sw) and played == [VOLUME, 20, 10, None], ("켜기·막대·메뉴 칸·끄기가 바로 들림 — 판 하나만 비여도", played)
     out = [float(i) for i in range(30)]
     loop = rain_sound.seam(out, 20, 10)
     assert len(loop) == 20 and loop[0] == out[20] and abs(loop[5] - (5 + 25) * 0.5 ** 0.5) < 1e-9 \
@@ -5930,8 +6255,57 @@ def panel():
         loads.append(lambda s, v=keep[-1], key=key: v.set(s.get(key, False)))
         boxes[key] = ttk.Checkbutton(f, text=label, variable=keep[-1], command=lambda cid=cid: send(cid))
         boxes[key].grid(row=r, column=0, columnspan=4, sticky="w", pady=px(1))
+
+    # 모니터 칸 — 모니터가 둘 이상일 때만. 판이 바뀔 수 있어 보일 때마다 줄을 새로 만듦. 번호는 왼쪽부터 몇째 모니터.
+    # 각자: 모니터마다 켜기 · 위 날씨 칸이 고치는 모니터 고르기 · 날씨 같이. 이어서: 잇는 순서대로 켜기 · ↑↓
+    mon_box, mon_vars = ttk.Frame(f), []  # tk 변수는 붙들어 둬야 체크 표시가 안 풀림
+
+    def load_mons(s):
+        m = s.get("mon")
+        for wd in mon_box.winfo_children():
+            wd.destroy()
+        mon_vars.clear()
+        if not m or len(m["list"]) < 2:
+            mon_box.grid_remove()
+            return
+        mon_box.grid()
+        mode, focus = tk.StringVar(value=m["mode"]), tk.IntVar(value=m["focus"])
+        mon_vars.extend((mode, focus))
+        head = ttk.Frame(mon_box)
+        head.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, px(4)))
+        ttk.Label(head, text="모니터").pack(side="left", padx=(0, px(8)))
+        for v, label in (("each", "각자"), ("join", "이어서")):
+            ttk.Radiobutton(head, text=label, value=v, variable=mode, style="Toolbutton",
+                            command=lambda v=v: send("mon", "mode", v)).pack(side="left", padx=px(2))
+        join = m["mode"] == "join"
+        rows = m["order"] if join else list(range(len(m["list"])))
+        for r, i in enumerate(rows, start=1):
+            on = tk.BooleanVar(value=m["list"][i]["on"])
+            mon_vars.append(on)
+            ttk.Checkbutton(mon_box, text=m["list"][i]["label"], variable=on,
+                            command=lambda i=i, on=on: send("mon", "on", i, int(on.get()))).grid(
+                row=r, column=0, sticky="w", pady=px(1))
+            if join:  # ↓ 는 다음 모니터를 한 칸 앞으로
+                up = ttk.Button(mon_box, text="↑", width=3, command=lambda i=i: send("mon", "up", i))
+                down = ttk.Button(mon_box, text="↓", width=3, command=lambda r=r: send("mon", "up", rows[r]))
+                up.grid(row=r, column=1, padx=px(2))
+                down.grid(row=r, column=2, padx=px(2))
+                up.state(["disabled"] if r == 1 else ["!disabled"])
+                down.state(["disabled"] if r == len(rows) else ["!disabled"])
+            else:
+                pick = ttk.Radiobutton(mon_box, text="고치기", value=i, variable=focus, style="Toolbutton",
+                                       command=lambda i=i: send("mon", "focus", i))
+                pick.grid(row=r, column=1, padx=px(2))
+                pick.state(["!disabled"] if m["list"][i]["on"] else ["disabled"])
+        if not join:
+            sync = tk.BooleanVar(value=m["sync"])
+            mon_vars.append(sync)
+            ttk.Checkbutton(mon_box, text="날씨 같이", variable=sync, command=lambda: send("mon", "sync", int(sync.get()))
+                            ).grid(row=len(rows) + 1, column=0, sticky="w", pady=px(1))
+    loads.append(load_mons)
+    mon_box.grid(row=below + 7, column=0, columnspan=4, sticky="ew", pady=(px(8), 0))
     ttk.Button(f, text="끝내기", command=lambda: (send(EXIT), root.destroy())).grid(
-        row=below + 7, column=3, sticky="e", pady=(px(10), 0))
+        row=below + 8, column=3, sticky="e", pady=(px(10), 0))
 
     f.columnconfigure((0, 1, 2, 3), uniform="kind")
     u = ctypes.windll.user32
@@ -6064,8 +6438,7 @@ def main():
         startup.follow(RUN_NAME, __file__)
     overlay.claim(PID_FILE, __file__)
     try:
-        Weather(args.kind, args.amount, saved.get("pet", []), saved.get("fps", FPS), saved,
-                saved.get("drag", False), saved.get("sound", False), saved.get("volume", VOLUME)).run()
+        App(args.kind, args.amount, saved).run()
     finally:
         if not MAC:
             ctypes.windll.winmm.timeEndPeriod(1)

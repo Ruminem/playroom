@@ -48,3 +48,9 @@ def work_area():
     frame, vis = main_screen()
     top = int(frame.s.h - vis.o.y - vis.s.h)
     return 0, top, int(frame.s.w), int(frame.s.h)
+
+
+def monitors():
+    """윈도우판과 같은 꼴. ponytail: 주 화면 하나만 — 맥 다중 모니터는 NSScreen.screens 로 늘리면 됨"""
+    frame, _ = main_screen()
+    return [("main", (0, 0, int(frame.s.w), int(frame.s.h)), work_area(), True)]
