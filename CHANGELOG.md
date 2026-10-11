@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.18 — 2026-10-11
+
+- weather: the dog and rabbit are redrawn so they read as a dog and a rabbit. The dog has a big round head, long floppy ears and a snout sticking out with a black nose (before, with no snout, it looked like a goat or a cat standing). The rabbit crouches low with long ears laid back, a white cotton tail and big hind feet (before, it looked like a pig), and when it stops it twitches an ear instead of its nose
+
+**한국어**
+
+- weather: 강아지와 토끼를 다시 그려 강아지·토끼로 보이게 함. 강아지는 큰 둥근 머리, 늘어진 긴 귀, 앞으로 내민 주둥이 끝의 까만 코(전에는 주둥이가 없어 서 있으면 염소나 고양이처럼 보였음). 토끼는 낮게 엎드린 몸에 뒤로 눕힌 긴 귀, 흰 솜꼬리, 큰 뒷발(전에는 돼지처럼 보였음). 멈춰 서면 코 대신 귀를 쫑긋함
+
 ## 0.2.17 — 2026-10-11
 
 - weather: in **Joined** mode, the buttons that set the monitor order now show ← → instead of ↑ ↓, matching the left / right they move a monitor in the wide board
