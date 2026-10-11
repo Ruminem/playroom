@@ -4253,7 +4253,7 @@ class App:
             self.remember()
             m["on"] = [x for x in m["on"] if x not in ids] + [x for x in ids if x in live]
             self.build()
-        elif word == "up":  # 잇는 순서에서 한 칸 왼쪽으로. 설정 창의 ↓ 는 다음 모니터의 up
+        elif word == "up":  # 잇는 순서에서 한 칸 왼쪽으로. 설정 창의 → 는 다음 모니터의 up
             order = ordered(self.mons, m)
             k = order.index(ids[args[0]])
             if k:
@@ -6257,7 +6257,7 @@ def panel():
         boxes[key].grid(row=r, column=0, columnspan=4, sticky="w", pady=px(1))
 
     # 모니터 칸 — 모니터가 둘 이상일 때만. 판이 바뀔 수 있어 보일 때마다 줄을 새로 만듦. 번호는 왼쪽부터 몇째 모니터.
-    # 각자: 모니터마다 켜기 · 위 날씨 칸이 고치는 모니터 고르기 · 날씨 같이. 이어서: 잇는 순서대로 켜기 · ↑↓
+    # 각자: 모니터마다 켜기 · 위 날씨 칸이 고치는 모니터 고르기 · 날씨 같이. 이어서: 잇는 순서대로 켜기 · ← →
     mon_box, mon_vars = ttk.Frame(f), []  # tk 변수는 붙들어 둬야 체크 표시가 안 풀림
 
     def load_mons(s):
@@ -6285,9 +6285,9 @@ def panel():
             ttk.Checkbutton(mon_box, text=m["list"][i]["label"], variable=on,
                             command=lambda i=i, on=on: send("mon", "on", i, int(on.get()))).grid(
                 row=r, column=0, sticky="w", pady=px(1))
-            if join:  # ↓ 는 다음 모니터를 한 칸 앞으로
-                up = ttk.Button(mon_box, text="↑", width=3, command=lambda i=i: send("mon", "up", i))
-                down = ttk.Button(mon_box, text="↓", width=3, command=lambda r=r: send("mon", "up", rows[r]))
+            if join:  # → 는 다음 모니터를 한 칸 앞으로. 줄은 위아래지만 판에서는 왼쪽·오른쪽이라 ← →
+                up = ttk.Button(mon_box, text="←", width=3, command=lambda i=i: send("mon", "up", i))
+                down = ttk.Button(mon_box, text="→", width=3, command=lambda r=r: send("mon", "up", rows[r]))
                 up.grid(row=r, column=1, padx=px(2))
                 down.grid(row=r, column=2, padx=px(2))
                 up.state(["disabled"] if r == 1 else ["!disabled"])

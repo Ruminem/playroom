@@ -27,7 +27,7 @@ Double-click [weather.bat](weather.bat) to start or stop it. If its files change
 With more than one monitor the panel gets a **Monitors** row with a box per monitor (numbered from the left) to turn the weather on or off there, and two modes:
 
 - **Each** (the default) runs a separate board on every ticked monitor. Kind, amount, the aquarium sliders and the animals are set per monitor — **Edit** picks the monitor the panel shows and changes — while smoothness, rain sound, picking up animals and showing apply to all of them. **Same weather** copies the monitor being edited to the others and keeps them in step, animals included (one of each per monitor)
-- **Joined** strings the ticked monitors into one wide board, in the order set with ↑ ↓ (left to right as they are arranged, by default). Their bottoms line up, so snow piles along one floor and animals walk across from one monitor to the next; above a shorter monitor that part of the board is simply not shown. The sun, the branch, the light rays and the size of the fog and aurora patterns follow the tallest monitor, and the number of flakes, drops, fish and so on grows with the total area
+- **Joined** strings the ticked monitors into one wide board, in the order set with ← → (left to right as they are arranged, by default). Their bottoms line up, so snow piles along one floor and animals walk across from one monitor to the next; above a shorter monitor that part of the board is simply not shown. The sun, the branch, the light rays and the size of the fog and aurora patterns follow the tallest monitor, and the number of flakes, drops, fish and so on grows with the total area
 
 Monitors are checked every two seconds: plugging one in or out, rearranging them, changing the resolution or moving a taskbar rebuilds the boards, and the weather starts over. A ticked monitor that is unplugged comes back when it is plugged in again, and if none of the ticked ones is there the primary monitor is used. A settings file from before this starts as it did then, on the primary monitor only.
 
@@ -105,7 +105,7 @@ PIP 영상이든 지금 타이핑하는 앱이든 모든 창 위로 눈·우박�
 모니터가 둘 이상이면 설정 창에 **모니터** 칸이 생김. 모니터마다(왼쪽부터 번호) 거기에 날씨를 켜고 끄는 상자가 있고, 모드가 둘임.
 
 - **각자**(기본)는 켠 모니터마다 판을 따로 돌림. 종류·양·어항 막대·동물은 모니터마다 정하고 — **고치기** 로 설정 창이 보여 주고 바꿀 모니터를 고름 — 부드러움·빗소리·동물 집기·보이기는 모든 모니터에 같이 적용됨. **날씨 같이** 를 켜면 고치는 모니터 것을 다른 모니터에 그대로 옮기고 계속 같이 움직임. 동물도 같이 옮겨 가서 모니터마다 한 마리씩 있음
-- **이어서**는 켠 모니터를 ↑ ↓ 로 정한 순서(기본은 실제 배치 왼쪽부터)로 이어 넓은 판 하나로 만듦. 밑변을 맞춰서 눈은 바닥 한 줄을 따라 쌓이고 동물은 이 모니터에서 다음 모니터로 걸어 넘어감. 키가 작은 모니터 위쪽은 판에서 그 부분이 안 보일 뿐임. 해·가지·빛줄기와 안개·오로라 무늬 크기는 제일 높은 모니터에 맞추고, 눈송이·빗방울·물고기 같은 수는 넓이를 합친 만큼 늘어남
+- **이어서**는 켠 모니터를 ← → 로 정한 순서(기본은 실제 배치 왼쪽부터)로 이어 넓은 판 하나로 만듦. 밑변을 맞춰서 눈은 바닥 한 줄을 따라 쌓이고 동물은 이 모니터에서 다음 모니터로 걸어 넘어감. 키가 작은 모니터 위쪽은 판에서 그 부분이 안 보일 뿐임. 해·가지·빛줄기와 안개·오로라 무늬 크기는 제일 높은 모니터에 맞추고, 눈송이·빗방울·물고기 같은 수는 넓이를 합친 만큼 늘어남
 
 모니터는 2초마다 봄. 모니터를 꽂거나 빼거나 배치를 바꾸거나 해상도를 바꾸거나 작업 표시줄을 옮기면 판을 다시 만들고, 날씨는 처음부터 다시 깔림. 켜 둔 모니터를 빼면 다시 꽂을 때 돌아오고, 켜 둔 모니터가 하나도 없으면 주 모니터에 띄움. 이 기능 전의 설정 파일이면 예전처럼 주 모니터 하나로 시작함.
 
