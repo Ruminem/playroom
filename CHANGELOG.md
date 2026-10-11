@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.15 — 2026-10-11
+
+- weather: works on more than one monitor. With two or more, the settings panel gets a **Monitors** row to turn the weather on or off per monitor and pick a mode. **Each** (the default) runs separate weather on every monitor — kind, amount, aquarium sliders and animals are set per monitor, and **Same weather** keeps them all alike. **Joined** strings the monitors into one wide scene in the order you set (left to right by default), bottoms lined up, so snow piles along one floor and animals walk from one monitor to the next. Plugging monitors in or out, rearranging them or changing resolution is picked up within two seconds. Existing settings start as before, on the primary monitor only. Two monitors cost about twice the CPU of one
+- layers: windows that keep their "always on top" flag but have sunk under ordinary windows (weather, usage-hud and sysmon stuck under browser windows) are raised again
+- layers: a program with only one window of its kind is now matched by name alone, not by its title, so a yt-pip window still fits its place in the order after it plays a different video. Remove and re-add an existing yt-pip entry once to pick this up
+
+**한국어**
+
+- weather: 모니터 여럿에서 돎. 모니터가 둘 이상이면 설정 창에 **모니터** 칸이 생겨 모니터마다 날씨를 켜고 끄고 모드를 고름. **각자**(기본)는 모니터마다 날씨를 따로 돌림 — 종류·양·어항 막대·동물을 모니터마다 정하고, **날씨 같이** 를 켜면 다 같게 움직임. **이어서**는 모니터를 정한 순서(기본은 왼쪽부터)로 밑변을 맞춰 넓은 화면 하나로 이어서, 눈이 한 바닥에 쌓이고 동물이 이 모니터에서 다음 모니터로 걸어감. 모니터를 꽂거나 빼거나 배치·해상도를 바꾸면 2초 안에 따라감. 원래 쓰던 설정은 예전처럼 주 모니터 하나로 시작함. 모니터 둘이면 CPU 를 하나일 때의 두 배쯤 씀
+- layers: '항상 위' 표시는 켠 채 보통 창 밑에 깔린 창(브라우저 밑에 남은 weather·usage-hud·sysmon)을 다시 올림
+- layers: 같은 종류 창이 하나뿐인 프로그램은 제목 없이 이름으로만 맞춰서, yt-pip 이 다른 영상을 틀어도 순서 목록의 제자리에 맞음. 이미 있는 yt-pip 줄은 한 번 빼고 다시 넣어야 적용됨
+
 ## 0.2.14 — 2026-10-10
 
 - all tools: after a reboot a tool could fail to start silently, or stopping it could kill an unrelated program, when Windows had handed yesterday's process number to something else. A tool now only counts as running if that process started before it wrote its PID file
