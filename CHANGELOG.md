@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.17 — 2026-10-11
+
+- weather: in **Joined** mode, the buttons that set the monitor order now show ← → instead of ↑ ↓, matching the left / right they move a monitor in the wide board
+
+**한국어**
+
+- weather: **이어서** 모드에서 모니터 순서를 바꾸는 버튼이 ↑ ↓ 대신 ← → 로 보임. 넓은 판에서 모니터를 왼쪽·오른쪽으로 옮기는 것과 맞춤
+
 ## 0.2.16 — 2026-10-11
 
 - layers: weather, usage-hud and sysmon no longer flicker in and out of "always on top" every second or so when an ordered program (such as yt-pip with two windows open) has a window that won't stay on top. Windows below it in the order are no longer slotted under that window
