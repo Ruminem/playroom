@@ -366,10 +366,8 @@ class Hud:
             self.px(x0 + i * 3, y + 1, color if i < filled else COLORS["slot"], 2, 5)
         pct = "%d%%" % round(left * 100)
         self.text(x0 + SEGMENTS * 3 + 2, y + 1, pct, color)
-        if bar.get("empty_at"):  # 지금 속도면 재설정 전에 바닥 — 재설정 대신 바닥까지 남은 시간을 빨갛게
-            until, tint = "!" + usage.left(bar["empty_at"] - time.time()), COLORS["low"]
-        else:
-            until, tint = usage.left(bar["reset"] - time.time()), COLORS["dim"]
+        until, red = usage.countdown(bar, time.time())  # 재설정 전에 바닥나면 빨갛게
+        tint = COLORS["low"] if red else COLORS["dim"]
         self.text(right - text_width(until), y + 1, until, tint)
 
     def draw(self):

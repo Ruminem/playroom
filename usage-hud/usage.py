@@ -372,6 +372,15 @@ def activity(now=None):
 
 
 # ── 찍기 ────────────────────────────────────────────────────────────────
+def countdown(bar, now):
+    """막대 옆 글자와 빨갛게 할지. 지금 속도면 재설정 전에 바닥나면 '!' 와 바닥까지 남은 시간.
+    그 시각이 이미 지났으면(사실상 다 씀) '!0M' 대신 다시 차는 재설정까지를 빨갛게 — 그게 궁금한 값임."""
+    e = bar.get("empty_at")
+    if e and e > now:
+        return "!" + left(e - now), True
+    return left(bar["reset"] - now), bool(e)
+
+
 def left(sec):
     """재설정까지 남은 시간을 짧게: 2D6H · 3H20M · 12M."""
     m = max(0, int(sec // 60))
@@ -502,6 +511,11 @@ def check():
 
     # 바닥 예측: 5시간 창이 2시간 지나 50% 씀 → 2시간 뒤 바닥(재설정은 3시간 뒤)
     h5 = 5 * 3600
+    t0 = 1_000_000.0
+    assert countdown({"reset": t0 + 4200, "empty_at": None}, t0) == ("1H10M", False)
+    assert countdown({"reset": t0 + 4200, "empty_at": t0 + 1800}, t0) == ("!30M", True), "곧 바닥이면 바닥까지"
+    assert countdown({"reset": t0 + 4200, "empty_at": t0 - 60}, t0) == ("1H10M", True), \
+        "바닥 시각이 지났으면 !0M 대신 다시 차는 때를 빨갛게(2026-10-11 99% 에서 !0M 이 떴음)"
     assert abs(empty_at("5h", 0.5, now + 3 * 3600, now) - (now + 2 * 3600)) < 1e-6
     assert empty_at("5h", 0.2, now + 3 * 3600, now) is None, "6시간 뒤라 재설정이 먼저"
     assert empty_at("5h", 0.2, now + h5 - 10 * 60, now) is None, "열린 지 10분이면 아직"

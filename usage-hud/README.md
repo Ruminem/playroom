@@ -9,7 +9,7 @@ Claude Code subscription limits drawn as a retro game HUD. Python standard libra
 - **Coin** — what today's sessions on this PC would have cost at API list prices. On a subscription nothing is billed; it is a ruler for which day was expensive
 - **Cat** — runs while a Claude Code session on this PC is working and curls up asleep when none is. When a turn finishes, the HUD's border flashes for three seconds, so you can look away while Claude works
 
-Each bar shows the time left until it resets, and blinks below 10%. When the average pace since the window opened would run it dry before the reset, that spot shows a red `!` and the time left until empty instead.
+Each bar shows the time left until it resets, and blinks below 10%. When the average pace since the window opened would run it dry before the reset, that spot shows a red `!` and the time left until empty instead. Once that moment has passed (the limit is as good as used up), it shows the time until the reset in red instead of `!0M`.
 
 ## HUD
 
@@ -75,7 +75,7 @@ Claude Code 구독 한도를 레트로 게임 HUD 로 그림. 파이썬 표준 �
 - **동전** — 이 PC 에서 오늘 돈 세션을 API 정가로 친 값. 구독이면 실제로 나가는 돈은 없고, 어느 날이 비쌌는지 재는 자임
 - **고양이** — 이 PC 의 Claude Code 세션이 일하는 동안 달리고, 일하는 세션이 없으면 웅크려 잠. 한 차례가 끝나면 HUD 테두리가 3초 깜빡여서, Claude 가 일하는 동안 딴 데를 보고 있어도 됨
 
-막대마다 재설정까지 남은 시간이 붙고, 10% 아래로 내려가면 깜빡임. 창이 열린 뒤의 평균 속도로 가면 재설정 전에 바닥나는 때는 그 자리에 빨간 `!` 와 바닥까지 남은 시간이 대신 뜸.
+막대마다 재설정까지 남은 시간이 붙고, 10% 아래로 내려가면 깜빡임. 창이 열린 뒤의 평균 속도로 가면 재설정 전에 바닥나는 때는 그 자리에 빨간 `!` 와 바닥까지 남은 시간이 대신 뜸. 그 때가 이미 지났으면(사실상 다 씀) `!0M` 대신 다시 차는 재설정까지 남은 시간을 빨갛게 보임.
 
 ### HUD
 
