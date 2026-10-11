@@ -186,6 +186,14 @@ def rule_name(rule):
     return rule.get("name") or rule.get("title") or rule.get("cls")
 
 
+def sunk(wins):
+    """맨 위 표시(WS_EX_TOPMOST)는 있는데 보통 창 밑에 깔린 창들. 2026-10-11 실측: yt-pip 다음 순위인 weather·HUD·sysmon
+    셋이 표시는 켠 채 Claude·Chrome·WT 밑에 한 덩어리로 있었음 — plan_moves 는 목록 밖 창 위로 안 올리고 오버레이는 layers 가
+    떠 있으면 스스로 안 올려서 그대로 남았음. HWND_TOPMOST 를 다시 걸면 풀림(같은 날 weather 로 확인)."""
+    first = next((i for i, w in enumerate(wins) if not w["topmost"]), len(wins))
+    return {w["hwnd"] for w in wins[first:] if w["topmost"]}
+
+
 def buried(zorder, me, hwnds):
     """hwnds 중 하나라도 zorder(앞이 위)에서 me 보다 위에 있는지."""
     top = {h: i for i, h in enumerate(zorder)}
@@ -313,12 +321,13 @@ class Layers:
 
     def restack(self):
         wins = windows()
-        ranked = self.ranked(wins)
-        for w in ranked:
+        ranked, low = self.ranked(wins), sunk(wins)
+        lift = [w for w in ranked if not w["topmost"] or w["hwnd"] in low]
+        for w in lift:
+            user32.SetWindowPos(w["hwnd"], HWND_TOPMOST, 0, 0, 0, 0, SWP_KEEP)
             if not w["topmost"]:
-                user32.SetWindowPos(w["hwnd"], HWND_TOPMOST, 0, 0, 0, 0, SWP_KEEP)
                 self.pinned.add(w["hwnd"])
-        if any(not w["topmost"] for w in ranked):  # 방금 올린 창은 자리가 바뀌었으니 다시 읽음
+        if lift:  # 방금 올린 창은 자리가 바뀌었으니 다시 읽음
             wins = windows()
             ranked = self.ranked(wins)
         order = [w["hwnd"] for w in ranked]
@@ -514,6 +523,9 @@ def check():
     assert plan_moves(["b", "a", "g"], ["a", "b"], {"a": ["g"]}) == [("b", "g")], "윗 창과 그 짝 창 사이를 안 가름"
     assert buried(["hud", "me", "menu"], "me", ["hud"]) and not buried(["menu", "me", "hud"], "me", ["hud", "gone"])
     assert not buried(["hud"], "me", ["hud"]), "순서 창이 닫혔으면 안 건드림"
+    win = lambda h, top: {"hwnd": h, "topmost": top}
+    assert sunk([win("pip", 1), win("claude", 0), win("weather", 1), win("hud", 1), win("code", 0)]) == {"weather", "hud"}
+    assert sunk([win("pip", 1), win("weather", 1), win("claude", 0)]) == set(), "맨 위 창들이 다 위에 있으면 안 건드림"
     # 순서 맞추기가 터져도 다음 차례는 걸리고 오류는 파일로
     global ERROR_LOG
     real, ERROR_LOG = ERROR_LOG, Path(tempfile.mkdtemp()) / "layers-error.txt"
