@@ -4407,11 +4407,14 @@ class App:
             return False
 
     def hear(self):
-        """빗소리를 판들의 종류·보이기·설정에 맞춤 — 한 판이라도 비가 오면. 같으면 아무것도 안 함, 명령마다 불러도 됨."""
+        """빗소리를 판들의 종류·보이기·설정에 맞춤 — 한 판이라도 비가 오면. 같으면 아무것도 안 함, 프레임마다 불러도 됨.
+        어느 모니터든 전체 화면 앱(영상·게임)이 떠 있으면 그 소리와 안 겹치게 멈춤 — weather 가 없는 모니터여도."""
         kind = next((b.kind for b in self.boards if b.kind in SOUNDY), None)
-        self.rain_player.set(hearing(kind, self.visible, self.sound, self.volume))
+        quiet = any(b.full for b in self.boards)
+        self.rain_player.set(hearing(kind, self.visible and not quiet, self.sound, self.volume))
 
     def step(self):
+        self.hear()  # 전체 화면이 뜨고 풀리는 것은 명령 없이 바뀜
         return any([b.step() for b in self.boards])  # 판마다 다 그림 — any 가 첫 True 에서 멈추지 않게 목록으로
 
     def run(self):
@@ -6137,7 +6140,7 @@ def check_sound():
         pl.set(v)
     pl.close()
     assert played == [50, 30, None, 70, None], ("같은 값은 다시 안 틀고, 끄면 멈춤", played)
-    sw = types.SimpleNamespace(boards=[types.SimpleNamespace(kind="snow"), types.SimpleNamespace(kind="rain")],
+    sw = types.SimpleNamespace(boards=[types.SimpleNamespace(kind="snow", full=None), types.SimpleNamespace(kind="rain", full=None)],
                                visible=True, sound=False, volume=VOLUME, commands=queue.Queue(), save=lambda: None,
                                rain_player=pl)
     sw.handle, sw.hear = lambda cid: App.handle(sw, cid), lambda: App.hear(sw)
@@ -6145,6 +6148,13 @@ def check_sound():
     for cid in (SOUND, ("volume", 20), min(VOLUMES), SOUND):
         sw.commands.put(cid)
     assert not App.poll(sw) and played == [VOLUME, 20, 10, None], ("켜기·막대·메뉴 칸·끄기가 바로 들림 — 판 하나만 비여도", played)
+    sw.sound, sw.boards[0].full = True, (0, 0, 1, 1)  # 비 안 오는 판의 모니터에 전체 화면 앱
+    App.hear(sw)
+    sw.boards[0].full = None
+    App.hear(sw)
+    sw.boards[0].full = (0, 0, 1, 1)
+    App.hear(sw)
+    assert played == [VOLUME, 20, 10, None, 10, None], ("전체 화면 앱이 뜬 동안은 어느 모니터든 빗소리 멈춤", played)
     out = [float(i) for i in range(30)]
     loop = rain_sound.seam(out, 20, 10)
     assert len(loop) == 20 and loop[0] == out[20] and abs(loop[5] - (5 + 25) * 0.5 ** 0.5) < 1e-9 \
