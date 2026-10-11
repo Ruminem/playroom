@@ -181,7 +181,7 @@ def rule_for(win, wins):
     안 맞았음(2026-10-11). 탐색기처럼 여럿 떠 있을 때만 제목으로 가름. 그때 하나만 떠 있던 탐색기는 모든 폴더 창에 맞음."""
     if win.get("app"):
         return {"name": win["title"], "exe": win["exe"], "cls": win["cls"], "app": win["app"]}
-    if not any(w is not win and w["exe"] == win["exe"] and w["cls"] == win["cls"] for w in wins):
+    if not any(w["hwnd"] != win["hwnd"] and w["exe"] == win["exe"] and w["cls"] == win["cls"] for w in wins):
         return {"name": win["title"], "exe": win["exe"], "cls": win["cls"]}
     return {"exe": win["exe"], "cls": win["cls"], "title": win["title"]}
 
@@ -546,13 +546,13 @@ def check():
     assert matches(DEFAULT_RULES[0], w) and not matches(DEFAULT_RULES[1], w)
     assert not matches({"exe": "python.exe", "cls": "TkTopLevel"}, w)
     pwa = {"exe": "chrome.exe", "cls": "Chrome_WidgetWin_1", "title": "YouTube - (161) YouTube", "app": "Chrome._crx_x"}
-    rule = rule_for(pwa, [pwa])
+    rule = rule_for(dict(pwa, hwnd=1), [])
     assert matches(rule, dict(pwa, title="YouTube - 고양이 - YouTube")), "PWA 는 제목이 바뀌어도 맞음"
     assert not matches(rule, dict(pwa, app="Chrome.UserData")), "같은 크롬이라도 다른 앱이면 안 맞음"
-    assert not matches(rule, dict(w, app=None)) and matches(rule_for(dict(w, app=None), []), dict(w, app=None))
-    pip = {"exe": "yt-pip.exe", "cls": "WinForms", "title": "고양이 - YouTube", "app": None}
-    assert matches(rule_for(pip, [pip]), dict(pip, title="강아지 - YouTube")), "하나뿐인 프로그램은 제목이 바뀌어도 맞음"
-    a, b = (dict(pip, exe="explorer.exe", title=t) for t in ("layers", "weather"))
+    assert not matches(rule, dict(w, app=None)) and matches(rule_for(dict(w, app=None, hwnd=1), []), dict(w, app=None))
+    pip = {"hwnd": 7, "exe": "yt-pip.exe", "cls": "WinForms", "title": "고양이 - YouTube", "app": None}
+    assert matches(rule_for(pip, [dict(pip)]), dict(pip, title="강아지 - YouTube")), "하나뿐인 프로그램은 제목이 바뀌어도 맞음"
+    a, b = (dict(pip, hwnd=h, exe="explorer.exe", title=t) for h, t in ((1, "layers"), (2, "weather")))
     assert not matches(rule_for(a, [a, b]), b), "같은 종류가 여럿이면 제목으로 가름"
     assert windows(), "보이는 창이 하나는 있어야 함"
     print("자체 점검 통과")
