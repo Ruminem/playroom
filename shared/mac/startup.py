@@ -26,7 +26,7 @@ def command(script):
 
 def agent(name, script):
     # ProcessType 이 없으면 launchd 가 daemon 으로 띄워 CPU·타이머를 깎는다. weather 가 30fps 를 청해도 프레임 간격
-    # 95% 가 103ms 로 끊겼고, Interactive 면 터미널에서 띄운 것과 같은 36ms 였다(2026-10-04 맥북, 재부팅 직후)
+    # 95% 가 103ms 로 끊겼고, Interactive 면 터미널에서 띄운 것과 같은 36ms 였다(2026-10-04 맥, 재부팅 직후)
     return {"Label": label(name), "ProgramArguments": command(script), "RunAtLoad": True, "ProcessType": "Interactive"}
 
 

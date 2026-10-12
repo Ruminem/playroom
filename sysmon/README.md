@@ -23,7 +23,7 @@ Double-click [sysmon.command](sysmon.command) in Finder to start or stop it; the
 python3 sysmon.py --toggle
 ```
 
-`--toggle` detaches it from the terminal. It keeps updating while its menu is open. On a MacBook: 0.2 s of CPU over 30 s (0.7% of one core), 50 MB of memory.
+`--toggle` detaches it from the terminal. It keeps updating while its menu is open. On a Mac: 0.2 s of CPU over 30 s (0.7% of one core), 50 MB of memory.
 
 - CPU is the share of non-idle ticks from `host_statistics` (`HOST_CPU_LOAD_INFO`) a second apart
 - Memory is Activity Monitor's *Memory Used*: app memory (anonymous pages minus purgeable) + wired + compressed, out of `hw.memsize`. File cache is left out, otherwise a Mac always looks nearly full. The self-check compares it with `vm_stat`
@@ -71,7 +71,7 @@ Finder 에서 [sysmon.command](sysmon.command) 를 더블클릭하면 켜지고 
 python3 sysmon.py --toggle
 ```
 
-`--toggle` 은 터미널과 떼어 띄움. 메뉴를 연 동안에도 숫자가 바뀜. 맥북에서 잰 값: 30초에 CPU 0.2초(한 코어의 0.7%), 메모리 50MB.
+`--toggle` 은 터미널과 떼어 띄움. 메뉴를 연 동안에도 숫자가 바뀜. 맥에서 잰 값: 30초에 CPU 0.2초(한 코어의 0.7%), 메모리 50MB.
 
 - CPU 는 1초 간격으로 읽은 `host_statistics`(`HOST_CPU_LOAD_INFO`) 틱에서 쉬지 않은 틱의 비율임
 - 메모리는 활동 모니터의 *사용한 메모리* 와 같은 셈임. 앱 메모리(익명 쪽 − 지울 수 있는 쪽) + 와이어드 + 압축을 `hw.memsize` 로 나눔. 파일 캐시는 뺌 — 넣으면 맥은 늘 거의 꽉 차 보임. 자체 점검이 `vm_stat` 과 견줌
