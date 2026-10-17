@@ -88,18 +88,23 @@ GUST = {"rain": (0.06, 0.10), "storm": (0.16, 0.20)}  # 종류 → (기본에 �
 CROWN_SEC = 0.09   # 빗방울이 바닥에 닿는 순간 ㅅ자 튐을 보여 주는 시간
 RAIN_MULT = 2      # 비는 빨리 지나가 같은 개수면 듬성듬성해 보여서 눈의 두 배
 
-PILE_CAP = 16      # 쌓인 눈의 최대 높이 px. 군데군데 솟는 둔덕이 화면을 덜 가리게
+PILE_CAP = 60      # 쌓인 눈의 최대 높이 px. 가까이 갈수록 덜 쌓여(add) 꼭대기가 납작하게 안 잘리고 둥긂
+# 바람에 몰린 언덕: 열마다 쌓이는 몫에 곱하는 느린 물결 (파장 px, 폭) × 세기. 골은 거의 안 쌓이고 마루는 두 배 넘게.
+# 파장이 길어야 퍼짐(DIFFUSE)에 안 지워짐 — 190px 아래는 몇 분 만에 평평해짐. 세기 0.8 이면 마루가 다 같이 상한에
+# 닿아 두꺼운 띠가 되고, 1.3 이면 골이 남음 (1920 폭 · 많이 · 10분: 중앙 37px · 최대 48px, 2026-10-18)
+DRIFT_WAVES, DRIFT_HILLS = ((900, 0.6), (420, 0.3), (190, 0.1)), 1.3
 PILE_STRIP = PILE_CAP + 2
 # 쌓인 눈 윗면: 맨 위 1px 테두리 색(어두운 창에서 회색 띠로 안 보이고 밝은 창에서 안 끊기게 둘 사이) · 왼쪽 위 빛을 받는
 # 비탈 · 등진 비탈의 색 · 비탈 단계(−3..3) · 양옆 열 높이 차 → 단계 배수
 PILE_RIM, PILE_LIT, PILE_SHADOW, PILE_SLOPES, PILE_LIGHT = (205, 213, 230), (255, 255, 255), (196, 208, 234), 3, 2.0
-PILE_PER_FLAKE = 10.0  # 눈송이 하나가 보태는 부피 = 이 값 × 반지름. 실제보다 부풀려 몇 분 안에 쌓이게.
-                       # 멈추는 높이가 이 값에 비례함 (21 이면 보통 11px·많이 21px, 10 이면 그 절반쯤)
+PILE_PER_FLAKE = 30.0  # 눈송이 하나가 보태는 부피 = 이 값 × 반지름. 실제보다 부풀려 몇 분 안에 쌓이게.
+                       # 멈추는 높이가 이 값에 비례함 (10 이면 언덕 없이 많이 중앙 17px, 30 이면 위 언덕 숫자)
                        # 반지름²에 비례시키면 큰 눈송이 하나에 둔덕이 툭 솟음
 SLOPE = 0.8        # 이웃 열과의 높이 차가 이보다 크면 흘러내림 (안식각)
-DIFFUSE = 0.12     # 표면을 매끈하게 퍼뜨리는 정도
+DIFFUSE = 0.3      # 표면을 매끈하게 퍼뜨리는 정도. 0.12 면 언덕 마루에 가시가 솟음
+DIFFUSE_PASSES = 2  # settle 한 번에 퍼뜨리는 횟수
 DRIFT, LOOSE, LIFT = 0.12, 3.0, 2.0  # 바람에 날리는 눈: 바람 px/초 × 초당 옮기는 비율 · 겉의 날리는 두께 px · 넘는 턱 px
-MELT_PER_SEC = 0.0045  # 높이에 비례해 녹는 비율. 넣는 양 ÷ 이 값에서 높이가 멈춤 ('보통' 이면 5px 쯤)
+MELT_PER_SEC = 0.0045  # 높이에 비례해 녹는 비율. 넣는 양 ÷ 이 값에서 높이가 멈춤 (높이는 DRIFT_HILLS 주석)
 SETTLE_SEC = 0.25
 FRAMES_EVERY = 3   # 작업 표시줄 틀을 다시 읽는 간격 초. 한 번 55ms(UI 자동화)라 다른 스레드에서
 FULLSCREEN_EVERY = 0.25  # 전체 화면 앱이 떴는지 보는 간격 초. 한 번 0.1ms
@@ -132,7 +137,8 @@ HAIL_TAIL = (0.6, 120)  # 끝 빠르기의 이 몫보다 빨리 떨어지는 알
 HAIL_CHIPS = (0.3, 0.5, 1500)  # 닿을 때 튀는 얼음 부스러기: 사는 초 범위, 중력
 HAIL_SPEED = (820, 1050)  # 떨어지는 빠르기 px/초. 튀어 오른 뒤엔 중력으로 다시 이 빠르기까지
 HAIL_BOUNCES = 2   # 바닥·더미에서 튀는 최대 횟수. 그다음 더미에 보탬
-HAIL_MELT = 4      # 더미가 눈보다 몇 배 빨리 녹나
+HAIL_CAP = 16      # 우박 더미 상한 px. 언덕이 없어 딱 자름 — 눈 상한을 같이 쓰면 27px 까지 솟음
+HAIL_MELT = 12     # 더미가 눈보다 몇 배 빨리 녹나. PILE_PER_FLAKE 를 같이 써서, 그걸 올리면 이것도 같이 올려야 우박 더미 높이가 그대로
 HAIL_SCARE = (24, 0.25, 5.0)  # 동물 발에서 이 px 안에 떨어지면 이 확률로 놀람, 한 번 놀라면 이 초 동안은 안 놀람
 BANG_NEAR = 700  # 불꽃이 이 px 안에서 터지면 동물이 멈춰 서서 봄
 
@@ -949,9 +955,11 @@ def settled_set():
 class Pile:
     """픽셀 열마다 높이(실수 px). 떨어진 자리에 둔덕을 보태고, settle() 이 흘러내림·퍼짐·녹음을 한다."""
 
-    def __init__(self, width, base=None):
+    def __init__(self, width, base=None, drift=None, cap=PILE_CAP):
         self.h = [0.0] * width
+        self.cap = cap
         self.flip = False
+        self.gain = drift  # 열마다 쌓이는 몫의 배수(drifts) — 눈만. 우박은 무거워 안 몰림
         # 열마다 바닥 높이. 흘러내림은 바닥+더미 표면으로 셈 — 틀 위 눈이 모서리에서 옆 틈으로 흘러 옆면에 붙고,
         # 많이 쌓이면 틀까지 언덕으로 이어짐. 틈의 눈은 표면이 틀 윗변을 넘어야 틀 위로 감
         self.base = base or [0] * width
@@ -960,11 +968,11 @@ class Pile:
         h = self.h
         spread = int(r * 5) + 6  # 넓게 펴서 넣어야 떨어질 때마다 뾰족하게 안 솟음
         weights = [(i, spread + 1 - abs(i - x)) for i in range(x - spread, x + spread + 1)
-                   if 0 <= i < len(h) and h[i] < PILE_CAP]
+                   if 0 <= i < len(h) and h[i] < self.cap]
         total = sum(w for _, w in weights)
-        vol = PILE_PER_FLAKE * r
-        for i, w in weights:
-            h[i] = min(PILE_CAP, h[i] + vol * w / total)
+        vol = PILE_PER_FLAKE * r * (self.gain[x] if self.gain else 1)
+        for i, w in weights:  # 언덕은 상한에 가까울수록 덜 쌓임 — 딱 자르면 마루가 납작한 탁자가 됨
+            h[i] = min(self.cap, h[i] + vol * w / total * ((1 - (h[i] / self.cap) ** 2) if self.gain else 1))
 
     def settle(self, melt):
         h, n, base = self.h, len(self.h), self.base
@@ -983,11 +991,12 @@ class Pile:
                 h[i + 1] -= m
         # 이웃끼리 조금씩 주고받아 표면을 매끈하게. 주고받기라 부피는 그대로. 양옆으로 반씩까지만 내줌.
         # 흐름은 옛 높이로 한꺼번에 셈 — 차례로 고치면 훑는 방향으로 조금씩 쏠림
-        s = [a + b for a, b in zip(h, base)]
-        flow = [max(-h[i] / 2, min(h[i + 1] / 2, DIFFUSE * (s[i + 1] - s[i]))) for i in range(n - 1)]
-        for i, f in enumerate(flow):
-            h[i] += f
-            h[i + 1] -= f
+        for _ in range(DIFFUSE_PASSES):
+            s = [a + b for a, b in zip(h, base)]
+            flow = [max(-h[i] / 2, min(h[i + 1] / 2, DIFFUSE * (s[i + 1] - s[i]))) for i in range(n - 1)]
+            for i, f in enumerate(flow):
+                h[i] += f
+                h[i + 1] -= f
         if melt:
             k = max(0.0, 1 - melt)  # 1 을 넘으면 높이가 음수로 뒤집혀 띠를 그리다 죽음 — 가려져 프레임을 오래 쉬면 남
             self.h = [v * k if v > 0.01 else 0.0 for v in h]
@@ -1005,6 +1014,12 @@ class Pile:
                 h[i] -= m
                 if 0 <= i + s < n:
                     h[i + s] += m
+
+
+def drifts(w, rng):
+    """열마다 쌓이는 몫의 배수 — DRIFT_WAVES 를 파장마다 0.6–1.4배로 흔들어 겹친 물결. 평균 1, 0.05 아래로는 안 내려감."""
+    waves = [(rng.uniform(0.6, 1.4) * math.tau / length, rng.uniform(0, math.tau), a) for length, a in DRIFT_WAVES]
+    return [max(0.05, 1 + DRIFT_HILLS * sum(a * math.sin(k * x + p) for k, p, a in waves)) for x in range(w)]
 
 
 def floor_heights(w, bottom, left, rise, frames):
@@ -3787,7 +3802,8 @@ class Weather:
         self.crowns, self.gust_phase = [], random.uniform(0, math.tau)
         self.landed, self.glints, self.glint_due = [], [], 0.0  # 쌓인 눈 위의 내려앉은 송이 · 반짝이
         self.bolt, self.next_bolt = None, time.perf_counter() + random.uniform(2, 5)
-        self.pile = Pile(self.w, self.base)
+        self.pile = (Pile(self.w, self.base, drifts(self.w, random)) if kind == "snow" else
+                     Pile(self.w, self.base, cap=HAIL_CAP))
         self.strip = memoryview(bytearray(self.stride * self.strip_h))
         self.pile_last = [-1] * self.w  # 처음엔 모든 열을 그림 — 빈 열이어도 틀 높이가 들어감
         self.pile_edges, self.pile_body = self.snow_pile
@@ -4580,7 +4596,9 @@ def check():
     assert sum(p[2] + p[0] for p in col(1)) > sum(p[2] + p[0] for p in col(4)) + 40, "빛 받는 비탈이 밝음"
     assert col(1)[PILE_STRIP - 4] == pixel(PILE_RIM, 255), "높이 4 면 밑에서 넷째 칸이 테두리"
     # 쌓인 우박: 찌그러진 얼음 알 더미. 알은 (드러나는 높이, 중심 열) 로 묶임
-    bsh = PILE_STRIP + 24
+    # 판 높이가 바뀌면 틈 깊이 난수 순서가 바뀌어 다른 판이 나옴 — 씨앗 10개 중 2개쯤에 틈 그늘 가시가 1–2개 있어서
+    # (2026-10-18 잼, 높이 42·86 같음) 판을 고정함. 그 가시는 아직 남은 결함
+    bsh = 42
     field, gap, beads = bead_field(bsh, random.Random(4)), pixel(BEAD_GAP, 220), {}
     for t, cl in enumerate(field):
         for y, (k, o, p) in enumerate(cl):
@@ -5140,7 +5158,9 @@ def check():
                 assert round(Weather.gust(fake, now) / SLANTS[1]) < len(SLANTS), "돌풍 기울기는 미리 그린 범위 안"
     alphas = [max(d[3::4]) for _, d in streak(30, 190, 1.0)[1]]
     assert alphas[0] < alphas[15] > alphas[-1] and alphas[-2] > alphas[2], "빗줄기는 양끝이 옅고 아래가 조금 진함"
-    p = Pile(40)
+    g = drifts(1920, random.Random(1))
+    assert min(g) >= 0.05 and max(g) > 1.5 and 0.8 < sum(g) / len(g) < 1.2, "언덕 물결: 골은 조금이라도 쌓이고 마루는 높고 평균은 1쯤"
+    p = Pile(41)  # 20 이 가운데여야 벽까지 퍼져도 양쪽이 같음
     p.add(20, 2.0)
     vol = PILE_PER_FLAKE * 2.0
     assert abs(sum(p.h) - vol) < 1e-9, "보탠 부피가 그대로여야 함"
