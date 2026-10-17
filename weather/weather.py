@@ -244,12 +244,13 @@ DRAGONFLY_ART = (("....w..w....",  # 위에서 본 그림, 오른쪽을 봄. 날
                   "bbbbbbbbggee",
                   "...ww.ww....",
                   "...w..w....."))
-# 나비·잠자리 날의 뜰. 햇볕: 화면 바로 위의 해에서 부챗살로 퍼지는 빛줄기와 해무리 — 줄기 각 폭(도) · 줄기 사이(도) · 닿는
-# 깊이(높이 비율) · 줄기 가장 밝은 알파 · 해무리 가장 밝은 알파 · 해무리 퍼짐(높이 비율) · 해까지 거리(화면 가운데에서, 높이
+# 나비·잠자리 날의 뜰. 햇볕: 화면 바로 위의 해에서 부챗살로 퍼지는 빛줄기와 해무리 — 줄기 각 폭(도: 로그정규 중앙 · 퍼짐 · 최소 ·
+# 최대) · 다발 안 줄기 사이(도) · 다발 사이 넓은 틈(확률 · 도) · 닿는 깊이(높이 비율) · 줄기 가장 밝은 알파 · 해무리 가장 밝은 알파 · 해무리 퍼짐(높이 비율) · 해까지 거리(화면 가운데에서, 높이
 # 비율) · 색 · 해가 낮을 때 색 · 가닥이 빠지는 깊이 단계 수(적으면 넓은 줄기에 가로 띠). 해는 시계를 따라 왼쪽(동)에서 떠 오른쪽(서)으로 짐 — 위도(서울) · 해가 가장 높은 시각(KST,
 # 경도 127°라 12시 반) · 가장 누운 기울기(가로/세로) · 다시 굽는 단위(낮 길이 비율, 4분쯤).
 # 빛 속 먼지: 수 · 사는 초 · 떠가는 px/초 · 가장 밝은 알파 · 색
-SUN_RAY, SUN_GAP, SUN_REACH, SUN_ALPHA, SUN_GLOW, SUN_HALO, SUN_DIST = (1.5, 5.0), (1.5, 6.0), 0.85, 0.22, 0.35, 0.4, 0.7
+SUN_RAY, SUN_GAP, SUN_BREAK = (2.2, 0.8, 0.8, 12.0), (0.3, 2.0), (0.2, 8.0, 18.0)
+SUN_REACH, SUN_ALPHA, SUN_GLOW, SUN_HALO, SUN_DIST = 0.85, 0.22, 0.35, 0.4, 0.7
 SUN_COLOR, SUN_LOW, SUN_LEVELS = (255, 226, 150), (255, 170, 90), 16
 SUN_LAT, SUN_NOON, SUN_TILT, SUN_STEP = 37.5, 12.5, 1.5, 1 / 200
 MOTE_N, MOTE_LIFE, MOTE_V, MOTE_ALPHA, MOTE_COLOR = 24, (3, 8), 5, 170, (255, 246, 214)
@@ -1710,12 +1711,19 @@ def sun_at(hour, day):
 
 def sun_rays(rng):
     """햇볕 부채 → {"fan": [(가운데 각, 반폭 각, 세기, 닿는 몫, 깊이 SUN_LEVELS 단계 단면)], "cache": {}}. 각은 아래 방향에서 잰
-    라디안(+ 가 오른쪽). 줄기는 -80°–80° 를 각 폭 SUN_RAY · 사이 SUN_GAP 로 채워 서로 안 겹침 — 해가 움직이면 부채가 해를 따라
-    옮겨 감. 단면은 어항 빛줄기처럼 가는 빛살 3–5가닥이 겹친 결이고, 가닥마다 끝나는 깊이가 달라 아래로 가며 가닥이 빠짐.
+    라디안(+ 가 오른쪽). 줄기는 -80°–80° 를 왼쪽부터 채우고 서로 안 겹침 — 해가 움직이면 부채가 해를 따라 옮겨 감. 빗살처럼
+    고르지 않게: 폭은 SUN_RAY(중앙·퍼짐의 로그정규, 최소·최대에서 자름)라 굵은 줄기가 드물게 나오고, 사이는 대개 SUN_GAP 로
+    좁아 다발로 뭉치다 SUN_BREAK 확률로 넓은 틈(어두운 자리)이 남. 세기·닿는 몫은 폭을 따라가 가는 줄기는 옅고 일찍 사그라듦.
+    단면은 어항 빛줄기처럼 가는 빛살 3–5가닥이 겹친 결이고, 가닥마다 끝나는 깊이가 달라 아래로 가며 가닥이 빠짐.
     cache 는 sun_bake 가 폭별 단면·알파 표를 모아 두는 곳(다시 구울 때 그대로 씀)."""
-    fan, a = [], math.radians(-80)
+    fan, a = [], math.radians(rng.uniform(-80, -70))
+    med, spread, lo, hi = SUN_RAY
     while a < math.radians(80):
-        hw = math.radians(rng.uniform(*SUN_RAY)) / 2
+        wd = min(hi, max(lo, rng.lognormvariate(math.log(med), spread)))
+        t = math.log(wd / lo) / math.log(hi / lo)  # 0 가장 가늚 – 1 가장 굵음
+        hw = math.radians(wd) / 2
+        if a + 2 * hw > math.radians(80):  # 80° 너머로 누운 굵은 줄기는 행마다 폭이 수천 px 라 처음 굽기가 1초
+            break
         strands = [(rng.uniform(0.2, 0.8), rng.uniform(0.06, 0.16), rng.uniform(0.45, 1.0), rng.uniform(0.4, 1.0))
                    for _ in range(rng.randint(3, 5))]  # (가로 자리 0–1, 굵기, 세기, 끝나는 깊이 0–1)
         ts = [(i + 0.5) / 256 for i in range(256)]
@@ -1726,8 +1734,10 @@ def sun_rays(rng):
             ws = [min(1.0, max(0.0, (end - m / SUN_LEVELS) / 0.5)) for *_, end in strands]
             sums = [sum(g[i] * wt for g, wt in zip(gs, ws)) for i in range(256)]
             bases.append(bytes(int(e * min(1.0, 0.45 + 0.55 * v)) for e, v in zip(env, sums)))
-        fan.append((a + hw, hw, rng.uniform(0.5, 1.0), rng.uniform(0.55, 1.0), bases))
-        a += 2 * hw + math.radians(rng.uniform(*SUN_GAP))
+        fan.append((a + hw, hw, min(1.0, 0.2 + 0.8 * t + rng.uniform(-0.08, 0.08)),
+                    min(1.0, 0.25 + 0.75 * t * rng.uniform(0.75, 1.0) + rng.uniform(0, 0.15)), bases))
+        p, b0, b1 = SUN_BREAK
+        a += 2 * hw + math.radians(rng.uniform(b0, b1) if rng.random() < p else rng.uniform(*SUN_GAP))
     return {"fan": fan, "cache": {}}
 
 
@@ -4888,6 +4898,11 @@ def check():
     halo = bytearray(len(bg))
     sun_bake(halo, mw, mh, {"fan": [], "cache": {}}, m.meadow["sun"])
     assert SUN_ALPHA + SUN_GLOW <= 1 and all(a >= b for a, b in zip(bg[3::4], halo[3::4])) and bg != halo,         "줄기는 해무리 위에 얹힘 — 덮어써서 파이지 않음, 더해도 255 를 안 넘음"
+    fan = [f for sd in range(20) for f in sun_rays(random.Random(sd))["fan"]]
+    thin, broad = [f[2:4] for f in fan if f[1] < math.radians(0.75)], [f[2:4] for f in fan if f[1] > math.radians(3)]
+    assert max(a + hw for a, hw, *_ in fan) <= math.radians(80) and thin and broad and \
+        max(s for s, _ in thin) < min(s for s, _ in broad) and max(e for _, e in thin) < min(e for _, e in broad), \
+        "햇볕 줄기는 80° 안, 굵기가 제각각이고 가는 줄기가 굵은 줄기보다 옅고 짧음"
     # 해는 시계를 따름: 아침엔 왼쪽(동) 위에서 오른쪽 아래로, 정오엔 수직, 저녁엔 반대로. 해 뜨기 전·진 뒤엔 없음
     sl = {hr: sun_at(hr, 172) for hr in (5.0, 5.5, 8.0, 12.5, 17.0, 19.6, 20.0)}
     assert sl[5.0] is None and sl[20.0] is None and sl[5.5] and sl[19.6], ("하지 해는 5:12–19:51", sl)
