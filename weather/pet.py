@@ -4,23 +4,27 @@
 걷다가 서고, 앉고, 앉았다 잠들고(Zz), 번개가 치면 깜짝 뛰어 달아난다. 비가 오면 빨리 걷고 안 잔다.
 발은 바닥(작업 표시줄 위) — 쌓인 눈·잎이 있으면 그 위 — 에 딛는다.
 
-  python pet.py    자체 점검
+  python pet.py                  자체 점검
+  python pet.py --sheet out.png  모든 그림을 동물마다 한 줄로 찍은 미리보기 PNG (보기용 — 원본은 글자 판)
 """
 import math
 import random
 
 SCALE = 3  # 그림 한 칸 = 화면 px
 
-COLORS = {"k": (38, 43, 68), "o": (247, 118, 34), "l": (254, 174, 52), "w": (255, 255, 255),
-          "p": (232, 183, 150), "e": (24, 20, 37), "z": (192, 203, 220),
-          "b": (190, 170, 232), "c": (250, 244, 252), "y": (250, 186, 60),  # b·c·y·v 는 새 (라벤더)
-          "v": (140, 118, 198),  # 새 날개
-          "d": (250, 248, 244), "a": (232, 196, 170),  # 강아지 털·귀 (말티즈)
-          "h": (255, 212, 222), "g": (62, 68, 94),  # 토끼 분홍 · 펭귄 등
-          "r": (228, 59, 68),  # 머리 위 ♥
-          "q": (255, 146, 160),  # 새·강아지 볼 홍조
-          "i": (240, 130, 160), "j": (240, 110, 140),  # 토끼 귀 속·코 · 토끼 볼 홍조 (몸이 분홍이라 진하게)
-          "m": (176, 228, 248), "s": (206, 212, 224), "f": (40, 120, 230)}  # 어항 잠수 장비: 마스크 유리·호흡기·오리발
+# 색표는 동물마다 따로 — 글자는 제 그림 안에서만 뜻이 있어 한 동물 색을 바꿔도 다른 동물은 그대로임
+# (예전엔 하나를 같이 써서 고양이 털 o 를 바꾸면 펭귄 발이 같이 바뀌었음). 윤곽·눈·흰 털만 모두 같은 색으로 맞춤
+LINE = {"k": (38, 43, 68), "e": (24, 20, 37), "w": (255, 255, 255)}
+CAT_COLORS = {**LINE, "o": (247, 118, 34), "l": (254, 174, 52), "p": (232, 183, 150)}  # 털 · 줄무늬 · 귀 속
+BIRD_COLORS = {**LINE, "b": (190, 170, 232), "c": (250, 244, 252), "y": (250, 186, 60),  # 라벤더 몸 · 배 · 부리·발
+               "v": (140, 118, 198), "q": (255, 146, 160)}  # 날개 · 볼 홍조
+DOG_COLORS = {**LINE, "d": (250, 248, 244), "a": (232, 196, 170), "q": (255, 146, 160)}  # 말티즈 털 · 귀 · 볼 홍조
+RABBIT_COLORS = {**LINE, "h": (255, 212, 222), "i": (240, 130, 160), "j": (240, 110, 140)}  # 몸 · 귀 속·코 · 볼 홍조
+PENG_COLORS = {**LINE, "g": (62, 68, 94), "z": (192, 203, 220), "o": (247, 118, 34)}  # 등 · 엉덩이 그늘 · 부리·발
+# 어항 잠수 장비: 마스크 유리 · 호흡기 · 오리발 · 공기통·스노클 관 · 관 끝. 잠수 그림에선 동물 색표 위에 덮으니
+# 이 글자들은 잠수 그림에서 장비 색임 (새 부리 y 는 공기통과 같은 색이라 그대로 맞음)
+GEAR_COLORS = {"m": (176, 228, 248), "s": (206, 212, 224), "f": (40, 120, 230), "y": (250, 186, 60), "r": (228, 59, 68)}
+MARK_COLORS = {"l": (254, 174, 52), "w": (255, 255, 255), "r": (228, 59, 68), "z": (192, 203, 220)}  # 머리 위 표시·Zz
 
 # 머리 위에 잠깐 뜨는 표시. 반응마다 하나
 EMOTES = {"!": ("ll", "ll", "ll", "..", "ll"),
@@ -324,6 +328,10 @@ SNORK_ART = {k: snorkel(k) for k in GEAR}
 SNORK_MOUTH = {k: (mx + 1, 0) for k, (mx, my) in DIVE_MOUTH.items()}  # 숨이 나오는 관 끝 칸
 SNORK_SIZE = {k: (len(v[0][0]) * SCALE, len(v[0]) * SCALE) for k, v in SNORK_ART.items()}
 SOAK = ((96, 178, 226), 0.45)  # 물에 잠긴 몸 색: weather 수도꼭지 물빛(AQ_TOP) 쪽으로 섞는 몫
+# 동물 이름(GEAR 의 키) → (그림들, 색표)
+ANIMALS = {"cat": (ART, CAT_COLORS), "bird": (BIRD_ART, BIRD_COLORS), "dog": (DOG_ART, DOG_COLORS),
+           "rabbit": (RABBIT_ART, RABBIT_COLORS), "penguin": (PENG_ART, PENG_COLORS)}
+MARK_NAMES = {"emo♪": "emo note", "emo♥": "emo heart", "emo…": "emo dots"}  # 시트 글꼴에 없는 글자
 
 WALK, RUN = 38, 150      # px/초. 비 올 때 걷기는 RUN 의 절반
 STEP, RUN_STEP = 0.2, 0.08  # 걸음 그림 바꾸는 간격 초
@@ -354,9 +362,9 @@ def leap_height(g0, g1, apex, p):
     return g0 + d * p + u * p * (1 - p)
 
 
-def segments(rows, flip, colors=COLORS):
+def segments(rows, flip, colors):
     """글자 판 → [(dy, 앞에서 건너뛸 바이트, 바이트), …]. 행 안의 투명한 틈은 끊어서 밑의 눈을 안 지움.
-    colors 는 글자 → 색 — weather 어항의 물고기가 제 색표로 씀."""
+    colors 는 글자 → 색 (동물마다, weather 의 물고기·꽃마다 제 색표)."""
     out = []
     for y, line in enumerate(rows):
         line = line[::-1] if flip else line
@@ -374,25 +382,75 @@ def segments(rows, flip, colors=COLORS):
     return out
 
 
+def arts():
+    """[(동물, 그림 이름, 글자 판, 색표, 젖은 벌도 만드나)] 전부. 동물 'mark' 는 머리 위 표시·Zz.
+    sprites 와 미리보기 시트가 같이 씀 — 그림을 더하면 여기 한 곳에만 걸면 됨."""
+    out = []
+    for kind, (art, colors) in ANIMALS.items():
+        gear = {**colors, **GEAR_COLORS}
+        out += [(kind, name, rows, colors, True) for name, rows in art.items()]
+        out += [(kind, "%s_dive%d" % (kind, i + 1), rows, gear, False) for i, rows in enumerate(DIVE_ART[kind])]
+        out += [(kind, "%s_snork%d" % (kind, i + 1), rows, gear, True) for i, rows in enumerate(SNORK_ART[kind])]
+    out.append(("mark", "zzz", ZZZ, MARK_COLORS, False))
+    out += [("mark", "emo" + mark, rows, MARK_COLORS, False) for mark, rows in EMOTES.items()]
+    return out
+
+
 def sprites():
     """{(그림 이름, 오른쪽을 보나): 조각들}. Z 는 ('zzz', True)."""
-    sp = {(name, right): segments(rows, not right) for art in (ART, BIRD_ART, DOG_ART, RABBIT_ART, PENG_ART)
-          for name, rows in art.items() for right in (True, False)}
-    sp.update({("%s_dive%d" % (k, i + 1), right): segments(rows, not right)
-               for k, pair in DIVE_ART.items() for i, rows in enumerate(pair) for right in (True, False)})
-    # 물에 잠긴 몫을 그릴 물빛 섞은 벌 — 같은 그림이라 조각 차례가 같아 행마다 바꿔 낄 수 있음(Pet.paint)
     tint, k = SOAK
-    soaked = {c: tuple(int(v + (t - v) * k) for v, t in zip(rgb, tint)) for c, rgb in COLORS.items()}
-    arts = [(name, rows) for art in (ART, BIRD_ART, DOG_ART, RABBIT_ART, PENG_ART) for name, rows in art.items()]
-    arts += [("%s_snork%d" % (k, i + 1), rows) for k, pair in SNORK_ART.items() for i, rows in enumerate(pair)]
-    for name, rows in arts:
+    sp = {}
+    for kind, name, rows, colors, wet in arts():
+        if kind == "mark":
+            sp[(name, True)] = segments(rows, False, colors)
+            continue
+        # 물에 잠긴 몫을 그릴 물빛 섞은 벌 — 같은 그림이라 조각 차례가 같아 행마다 바꿔 낄 수 있음(Pet.paint)
+        soaked = {c: tuple(int(v + (t - v) * k) for v, t in zip(rgb, tint)) for c, rgb in colors.items()}
         for right in (True, False):
-            sp.setdefault((name, right), segments(rows, not right))
-            sp[(name, right, "wet")] = segments(rows, not right, soaked)
-    sp[("zzz", True)] = segments(ZZZ, False)
-    for mark, rows in EMOTES.items():
-        sp[("emo" + mark, True)] = segments(rows, False)
+            sp[(name, right)] = segments(rows, not right, colors)
+            if wet:
+                sp[(name, right, "wet")] = segments(rows, not right, soaked)
     return sp
+
+
+def sheet(path):
+    """모든 그림을 동물마다 한 줄로, 이름을 밑에 달아 PNG 한 장에 찍음. 표준 라이브러리만 씀."""
+    import struct
+    import sys
+    import zlib
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+    from pixelfont import text_pixels, text_width
+    pad, lab = 12, 2  # 칸 사이 px · 이름 글꼴 배율
+    lines = {}
+    for kind, name, rows, colors, _ in arts():
+        lines.setdefault(kind, []).append((MARK_NAMES.get(name, name).replace("_", " "), rows, colors))
+    cell = lambda label, rows: max(len(rows[0]) * SCALE, text_width(label) * lab)
+    art_h = {k: max(len(r) for _, r, _ in v) * SCALE for k, v in lines.items()}
+    w = max(sum(cell(n, r) + pad for n, r, _ in v) for v in lines.values()) + pad
+    h = sum(a + 4 + 5 * lab + pad for a in art_h.values()) + pad
+    # 투명한 칸이 보이게 바둑판 바탕
+    px = [[(176, 182, 196) if (x // 8 + y // 8) % 2 else (160, 166, 180) for x in range(w)] for y in range(h)]
+    y0 = pad
+    for kind, items in lines.items():
+        x0 = pad
+        for label, rows, colors in items:
+            top = y0 + art_h[kind] - len(rows) * SCALE  # 발바닥을 한 줄에 맞춤
+            for y, line in enumerate(rows):
+                for x, c in enumerate(line):
+                    if c != ".":
+                        for dy in range(SCALE):
+                            px[top + y * SCALE + dy][x0 + x * SCALE:x0 + (x + 1) * SCALE] = [colors[c]] * SCALE
+            for x, y in text_pixels(label):
+                for dy in range(lab):
+                    px[y0 + art_h[kind] + 4 + y * lab + dy][x0 + x * lab:x0 + (x + 1) * lab] = [LINE["k"]] * lab
+            x0 += cell(label, rows) + pad
+        y0 += art_h[kind] + 4 + 5 * lab + pad
+    raw = b"".join(b"\0" + bytes(v for p in row for v in p) for row in px)
+    chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d))
+    Path(path).write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+                           + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+    return w, h
 
 
 def stamp(px, stride, x, y, segs, width, height, floor=None):
@@ -971,8 +1029,18 @@ BAND = max(max(c.H for c in (Cat, Dog, Penguin)) + int(HOP_V ** 2 / (2 * GRAVITY
 def check():
     for name, rows in ART.items():
         assert len(rows) == ART_H and all(len(r) == ART_W for r in rows), name
-        assert set("".join(rows)) <= set(COLORS) | {"."}, name
         assert rows[-1].strip(".") or name == "sleep", "발바닥이 맨 아랫줄"
+    # 그림마다 제 색표에 있는 글자만 씀 — 남의 색표 글자를 쓰면 segments 가 KeyError
+    for kind, name, rows, colors, _ in arts():
+        assert set("".join(rows)) <= set(colors) | {"."}, (kind, name, set("".join(rows)) - set(colors) - {"."})
+    # 미리보기 시트: 머리·크기가 맞는 PNG
+    import os, struct, tempfile, zlib
+    with tempfile.TemporaryDirectory() as d:
+        sw, sh = sheet(os.path.join(d, "s.png"))
+        with open(os.path.join(d, "s.png"), "rb") as f:
+            png = f.read()
+    assert png[:8] == b"\x89PNG\r\n\x1a\n" and struct.unpack(">II", png[16:24]) == (sw, sh)
+    assert len(zlib.decompress(png[41:-16])) == sh * (1 + 3 * sw), "IDAT 가 판 크기만큼"
     sp = sprites()
     seg = sp[("stand", True)]
     assert all(0 <= dy < H and skip % 4 == 0 and skip + len(d) <= W * 4 for dy, skip, d in seg)
@@ -1110,7 +1178,6 @@ def check():
         for name, rows in art.items():
             assert all(len(r) * SCALE == getattr(cls, "W", BIRD_W) for r in rows), name
             assert len(rows) * SCALE == getattr(cls, "H", BIRD_H), name
-            assert set("".join(rows)) <= set(COLORS) | {"."}, name
             assert rows[-1].strip(".") or name in ("bird_air", "bird_fly1", "bird_fly2"), (name, "발바닥이 맨 아랫줄")
     # 다른 동물: 10분 돌리며 몇 프레임마다 실제로 그려, 화면 안·weather 가 다시 그리는 바닥 띠 안인지 봄
     band = BAND
@@ -1162,7 +1229,6 @@ def check():
     for name, pair in DIVE_ART.items():
         mx, my = DIVE_MOUTH[name]
         assert len({len(r) for rows in pair for r in rows}) == 1 and len(pair[0]) == len(pair[1]), name
-        assert set("".join(pair[0] + pair[1])) <= set(COLORS) | {"."}, name
         assert all(rows[my][mx] in "soy" and rows[my][mx + 1:].strip(".") == "" for rows in pair), ("입이 앞 끝", name)
         assert pair[0] != pair[1] and (name == "bird" or "f" in "".join(pair[0])), ("발차기 두 장·오리발(새는 날개)", name)
         assert "m" in "".join(pair[0]), ("마스크", name)
@@ -1352,4 +1418,8 @@ def check():
 
 
 if __name__ == "__main__":
-    check()
+    import sys
+    if sys.argv[1:2] == ["--sheet"]:
+        print(sys.argv[2] if len(sys.argv) > 2 else "pets.png", sheet(sys.argv[2] if len(sys.argv) > 2 else "pets.png"))
+    else:
+        check()
