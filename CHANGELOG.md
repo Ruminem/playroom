@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.23 — 2026-10-17
+
+- weather: on butterfly and dragonfly days the sunbeams no longer fan out evenly like the teeth of a comb. They gather in a few bunches with wide dark gaps between them, a couple of broad bright beams carry most of the light, and the thin beams around them are fainter and fade out sooner
+
+**한국어**
+
+- weather: 나비·잠자리 날의 햇볕 줄기가 빗살처럼 고르게 퍼지지 않음. 몇 다발로 뭉치고 다발 사이는 넓게 어두우며, 굵고 밝은 줄기 몇 개가 빛 대부분을 맡고 그 둘레의 가는 줄기는 더 옅고 일찍 사그라듦
+
 ## 0.2.22 — 2026-10-11
 
 - weather: with two or more monitors, a full-screen video no longer comes back over the weather when you click a window on the other monitor. Every monitor with a full-screen app is found, not just the one you last clicked, so only those monitors are hidden while the others carry on, and the rain sound stays off as long as any of them is full screen
