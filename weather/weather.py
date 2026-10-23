@@ -124,17 +124,17 @@ FLY_SHARE = 0.17   # 양 → 반딧불 마리 수 ('보통' 25마리)
 FLY_CORE, FLY_HALO = (246, 255, 184), (172, 236, 70)
 FLY_LEVELS = 8
 FLY_SIZES = ((1.3, 6.0), (2.0, 9.0))  # (빛 알갱이 반지름, 번짐 반지름) — 멀리, 가까이
-# 반딧불이 사이로 가끔 실을 타고 내려왔다 올라가는 거미. 시안 B0(notes weather-spider 판 2) — 펫과 같은 칸 결,
+# 반딧불이 사이로 가끔 실을 타고 내려왔다 올라가는 거미. 시안 B3 chubby(notes weather-spider 판 2) — 펫과 같은 칸 결,
 # 다리는 윤곽 없이 제 색 l 이라 어두운 창에서도 안 묻힘. 실은 가운데 열 맨 윗칸(k)에 붙음
-SPIDER_ART = (".....kkkkk.....",
-              "....kbwbbbk....",
-              ".ll.kbbbbbk.ll.",
-              "l..lkbebebkl..l",
-              "l...kbbbbbk...l",
-              "..llkbbbbbkll..",
-              ".l...kkkkk...l.",
-              ".l...........l.")
-SPIDER_COLORS = {**pet.LINE, "b": (120, 110, 160), "l": (104, 96, 150)}  # 윤곽·눈·광택은 펫과 같은 색
+SPIDER_ART = ("....kkkkkkk....",
+              ".llkbwbbbbskll.",
+              "l.kbwbbbbbbsk.l",
+              "l.kbbbebebbsk.l",
+              "..kbbqbbbqbsk..",
+              ".llkbbbbbsskll.",
+              "l...kkkkkkk...l")
+SPIDER_COLORS = {**pet.LINE, "b": (120, 110, 160), "s": (86, 80, 142), "l": (104, 96, 150),  # 몸 · 파랑 쪽 그늘 · 다리
+                 "q": (255, 146, 160)}  # 눈 아래 홍조(펫 볼 색). 윤곽·눈·광택은 펫과 같은 색
 SPIDER_EVERY = (180, 480)  # 다음 거미까지 초. 반딧불이를 고른 뒤 첫 거미는 이 1/3
 SPIDER_DEPTH = (0.25, 0.45)  # 멈추는 깊이 — 화면 높이 비율. 반딧불이(0.35 아래)에 깊이 안 섞이게
 SPIDER_DOWN, SPIDER_UP = 40, 60  # 실이 풀리고 감기는 빠르기 px/초
@@ -4806,8 +4806,8 @@ def check():
             x, top, buf = int(sp[0] + 0.5), int(sp[1]), sf.surface.pixels
             assert buf[x * 4 + 3] == SPIDER_THREAD_A and buf[(x - 1) * 4 + 3] == int(SPIDER_THREAD_A * SHADE_K), \
                 "실과 양옆 그림자"
-            row = buf[top * 800 + 3::4]  # 몸 윗줄 kkkkk(15px)가 실 열을 가운데로 양옆 7px
-            assert row[x - 7] == row[x + 7] == 255 and row[x - 8] == row[x + 8] == 0 and \
+            row = buf[top * 800 + 3::4]  # 몸 윗줄 kkkkkkk(21px)가 실 열을 가운데로 양옆 10px
+            assert row[x - 10] == row[x + 10] == 255 and row[x - 11] == row[x + 11] == 0 and \
                 buf[(top - 1) * 800 + x * 4 + 3] == SPIDER_THREAD_A, "실 아래 끝이 몸 윗줄 가운데에 붙음"
             drawn = True
         t += 1 / 60
