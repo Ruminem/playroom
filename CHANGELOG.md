@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.24 — 2026-10-23
+
+- weather: on firefly nights a tiny, chubby pixel spider now and then lets itself down on a thin thread from the top of the screen, every few minutes at a random spot. It stops a quarter to halfway down, sways a little with rosy cheeks under its eyes for a few seconds, then winds the thread back up
+
+**한국어**
+
+- weather: 반딧불이 밤에 작고 통통한 픽셀 거미가 몇 분에 한 번 화면 위 아무 자리에서 가는 실을 타고 내려옴. 화면 높이의 1/4–1/2 쯤에서 멈춰 눈 아래 볼이 발그레한 채로 몇 초 살짝 흔들리다 실을 감아 다시 올라감
+
 ## 0.2.23 — 2026-10-17
 
 - weather: on butterfly and dragonfly days the sunbeams no longer fan out evenly like the teeth of a comb. They gather in a few bunches with wide dark gaps between them, a couple of broad bright beams carry most of the light, and the thin beams around them are fainter and fade out sooner
