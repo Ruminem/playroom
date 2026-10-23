@@ -11,7 +11,7 @@
 (메뉴에서 30–120). 모니터는 각자 판을 따로 돌리거나(기본, 켠 것 없으면 주 모니터 하나) 이어서 넓은 판 하나로 그린다(App). 바닥은 작업 표시줄에 보이는 틀(단추 묶음·알림 영역·HUD·sysmon, taskbar.frames)의 윗변이고
 그 사이 틈은 화면 맨 아래. 눈은 원근 세 층으로 바람에 흔들리며 내리고 그 바닥 위에 쌓였다 천천히 녹는다.
 비는 세 겹 깊이의 빗줄기가 돌풍에 기울며 내리고 바닥에서 튀며, 뇌우는 거기에 번개와 빗발의 물결을 더한다.
-반딧불이는 화면 아래쪽을 떠다니며 깜빡인다. 어항은 화면을 옅은 물빛으로 덮고 빛줄기·거품·물고기·모래·해초를 그린다. 고양이(pet.py)를 켜면 바닥이나 쌓인 더미 위를 돌아다닌다.
+반딧불이는 화면 아래쪽을 떠다니며 깜빡이고, 가끔 거미가 위에서 실을 타고 내려왔다 올라간다. 어항은 화면을 옅은 물빛으로 덮고 빛줄기·거품·물고기·모래·해초를 그린다. 고양이(pet.py)를 켜면 바닥이나 쌓인 더미 위를 돌아다닌다.
 트레이의 눈송이 메뉴에서 종류·양·고양이·숨기기·끝내기를 하고(양은 10% 칸으로 0–100%), 왼쪽 클릭 설정 창에서는
 어항의 물고기·거품·빛줄기 수도 막대로 고른다. 빗소리(rain_sound.py)를 켜면 비·뇌우일 때 창밖 빗소리가 난다.
 고른 것은 SETTINGS 에 남는다.
@@ -124,6 +124,22 @@ FLY_SHARE = 0.17   # 양 → 반딧불 마리 수 ('보통' 25마리)
 FLY_CORE, FLY_HALO = (246, 255, 184), (172, 236, 70)
 FLY_LEVELS = 8
 FLY_SIZES = ((1.3, 6.0), (2.0, 9.0))  # (빛 알갱이 반지름, 번짐 반지름) — 멀리, 가까이
+# 반딧불이 사이로 가끔 실을 타고 내려왔다 올라가는 거미. 시안 B0(notes weather-spider 판 2) — 펫과 같은 칸 결,
+# 다리는 윤곽 없이 제 색 l 이라 어두운 창에서도 안 묻힘. 실은 가운데 열 맨 윗칸(k)에 붙음
+SPIDER_ART = (".....kkkkk.....",
+              "....kbwbbbk....",
+              ".ll.kbbbbbk.ll.",
+              "l..lkbebebkl..l",
+              "l...kbbbbbk...l",
+              "..llkbbbbbkll..",
+              ".l...kkkkk...l.",
+              ".l...........l.")
+SPIDER_COLORS = {**pet.LINE, "b": (120, 110, 160), "l": (104, 96, 150)}  # 윤곽·눈·광택은 펫과 같은 색
+SPIDER_EVERY = (180, 480)  # 다음 거미까지 초. 반딧불이를 고른 뒤 첫 거미는 이 1/3
+SPIDER_DEPTH = (0.25, 0.45)  # 멈추는 깊이 — 화면 높이 비율. 반딧불이(0.35 아래)에 깊이 안 섞이게
+SPIDER_DOWN, SPIDER_UP = 40, 60  # 실이 풀리고 감기는 빠르기 px/초
+SPIDER_HANG, SPIDER_SWAY, SPIDER_PERIOD = (2, 4), 3, 2.0  # 멈춰 매달린 초 · 좌우 흔들림 px · 주기 초
+SPIDER_THREAD, SPIDER_THREAD_A = (232, 236, 246), 170  # 실 색 · 알파. 양옆 1px 에 SHADE 그림자
 
 HAIL_SHARE = 0.4   # 양 → 우박 알 수 ('보통' 60개)
 # (반지름, 알파, 꼬리 px, 뽑힐 몫, 빠르기 배수) — 작은 알, 중간 알, 드문 큰 알
@@ -2262,6 +2278,47 @@ class Weather:
             if 0 <= xi and xi + n <= w and 0 <= yi and yi + n <= h:
                 stamp(px, stride, xi, yi, frames[int((y - yi) * 4) * 4 + int((x - xi) * 4)][1])
 
+    def dangle(self, dt, now):
+        """가끔 화면 위에서 거미 한 마리가 실을 풀며 내려와 잠깐 흔들리다 다시 감겨 올라감. 반딧불이 아래에 찍음."""
+        S, rows = pet.SCALE, SPIDER_ART
+        gone = -len(rows) * S  # 그림이 화면 위로 다 숨는 실 길이
+        sp = self.spider
+        if sp is None:
+            if now < self.spider_due:
+                return
+            n = len(rows[0]) * S
+            sp = self.spider = [random.uniform(n, max(n, self.w - n)), gone, "down",
+                                self.h * random.uniform(*SPIDER_DEPTH), random.uniform(*SPIDER_HANG), now]
+        if sp[2] == "down":
+            sp[1] += SPIDER_DOWN * dt
+            if sp[1] >= sp[3]:
+                sp[1], sp[2], sp[5] = sp[3], "hang", now
+        elif sp[2] == "hang":
+            if now - sp[5] >= sp[4]:
+                sp[2] = "up"
+        else:
+            sp[1] -= SPIDER_UP * dt
+            if sp[1] <= gone:
+                self.spider, self.spider_due = None, now + random.uniform(*SPIDER_EVERY)
+                return
+        sway = 0.0
+        if sp[2] == "hang":  # 실 위 끝을 축으로 흔들림 — 매달린 처음과 끝은 0 이라 내려오고 올라갈 땐 곧음
+            t = now - sp[5]
+            sway = SPIDER_SWAY * math.sin(math.tau * t / SPIDER_PERIOD) * math.sin(math.pi * min(1.0, t / sp[4]))
+        if "spider" not in self.sprite_cache:
+            a = SPIDER_THREAD_A
+            self.sprite_cache["spider"] = (pet.segments(rows, False, SPIDER_COLORS),
+                                           pixel(SHADE, a * SHADE_K) + pixel(SPIDER_THREAD, a) + pixel(SHADE, a * SHADE_K))
+        segs, thread = self.sprite_cache["spider"]
+        px, stride, w, h = self.surface.pixels, self.stride, self.w, self.h
+        top = int(sp[1])
+        for y in range(min(top, h)):  # 실 — 그림자·실·그림자 세 픽셀. 길이 ≤ 화면 0.45 라 한 프레임 많아야 650줄
+            x = int(sp[0] + sway * y / top + 0.5)
+            if 1 <= x < w - 1:
+                px[y * stride + (x - 1) * 4:y * stride + (x + 2) * 4] = thread
+        mid = len(rows[0]) // 2 * S + S // 2  # 실이 붙는 열 — 그림 왼쪽에서 px
+        pet.stamp(px, stride, int(sp[0] + sway + 0.5) - mid, top, segs, w, h)
+
     # ── 번개 ──
     def lightning(self, now):
         if self.bolt is None and now >= self.next_bolt:
@@ -3840,6 +3897,9 @@ class Weather:
             self.soap_sprites, self.soaps = self.sprite_cache["soap"], []
         elif kind == "fireflies":
             self.flies_sprites = self.fly_sprites()
+            # [x, 실 길이(그림 윗변 y), 단계 down/hang/up, 멈출 길이, 매달려 있을 초, 단계를 시작한 시각] 또는 None
+            self.spider = None
+            self.spider_due = time.perf_counter() + random.uniform(*SPIDER_EVERY) / 3
         elif kind == "hail":
             if "hail" not in self.sprite_cache:
                 self.sprite_cache["hail"] = hail_set(self.stride)
@@ -4155,6 +4215,7 @@ class Weather:
         elif kind == "fireworks":
             self.fireworks(dt, now)
         elif kind == "fireflies":
+            self.dangle(dt, now)
             self.fireflies(dt, now)
         elif kind == "aquarium":
             self.bubbles(dt, now, self.flakes, True)
@@ -4728,6 +4789,32 @@ def check():
     cat.go("walk", 0.0)
     Weather.react(rf, cat.calm)
     assert cat.state == "hop" and cat.pounce and cat.kind == "fireflies", "낮은 반딧불이로 폴짝"
+    # 반딧불이 거미: 때가 되면 내려와 멈춰 흔들리다 올라가 숨고 다음 거미를 미룸. 실은 몸 가운데 열에 붙음
+    sf = big(sprite_cache={}, spider=None, spider_due=5.0)
+    Weather.dangle(sf, 1 / 60, 4.0)
+    assert sf.spider is None, "때가 안 되면 안 나옴"
+    phases, deepest, t, drawn = [], 0.0, 5.0, False
+    while True:
+        sf.surface.pixels[:] = bytes(len(sf.surface.pixels))
+        Weather.dangle(sf, 1 / 60, t)
+        if sf.spider is None:
+            break
+        sp = sf.spider
+        phases += [sp[2]] if not phases or phases[-1] != sp[2] else []
+        deepest = max(deepest, sp[1])
+        if sp[2] == "hang" and not drawn:  # 멈춘 첫 프레임은 흔들림 0 — 실 위 끝과 몸 윗줄 가운데가 같은 열
+            x, top, buf = int(sp[0] + 0.5), int(sp[1]), sf.surface.pixels
+            assert buf[x * 4 + 3] == SPIDER_THREAD_A and buf[(x - 1) * 4 + 3] == int(SPIDER_THREAD_A * SHADE_K), \
+                "실과 양옆 그림자"
+            row = buf[top * 800 + 3::4]  # 몸 윗줄 kkkkk(15px)가 실 열을 가운데로 양옆 7px
+            assert row[x - 7] == row[x + 7] == 255 and row[x - 8] == row[x + 8] == 0 and \
+                buf[(top - 1) * 800 + x * 4 + 3] == SPIDER_THREAD_A, "실 아래 끝이 몸 윗줄 가운데에 붙음"
+            drawn = True
+        t += 1 / 60
+        assert t < 60, "1분 안에 올라가 숨음"
+    assert phases == ["down", "hang", "up"] and drawn, ("내려오고 매달리고 올라감", phases)
+    assert 200 * SPIDER_DEPTH[0] <= deepest <= 200 * SPIDER_DEPTH[1], ("멈추는 깊이", deepest)
+    assert sf.spider_due >= t + SPIDER_EVERY[0] - 1, "다음 거미는 몇 분 뒤"
     r = SOAP_R[0]
     rf.kind, rf.soaps = "soap", [[cat.x + 140 - r, 200 - 40 - r, 0, 0], [cat.x + 140 - r, 200 - 150 - r, 0, 0]]
     cat.go("walk", 0.0)
